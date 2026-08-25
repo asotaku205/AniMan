@@ -144,7 +144,7 @@ export function Navbar() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (query.trim()) {
-      router.push(`/tim-kiem?q=${encodeURIComponent(query.trim())}`);
+      router.push(`/search?q=${encodeURIComponent(query.trim())}`);
       setFocused(false);
       setQuery("");
     }
@@ -354,7 +354,7 @@ export function Navbar() {
                     </Link>
                   ))}
                   <Link
-                    href={`/tim-kiem?q=${encodeURIComponent(query)}`}
+                    href={`/search?q=${encodeURIComponent(query)}`}
                     onClick={() => {
                       setFocused(false);
                       setQuery("");
@@ -375,7 +375,7 @@ export function Navbar() {
 
         {/* Mobile search */}
         <Link
-          href="/tim-kiem"
+          href="/search"
           className="md:hidden p-2 rounded-full hover:bg-white/5 transition"
         >
           <Search className="w-5 h-5 text-white/80" />

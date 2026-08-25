@@ -31,7 +31,7 @@ function getAccent(tags: string[]): string {
   return "from-pink-500 to-fuchsia-500";
 }
 
-export type MediaCardVariant = "anime" | "phim" | "manga";
+export type MediaCardVariant = "anime" | "film" | "manga";
 
 interface MediaCardProps {
   slug: string;
@@ -49,7 +49,7 @@ interface MediaCardProps {
 
 const basePath: Record<MediaCardVariant, string> = {
   anime: "/anime",
-  phim:  "/phim",
+  film:  "/film",
   manga: "/manga",
 };
 

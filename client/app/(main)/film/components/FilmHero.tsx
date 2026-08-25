@@ -38,10 +38,10 @@ export default function FilmHero({ hero, heroFilms, heroIdx, onSelectHero }: Fil
           </div>
           <p className="mt-3 text-white/60 max-w-md line-clamp-2">{hero.synopsis}</p>
           <div className="mt-6 flex gap-3">
-            <Link href={`/phim/${hero.slug}/xem`} className="h-12 px-6 rounded-full bg-white text-black inline-flex items-center gap-2 hover:bg-rose-100 transition shadow-[0_0_30px_rgba(255,255,255,0.2)]">
+            <Link href={`/film/${hero.slug}`} className="h-12 px-6 rounded-full bg-white text-black inline-flex items-center gap-2 hover:bg-rose-100 transition shadow-[0_0_30px_rgba(255,255,255,0.2)]">
               <Play className="w-4 h-4 fill-black" /> Xem ngay
             </Link>
-            <Link href={`/phim/${hero.slug}`} className="h-12 px-6 rounded-full bg-white/5 border border-white/20 text-white inline-flex items-center gap-2 hover:bg-white/10 transition">
+            <Link href={`/film/${hero.slug}`} className="h-12 px-6 rounded-full bg-white/5 border border-white/20 text-white inline-flex items-center gap-2 hover:bg-white/10 transition">
               Chi tiết
             </Link>
           </div>

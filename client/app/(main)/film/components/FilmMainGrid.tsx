@@ -28,7 +28,7 @@ export default function FilmMainGrid({ filtered, genre }: FilmMainGridProps) {
                 meta={`${f.year}`}
                 status={f.status}
                 isNew={i === 0}
-                variant="phim"
+                variant="film"
                 views={["2.4M", "1.8M", "3.1M", "890K", "1.5M"][i % 5]}
               />
             </div>

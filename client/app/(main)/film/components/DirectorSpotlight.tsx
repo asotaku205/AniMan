@@ -15,7 +15,7 @@ export default function DirectorSpotlight() {
           {DIRECTORS.map((d) => (
             <Link
               key={d.slug}
-              href={`/phim/${d.slug}`}
+              href={`/film/${d.slug}`}
               className="group rounded-2xl overflow-hidden bg-white/[0.025] border border-white/8 hover:border-rose-400/30 transition"
             >
               <div className="relative aspect-video overflow-hidden">

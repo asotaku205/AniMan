@@ -9,7 +9,7 @@ export default function FeaturedFilmSection({ films }: { films: Title[] }) {
     <section className="py-10 bg-[#0b0612]">
       <div className="max-w-[1400px] mx-auto px-6">
         <div className="grid md:grid-cols-2 gap-6">
-          <Link href={liveFeatured.href ?? "/phim"} className="relative rounded-3xl overflow-hidden h-80 group">
+          <Link href={liveFeatured.href ?? "/film"} className="relative rounded-3xl overflow-hidden h-80 group">
             <ImageWithFallback src={liveFeatured.img} alt={liveFeatured.title} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
             <div className="absolute inset-0 p-6 flex flex-col justify-end">
@@ -36,7 +36,7 @@ export default function FeaturedFilmSection({ films }: { films: Title[] }) {
               {films.slice(0, 5).map((f) => (
                 <Link
                   key={f.slug}
-                  href={`/phim/${f.slug}`}
+                  href={`/film/${f.slug}`}
                   className="flex gap-3 items-center group hover:bg-white/5 rounded-xl p-2 -mx-2 transition"
                 >
                   <div className="relative w-14 h-20 rounded-lg overflow-hidden shrink-0">
