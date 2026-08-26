@@ -45,7 +45,7 @@ export function FilmDetailPage({film}:{film: Title}) {
             </div>
             <p className="mt-5 text-white/70 max-w-3xl leading-relaxed">{a.synopsis}</p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <Link href={`/film/${a.slug}/`} className="h-12 px-6 rounded-full bg-white text-black inline-flex items-center gap-2 hover:bg-pink-100 transition"><Play className="w-4 h-4 fill-black" /> Xem phim</Link>
+              <Link href={`/film/${a.slug}/1`} className="h-12 px-6 rounded-full bg-white text-black inline-flex items-center gap-2 hover:bg-pink-100 transition"><Play className="w-4 h-4 fill-black" /> Xem phim</Link>
               <button className="h-12 px-6 rounded-full bg-white/5 border border-white/20 text-white inline-flex items-center gap-2"><Plus className="w-4 h-4" /> Lưu</button>
               <button className="h-12 w-12 rounded-full bg-white/5 border border-white/20 text-white grid place-items-center"><Share2 className="w-4 h-4" /></button>
             </div>

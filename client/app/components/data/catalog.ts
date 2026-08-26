@@ -123,7 +123,7 @@ export const liveFeatured = {
   desc: "Tác phẩm điện ảnh Nhật bản quyền 2026 — câu chuyện về tình yêu, hồi ức và một mùa xuân không quay trở lại.",
   img: "https://images.unsplash.com/photo-1522383225653-ed111181a951?w=1600",
   tags: ["Romance", "Drama", "4K", "Sub VI"],
-  href: "/phim/hoa-anh-dao-cuoi-mua",
+  href: "/film/hoa-anh-dao-cuoi-mua",
 };
 
 export const liveList: Title[] = [

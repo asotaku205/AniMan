@@ -26,7 +26,7 @@ export default function ProfilePageClient() {
   // Merge some content for watchlist
   const watchlistItems = [
     ...animeList.slice(0, 3).map((a) => ({ ...a, mediaType: "Anime", link: `/anime/${a.slug}` })),
-    ...liveList.slice(0, 2).map((l) => ({ ...l, mediaType: "Phim", link: `/phim/${l.slug}` })),
+    ...liveList.slice(0, 2).map((l) => ({ ...l, mediaType: "Phim", link: `/film/${l.slug}` })),
   ];
 
   const collectionItems = [

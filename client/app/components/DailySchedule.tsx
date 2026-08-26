@@ -6,7 +6,7 @@ import { weekSchedule, type ScheduleItem } from "./data/schedule";
 import { ImageWithFallback } from "./ImageWithFallback";
 
 function ScheduleCard({ item, isUpcoming, isAiring }: { item: ScheduleItem; isUpcoming?: boolean; isAiring?: boolean }) {
-  const basePath = item.type === "anime" ? "/anime" : "/phim";
+  const basePath = item.type === "anime" ? "/anime" : "/film";
   return (
     <Link
       href={`${basePath}/${item.slug}`}
@@ -354,7 +354,7 @@ export function DailySchedule() {
                       <Clock className="w-3 h-3" /> {todayItems[3]?.time}
                     </div>
                     <Link
-                      href={`/anime/${todayItems[3]?.slug}/xem/${todayItems[3]?.ep}`}
+                      href={`/anime/${todayItems[3]?.slug}/${todayItems[3]?.ep}`}
                       className="mt-3 inline-flex items-center gap-1.5 px-4 h-8 rounded-full bg-white text-black text-xs hover:bg-pink-100 transition"
                     >
                       <Play className="w-3 h-3 fill-black" /> Xem ngay

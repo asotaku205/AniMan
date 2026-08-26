@@ -29,14 +29,14 @@ export function SearchResultCard({ item, index }: { item: UnifiedItem; index: nu
         {/* Hover CTA */}
         <div className="absolute inset-x-3 bottom-12 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-200">
           <div className="flex items-center justify-center h-8 rounded-full bg-white/90 text-black text-xs gap-1.5">
-            {item.type === "manga" ? "Đọc ngay" : item.type === "tieu-thuyet" ? "Đọc thử" : "Xem ngay"}
+            {item.type === "manga" ? "Đọc ngay" : item.type === "novel" ? "Đọc thử" : "Xem ngay"}
           </div>
         </div>
       </div>
 
       {/* Info */}
       <div className="p-3">
-        <div className="text-white text-sm truncate group-hover:text-pink-300 transition" style={{ fontFamily: item.type === "tieu-thuyet" ? "Shippori Mincho, serif" : undefined }}>
+        <div className="text-white text-sm truncate group-hover:text-pink-300 transition" style={{ fontFamily: item.type === "novel" ? "Shippori Mincho, serif" : undefined }}>
           {item.title}
         </div>
         {item.author && <div className="text-white/40 text-xs mt-0.5 truncate">{item.author}</div>}

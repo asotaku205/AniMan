@@ -20,7 +20,7 @@ export const INIT_NOTIFICATIONS: Notification[] = [
     body: "Tokyo Neon Chronicles — Tập 13: Ký ức mất ngủ vừa được cập nhật",
     time: "5 phút", read: false,
     img: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=200",
-    link: "/anime/tokyo-neon-chronicles/xem/13",
+    link: "/anime/tokyo-neon-chronicles/13",
   },
   {
     id: 2, type: "reply",
@@ -43,7 +43,7 @@ export const INIT_NOTIFICATIONS: Notification[] = [
     body: "Mùa Xuân Cuối — Chương 8: Lời nguyện vừa được cập nhật (2.100 chữ)",
     time: "2 giờ", read: true,
     img: "https://images.unsplash.com/photo-1533038590840-1cde6e668a91?w=200",
-    link: "/tieu-thuyet/mua-xuan-cuoi/doc/8",
+    link: "/novel/mua-xuan-cuoi/8",
   },
   {
     id: 5, type: "follow",

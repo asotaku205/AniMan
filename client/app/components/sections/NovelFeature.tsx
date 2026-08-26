@@ -11,11 +11,11 @@ export function NovelFeature() {
   return (
     <section className="py-14 bg-gradient-to-b from-[#0b0612] to-[#1a0f06]">
       <div className="max-w-[1400px] mx-auto px-6">
-        <SectionHeader eyebrow="Tiểu thuyết" title="Văn học & Tiểu thuyết" seeAll="/tieu-thuyet" />
+        <SectionHeader eyebrow="Tiểu thuyết" title="Văn học & Tiểu thuyết" seeAll="/novel" />
         <div className="grid md:grid-cols-[260px_1fr] gap-8 items-center">
           {/* Featured book cover */}
           <Link
-            href={`/tieu-thuyet/${featured.slug}`}
+              href={`/novel/${featured.slug}`}
             className="relative aspect-[2/3] rounded-lg overflow-hidden shadow-[0_30px_60px_-20px_rgba(0,0,0,0.8)] block hover:shadow-[0_30px_80px_-20px_rgba(245,158,11,0.3)] transition-all"
           >
             <ImageWithFallback src={featured.cover} alt={featured.t} className="absolute inset-0 w-full h-full object-cover" />
@@ -40,10 +40,10 @@ export function NovelFeature() {
               ))}
             </div>
             <div className="mt-6 flex gap-3">
-              <Link href={`/tieu-thuyet/${featured.slug}/doc/1`} className="px-5 h-11 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-black inline-flex items-center gap-2">
+              <Link href={`/novel/${featured.slug}/1`} className="px-5 h-11 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-black inline-flex items-center gap-2">
                 <Feather className="w-4 h-4" /> Đọc thử
               </Link>
-              <Link href={`/tieu-thuyet/${featured.slug}`} className="px-5 h-11 rounded-full bg-white/5 border border-white/15 text-white inline-flex items-center gap-2 hover:bg-white/10 transition">
+              <Link href={`/novel/${featured.slug}`} className="px-5 h-11 rounded-full bg-white/5 border border-white/15 text-white inline-flex items-center gap-2 hover:bg-white/10 transition">
                 Xem chi tiết
               </Link>
             </div>
@@ -51,7 +51,7 @@ export function NovelFeature() {
             {/* Other novels */}
             <div className="mt-6 flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
               {rest.map((n) => (
-                <Link key={n.slug} href={`/tieu-thuyet/${n.slug}`} className="group relative shrink-0 w-20">
+                <Link key={n.slug} href={`/novel/${n.slug}`} className="group relative shrink-0 w-20">
                   <div className="aspect-[2/3] rounded-lg overflow-hidden ring-1 ring-white/10 group-hover:ring-amber-400/30 transition">
                     <ImageWithFallback src={n.cover} alt={n.t} className="w-full h-full object-cover group-hover:scale-105 transition" />
                   </div>

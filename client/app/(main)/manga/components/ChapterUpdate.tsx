@@ -20,7 +20,7 @@ export const ChapterUpdate = () => {
             {NEW_CHAPTERS.map((m) => (
               <Link
                 key={m.slug}
-                href={`/manga/${m.slug}/doc/${m.newChapter}`}
+                href={`/manga/${m.slug}/${m.newChapter}`}
                 className="group relative shrink-0 w-40 rounded-2xl overflow-hidden bg-white/[0.025] border border-white/8 hover:border-violet-400/30 transition"
               >
                 <div className="relative aspect-[2/3]">

@@ -43,7 +43,7 @@ export function AnimeSpotlight({ spot, spotlights, activeSpot, onSelectSpot }: A
             </div>
             <p className="mt-4 text-white/70 max-w-md leading-relaxed line-clamp-2">{spot.synopsis}</p>
             <div className="mt-6 flex gap-3">
-              <Link href={`/anime/${spot.slug}/xem/1`} className="h-12 px-6 rounded-full bg-white text-black inline-flex items-center gap-2 hover:bg-pink-100 transition shadow-[0_0_30px_rgba(255,255,255,0.2)]">
+              <Link href={`/anime/${spot.slug}/1`} className="h-12 px-6 rounded-full bg-white text-black inline-flex items-center gap-2 hover:bg-pink-100 transition shadow-[0_0_30px_rgba(255,255,255,0.2)]">
                 <Play className="w-4 h-4 fill-black" /> Xem ngay
               </Link>
               <Link href={`/anime/${spot.slug}`} className="h-12 px-6 rounded-full bg-white/5 border border-white/20 text-white inline-flex items-center gap-2 hover:bg-white/10 transition">

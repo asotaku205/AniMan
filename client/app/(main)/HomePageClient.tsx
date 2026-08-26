@@ -64,7 +64,7 @@ export default function HomePageClient() {
               desc={liveFeatured.desc}
               img={liveFeatured.img}
               tags={liveFeatured.tags}
-              href={liveFeatured.href ?? "/phim"}
+              href={liveFeatured.href ?? "/film"}
               badge="4K HDR"
             />
           </div>
@@ -97,8 +97,8 @@ export default function HomePageClient() {
         eyebrow="Live-Action"
         title="Phim & J-Drama"
         items={liveList}
-        type="phim"
-        seeAllPath="/phim"
+        type="film"
+        seeAllPath="/film"
         bg="bg-[#090511]"
         cols="grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
         views={["2.4M", "1.8M", "3.1M", "890K", "1.5M", "2.0M", "760K", "1.1M"]}

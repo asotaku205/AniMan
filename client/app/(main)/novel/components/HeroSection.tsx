@@ -93,7 +93,7 @@ const HeroSection = () => {
             </div>
             <div className="mt-5 flex gap-3">
               <Link
-                href={`/novel/${featured.slug}/doc/1`}
+                href={`/novel/${featured.slug}/1`}
                 className="px-5 h-11 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-black inline-flex items-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:shadow-[0_0_30px_rgba(245,158,11,0.5)] transition-all"
               >
                 <Feather className="w-4 h-4" /> Đọc thử

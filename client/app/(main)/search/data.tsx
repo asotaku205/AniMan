@@ -2,7 +2,7 @@
 import { animeList, liveList } from "../../components/data/catalog";
 import { mangaList } from "../../components/data/mangas";
 import { novelList } from "../../components/data/novels";
-export type ContentType = "all" | "anime" | "phim" | "manga" | "tieu-thuyet";
+export type ContentType = "all" | "anime" | "film" | "manga" | "novel";
 export type SortType = "relevance" | "score" | "newest" | "oldest";
 
 export const ALL_GENRES = ["Action", "Romance", "Fantasy", "Sci-Fi", "Drama", "Slice of Life", "Mystery", "Thriller", "Mecha", "Mythology", "Supernatural", "Music", "School", "Đương đại", "Tâm lý", "Light Novel", "Văn học", "Lịch sử", "Phiêu lưu", "Huyền bí"];
@@ -22,17 +22,17 @@ export type UnifiedItem = {
 
 export const allItems: UnifiedItem[] = [
   ...animeList.map((a) => ({ slug: a.slug, title: a.t, img: a.img, score: a.score, tags: a.tags, year: a.year, type: "anime" as const, path: `/anime/${a.slug}`, meta: `${a.ep} tập`, author: a.studio })),
-  ...liveList.map((a) => ({ slug: a.slug, title: a.t, img: a.img, score: a.score, tags: a.tags, year: a.year, type: "phim" as const, path: `/phim/${a.slug}`, meta: `${a.year}`, author: a.director })),
+  ...liveList.map((a) => ({ slug: a.slug, title: a.t, img: a.img, score: a.score, tags: a.tags, year: a.year, type: "film" as const, path: `/film/${a.slug}`, meta: `${a.year}`, author: a.director })),
   ...mangaList.map((m) => ({ slug: m.slug, title: m.t, img: m.cover, score: m.score, tags: m.tags, year: m.year, type: "manga" as const, path: `/manga/${m.slug}`, meta: `${m.chapters.length} chương`, author: m.author })),
-  ...novelList.map((n) => ({ slug: n.slug, title: n.t, img: n.cover, score: n.score, tags: n.tags, year: n.year, type: "tieu-thuyet" as const, path: `/tieu-thuyet/${n.slug}`, meta: n.words, author: n.author })),
+  ...novelList.map((n) => ({ slug: n.slug, title: n.t, img: n.cover, score: n.score, tags: n.tags, year: n.year, type: "novel" as const, path: `/novel/${n.slug}`, meta: n.words, author: n.author })),
 ];
 
 export const TYPE_LABELS: Record<ContentType, string> = {
   all: "Tất cả",
   anime: "Anime",
-  phim: "Phim",
+  film: "film",
   manga: "Manga",
-  "tieu-thuyet": "Tiểu thuyết",
+  novel: "Tiểu thuyết",
 };
 
 export const TYPE_COLORS: Record<string, string> = {

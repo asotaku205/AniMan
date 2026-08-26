@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
-import { animeList } from "../../components/data/catalog";
 import CreateRoomModal from "./components/CreateRoomModal";
 import PartyCard from "./components/PartyCard";
 import WatchPartyFilterBar from "./components/WatchPartyFilterBar";

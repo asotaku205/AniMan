@@ -18,7 +18,7 @@ type Props = {
   eyebrow: string;
   title: string;
   items: CatalogItem[];
-  type: "anime" | "phim" | "manga";
+  type: "anime" | "film" | "manga";
   seeAllPath: string;
   bg?: string;
   cols?: string;
@@ -30,7 +30,7 @@ const DEFAULT_VIEWS_8  = ["2.4M", "1.8M", "3.1M", "890K", "1.5M", "2.0M", "760K"
 
 function getMeta(item: CatalogItem, type: Props["type"]): string {
   if (type === "anime") return `${item.ep} tập`;
-  if (type === "phim")  return `${item.year}`;
+  if (type === "film")  return `${item.year}`;
   return `${(item.chapters as unknown[])?.length ?? "—"} ch.`;
 }
 

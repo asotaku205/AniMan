@@ -44,7 +44,7 @@ const NovelList = ({ filtered }: { filtered: Novel[] }) => {
 
                     <div className="mt-3 flex gap-2">
                       <Link
-                        href={`/novel/${n.slug}/doc/1`}
+                        href={`/novel/${n.slug}/1`}
                         className="flex-1 h-8 rounded-full bg-gradient-to-r from-amber-400/80 to-orange-400/80 text-black text-xs flex items-center justify-center gap-1 hover:from-amber-400 hover:to-orange-400 transition"
                       >
                         <Feather className="w-3 h-3" /> Đọc thử

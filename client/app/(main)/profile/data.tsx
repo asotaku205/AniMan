@@ -30,7 +30,7 @@ export const ACTIVITY_FEED = [
     id: 3, type: "read",
     text: "Đã đọc chương 8 của",
     target: "Mùa Xuân Cuối",
-    link: "/tieu-thuyet/mua-xuan-cuoi",
+    link: "/novel/mua-xuan-cuoi",
     time: "2 giờ",
     img: "https://images.unsplash.com/photo-1533038590840-1cde6e668a91?w=200",
   },

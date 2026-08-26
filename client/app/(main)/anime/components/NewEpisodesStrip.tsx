@@ -18,7 +18,7 @@ export function NewEpisodesStrip({ episodes }: { episodes: NewEpisodeAnime[] }) 
         </div>
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           {episodes.slice(0, 7).map((a) => (
-            <Link key={a.slug} href={`/anime/${a.slug}/xem/${a.epNew}`} className="group relative shrink-0 w-48 rounded-2xl overflow-hidden">
+            <Link key={a.slug} href={`/anime/${a.slug}/${a.epNew}`} className="group relative shrink-0 w-48 rounded-2xl overflow-hidden">
               <div className="relative h-28">
                 <ImageWithFallback src={a.banner} alt={a.t} className="w-full h-full object-cover group-hover:scale-105 transition" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />

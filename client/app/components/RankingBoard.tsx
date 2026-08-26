@@ -163,7 +163,7 @@ export function RankingBoard() {
     })),
     phim: [...liveList].sort((a, b) => b.score - a.score).map((a, i) => ({
       slug: a.slug, title: a.t, img: a.img, score: a.score, tags: a.tags,
-      path: `/phim/${a.slug}`, meta: `${a.year}`, reviews: 210 + i * 63,
+      path: `/film/${a.slug}`, meta: `${a.year}`, reviews: 210 + i * 63,
     })),
     manga: [...mangaList].sort((a, b) => b.score - a.score).map((a, i) => ({
       slug: a.slug, title: a.t, img: a.cover, score: a.score, tags: a.tags,

@@ -50,7 +50,7 @@ const HeroSpotlight = ({ top, spotItem, spotIdx, setSpotIdx }: HeroSpotlightProp
               <p className="mt-4 text-white/70 max-w-lg line-clamp-2 leading-relaxed">{spotItem.synopsis}</p>
               <div className="mt-6 flex gap-3">
                 <Link
-                  href={`/manga/${spotItem.slug}/doc/${spotItem.chapters[0].n}`}
+                  href={`/manga/${spotItem.slug}/${spotItem.chapters[0].n}`}
                   className="h-11 px-5 rounded-full bg-white text-black inline-flex items-center gap-2 hover:bg-violet-100 transition shadow-[0_0_20px_rgba(255,255,255,0.15)]"
                 >
                   <BookOpen className="w-4 h-4" /> Đọc ngay
