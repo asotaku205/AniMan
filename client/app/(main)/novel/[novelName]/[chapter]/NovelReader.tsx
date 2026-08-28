@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ChevronLeft, ChevronRight, BookOpen, Settings2,
-  AlignLeft, Type, Bookmark, Share2, List, X,
+  ChevronLeft, ChevronRight, BookOpen,
+  AlignLeft, Type, List, X,
   BookMarked, Scroll
 } from "lucide-react";
 import type { Novel } from "@/app/components/data/novels";
