@@ -22,6 +22,7 @@ import {
   User,
   Settings,
   LogOut,
+  LayoutDashboard,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -159,10 +160,7 @@ export function Navbar() {
         !discoverRef.current.contains(e.target as Node)
       )
         setDiscoverOpen(false);
-      if (
-        profileRef.current &&
-        !profileRef.current.contains(e.target as Node)
-      )
+      if (profileRef.current && !profileRef.current.contains(e.target as Node))
         setProfileOpen(false);
     }
     document.addEventListener("mousedown", handler);
@@ -425,6 +423,15 @@ export function Navbar() {
                 >
                   <Settings className="w-4 h-4 text-pink-300/70 mt-0.5" />
                   Cài đặt
+                </Link>
+                <Link
+                  href="/admin"
+                  className="flex items-start gap-3 px-3 py-2.5 rounded-xl transition group color border border-[#d4a648]/35 bg-[#d4a648]/10 hover:bg-[#d4a648]/20 hover:border-[#d4a648]/60 shrink-0"
+                >
+                  <LayoutDashboard className="w-4 h-4 text-pink-300/70 mt-0.5" />
+              
+                    Admin
+
                 </Link>
                 <Button
                   onClick={() => {

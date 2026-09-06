@@ -298,6 +298,14 @@ body::-webkit-scrollbar-thumb {
   text-shadow: 0 0 6px rgba(212,166,72,0.4);
 }
 
+select option {
+  background-color: #0a0612;
+  color: color-mix(in oklab, var(--color-white) /* #fff = #ffffff */ 70%, transparent) !important;
+  border-color: color-mix(in oklab, var(--color-white) /* #fff = #ffffff */ 10%, transparent);
+   border-style: var(--tw-border-style);
+    border-width: 1px;
+}
+
 /* ── Hover lift utility ─────────────────────────────────────── */
 .hover-lift {
   transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.3s ease;
