@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { RefreshSession } from "./auth/refresh-session.entity.js";
 import { CreateAuthTables1780768800000 } from "./database/migrations/1780768800000-CreateAuthTables.js";
 import { User } from "./users/user.entity.js";
+import { UsersModule } from "./users/users.module.js";
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
@@ -36,6 +37,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         synchronize: false,
       }),
     }),
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [],
