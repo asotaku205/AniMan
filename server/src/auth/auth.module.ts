@@ -2,7 +2,10 @@ import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
+import { TypeOrmModule } from "@nestjs/typeorm";
 import { UsersModule } from "../users/users.module.js";
+import { RefreshSession } from "./refresh-session.entity.js";
+import { RefreshSessionsService } from "./refresh-sessions.service.js";
 import {
   ACCESS_TOKEN_EXPIRES_IN_SECONDS,
   getJwtAccessSecret,
@@ -18,6 +21,7 @@ import { LocalStrategy } from "./strategies/local.strategy.js";
   imports: [
     UsersModule,
     PassportModule,
+    TypeOrmModule.forFeature([RefreshSession]),
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
@@ -29,6 +33,7 @@ import { LocalStrategy } from "./strategies/local.strategy.js";
   controllers: [AuthController],
   providers: [
     AuthService,
+    RefreshSessionsService,
     LocalStrategy,
     JwtStrategy,
     LocalAuthGuard,

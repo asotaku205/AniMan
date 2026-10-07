@@ -3,8 +3,11 @@ import { JwtService } from "@nestjs/jwt";
 import * as argon2 from "argon2";
 import { randomUUID } from "node:crypto";
 import { PublicUser, UsersService } from "../users/users.service.js";
-import { User } from "../users/user.entity.js";
 import { ACCESS_TOKEN_EXPIRES_IN_SECONDS } from "./auth.config.js";
+import {
+  IssuedRefreshToken,
+  RefreshSessionsService,
+} from "./refresh-sessions.service.js";
 
 export interface AccessTokenPayload {
   sub: string;
@@ -17,6 +20,11 @@ export interface LoginResult {
   user: PublicUser;
 }
 
+export interface SessionLoginResult extends LoginResult {
+  refreshToken: string;
+  refreshExpiresAt: Date;
+}
+
 @Injectable()
 export class AuthService {
   private readonly dummyPasswordHash = argon2.hash(randomUUID(), {
@@ -26,6 +34,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly refreshSessionsService: RefreshSessionsService,
   ) {}
 
   async validateLocalUser(
@@ -53,7 +62,7 @@ export class AuthService {
       throw new UnauthorizedException("Invalid username or password");
     }
 
-    return this.toPublicUser(user);
+    return this.usersService.toPublicUser(user);
   }
 
   async createLoginResult(user: PublicUser): Promise<LoginResult> {
@@ -70,19 +79,49 @@ export class AuthService {
     };
   }
 
+  async createSessionLogin(
+    user: PublicUser,
+    rememberMe: boolean,
+  ): Promise<SessionLoginResult> {
+    const loginResult = await this.createLoginResult(user);
+    const refreshToken = await this.refreshSessionsService.create(
+      user.id,
+      rememberMe,
+    );
+
+    return this.withRefreshToken(loginResult, refreshToken);
+  }
+
+  async refreshLogin(token: string): Promise<SessionLoginResult> {
+    const refreshToken = await this.refreshSessionsService.rotate(token);
+    const user = await this.usersService.findPublicById(refreshToken.userId);
+
+    if (!user) {
+      await this.refreshSessionsService.revoke(refreshToken.token);
+      throw new UnauthorizedException("Invalid refresh token");
+    }
+
+    const loginResult = await this.createLoginResult(user);
+    return this.withRefreshToken(loginResult, refreshToken);
+  }
+
+  revokeRefreshToken(token: string | undefined): Promise<void> {
+    return this.refreshSessionsService.revoke(token);
+  }
+
   private async verifyAgainstDummyHash(password: string): Promise<void> {
     const hash = await this.dummyPasswordHash;
     await argon2.verify(hash, password);
   }
 
-  private toPublicUser(user: User): PublicUser {
+  private withRefreshToken(
+    loginResult: LoginResult,
+    refreshToken: IssuedRefreshToken,
+  ): SessionLoginResult {
     return {
-      id: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      termsAcceptedAt: user.termsAcceptedAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      ...loginResult,
+      refreshToken: refreshToken.token,
+      refreshExpiresAt: refreshToken.expiresAt,
     };
   }
 }

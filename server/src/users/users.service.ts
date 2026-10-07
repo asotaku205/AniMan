@@ -95,7 +95,7 @@ export class UsersService {
     return user ? this.toPublicUser(user) : null;
   }
 
-  private toPublicUser(user: User): PublicUser {
+  toPublicUser(user: User): PublicUser {
     return {
       id: user.id,
       username: user.username,

@@ -33,6 +33,15 @@ Only revert a migration after reviewing its `down` operation:
 npm run migration:revert
 ```
 
+## Authentication endpoints
+
+- `POST /auth/login` accepts `username`, `password`, and optional boolean `rememberMe`. It returns a 15-minute bearer access token and sets a refresh token as an `HttpOnly` cookie; the raw refresh token is not returned in JSON or stored in the database.
+- `POST /auth/refresh` rotates the refresh cookie and returns a new access token. Reuse of an already rotated token revokes its refresh-token family.
+- `POST /auth/logout` revokes the current refresh session and clears the cookie.
+- `GET /auth/me` requires `Authorization: Bearer <access-token>`.
+
+Refresh sessions expire after one day by default or 30 days when `rememberMe` is true; each successful refresh renews that inactivity window. Cookies use `SameSite=Lax`, `Path=/auth`, and `Secure` in production. Configure allowed frontend origins and CSRF protections before exposing the API outside local development.
+
 ## Checks
 
 ```powershell

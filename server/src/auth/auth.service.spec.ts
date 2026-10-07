@@ -5,19 +5,37 @@ import { PublicUser, UsersService } from "../users/users.service.js";
 import { User } from "../users/user.entity.js";
 import { ACCESS_TOKEN_EXPIRES_IN_SECONDS } from "./auth.config.js";
 import { AuthService } from "./auth.service.js";
+import { RefreshSessionsService } from "./refresh-sessions.service.js";
 
 describe("AuthService", () => {
   const usersService = {
     findByUsernameForAuthentication: vi.fn(),
+    toPublicUser: vi.fn((user: User): PublicUser => ({
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      termsAcceptedAt: user.termsAcceptedAt,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    })),
   } as unknown as UsersService;
   const jwtService = {
     signAsync: vi.fn(),
   } as unknown as JwtService;
+  const refreshSessionsService = {
+    create: vi.fn(),
+    rotate: vi.fn(),
+    revoke: vi.fn(),
+  } as unknown as RefreshSessionsService;
   let authService: AuthService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    authService = new AuthService(usersService, jwtService);
+    authService = new AuthService(
+      usersService,
+      jwtService,
+      refreshSessionsService,
+    );
   });
 
   it("validates credentials case-insensitively and returns no password hash", async () => {
