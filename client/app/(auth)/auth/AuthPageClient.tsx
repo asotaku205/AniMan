@@ -1,43 +1,62 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import {
-  Lock,
-  Eye,
-  EyeOff,
-  User,
-  Check,
-  AtSign,
-} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Lock, Eye, EyeOff, User, Check, AtSign } from "lucide-react";
 import { Sakura } from "../../components/ui/Sakura";
 import { SakuraMark } from "../../components/ui/Logo";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { SignInFormData, signInSchema, SignUpFormData, signUpSchema } from "./schema";
+import type { SignInFormData, SignUpFormData } from "./schema";
+import { signInSchema, signUpSchema } from "./schema";
 import Field from "./components/Field";
+import { useAuth } from "../../auth/AuthProvider";
+
 type AuthMode = "login" | "register";
 
-
-export default function AuthPageClient({ mode = "login" }: { mode?: AuthMode }) {
+export default function AuthPageClient({
+  mode = "login",
+}: {
+  mode?: AuthMode;
+}) {
   const [active, setActive] = useState<AuthMode>(mode);
   const [showPw, setShowPw] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const router = useRouter();
+  const { signIn, signUp, sessionError, isLoading } = useAuth();
 
   const loginForm = useForm<SignInFormData>({
     resolver: zodResolver(signInSchema),
     mode: "onTouched",
+    defaultValues: { rememberMe: false },
   });
 
   const registerForm = useForm<SignUpFormData>({
     resolver: zodResolver(signUpSchema),
     mode: "onTouched",
   });
-  const onSignInSubmit = (data: SignInFormData) => {
-    console.log("Sign In Data:", data);
+  const onSignInSubmit = async (data: SignInFormData) => {
+    setSubmitError(null);
+    try {
+      await signIn({
+        username: data.username,
+        password: data.password,
+        rememberMe: data.rememberMe ?? false,
+      });
+      router.replace("/");
+    } catch (error: unknown) {
+      setSubmitError(getAuthErrorMessage(error));
+    }
   };
-  const onSignUpSubmit = (data: SignUpFormData) => {
-    console.log("Sign Up Data:", data);
+  const onSignUpSubmit = async (data: SignUpFormData) => {
+    setSubmitError(null);
+    try {
+      await signUp(data);
+      router.replace("/");
+    } catch (error: unknown) {
+      setSubmitError(getAuthErrorMessage(error));
+    }
   };
-
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#0b0612] grid lg:grid-cols-2">
@@ -200,11 +219,16 @@ export default function AuthPageClient({ mode = "login" }: { mode?: AuthMode }) 
                 className="bg-transparent outline-none flex-1 text-white placeholder:text-white/30 text-sm"
               />
               {active === "login" && loginForm.formState.errors.password && (
-                <p className="text-red-400 text-xs mt-1 ml-1">{loginForm.formState.errors.password.message}</p>
+                <p className="text-red-400 text-xs mt-1 ml-1">
+                  {loginForm.formState.errors.password.message}
+                </p>
               )}
-              {active === "register" && registerForm.formState.errors.password && (
-                <p className="text-red-400 text-xs mt-1 ml-1">{registerForm.formState.errors.password.message}</p>
-              )}
+              {active === "register" &&
+                registerForm.formState.errors.password && (
+                  <p className="text-red-400 text-xs mt-1 ml-1">
+                    {registerForm.formState.errors.password.message}
+                  </p>
+                )}
               <button
                 type="button"
                 onClick={() => setShowPw((v) => !v)}
@@ -249,8 +273,12 @@ export default function AuthPageClient({ mode = "login" }: { mode?: AuthMode }) 
             {active === "login" ? (
               <div className="flex items-center justify-between text-xs">
                 <label className="flex items-center gap-2 text-white/60 cursor-pointer">
-                  <input type="checkbox" className="accent-pink-500" /> Ghi nhớ
-                  tôi
+                  <input
+                    {...loginForm.register("rememberMe")}
+                    type="checkbox"
+                    className="accent-pink-500"
+                  />
+                  Ghi nhớ tôi
                 </label>
                 <Link
                   href="/quen-mat-khau"
@@ -289,23 +317,32 @@ export default function AuthPageClient({ mode = "login" }: { mode?: AuthMode }) 
                   </p>
                 )}
               </label>
-              
             )}
 
-          <button
-            type="submit"
-            disabled={active === "login" ? loginForm.formState.isSubmitting : registerForm.formState.isSubmitting}
-            className="w-full h-12 rounded-xl bg-gradient-to-r from-pink-500 to-rose-400 text-white text-sm flex items-center justify-center gap-2 shadow-[0_0_24px_rgba(255,90,150,0.4)] hover:opacity-90 transition disabled:opacity-50"
-          >
-            {active === "login"
-              ? loginForm.formState.isSubmitting
-                ? "Đang xử lý..."
-                : "Đăng nhập"
-              : registerForm.formState.isSubmitting
-              ? "Đang xử lý..."
-              : "Đăng ký"}
-          </button>
+            {(submitError || sessionError) && (
+              <p role="alert" className="text-red-400 text-sm">
+                {submitError ?? sessionError}
+              </p>
+            )}
 
+            <button
+              type="submit"
+              disabled={
+                isLoading ||
+                (active === "login"
+                  ? loginForm.formState.isSubmitting
+                  : registerForm.formState.isSubmitting)
+              }
+              className="w-full h-12 rounded-xl bg-gradient-to-r from-pink-500 to-rose-400 text-white text-sm flex items-center justify-center gap-2 shadow-[0_0_24px_rgba(255,90,150,0.4)] hover:opacity-90 transition disabled:opacity-50"
+            >
+              {active === "login"
+                ? loginForm.formState.isSubmitting
+                  ? "Đang xử lý..."
+                  : "Đăng nhập"
+                : registerForm.formState.isSubmitting
+                  ? "Đang xử lý..."
+                  : "Đăng ký"}
+            </button>
           </form>
 
           {/* Divider */}
@@ -358,4 +395,10 @@ export default function AuthPageClient({ mode = "login" }: { mode?: AuthMode }) 
       </main>
     </div>
   );
+}
+
+function getAuthErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Không thể hoàn tất yêu cầu xác thực.";
 }

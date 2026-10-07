@@ -3,6 +3,7 @@ import * as z from "zod";
 export const signInSchema = z.object({
   username: z.string().min(1, "Tên đăng nhập không được để trống"),
   password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
+  rememberMe: z.boolean().optional(),
 });
 
 export const signUpSchema = z
@@ -16,9 +17,7 @@ export const signUpSchema = z
         "Tên đăng nhập chỉ được chứa chữ cái, số và dấu gạch dưới",
       ),
     password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
-    confirmPassword: z
-      .string()
-      .min(6, "Mật khẩu không khớp"),
+    confirmPassword: z.string().min(6, "Mật khẩu không khớp"),
     agree: z.literal(true, {
       errorMap: () => ({ message: "Bạn phải đồng ý với điều khoản dịch vụ" }),
     }),

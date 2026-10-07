@@ -16,6 +16,12 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+The client sends authentication requests through a same-origin Next.js rewrite
+to the NestJS API. The default API origin is `http://localhost:8080`; set
+`AUTH_API_URL` in `.env.local` when the server uses a different origin. The
+access token is kept in client memory, while the refresh token remains in the
+server-managed `HttpOnly` cookie.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

@@ -31,6 +31,7 @@ import { SakuraMark } from "../ui/Logo";
 import { animeList, liveList } from "../data/catalog";
 import { mangaList } from "../data/mangas";
 import { novelList } from "../data/novels";
+import { useAuth } from "@/app/auth/AuthProvider";
 
 const primaryLinks = [
   { to: "/", label: "Trang chủ" },
@@ -133,15 +134,33 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname() || "/";
+  const { user, isLoading, signOut } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const discoverRef = useRef<HTMLDivElement>(null);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [isLogin, setIsLogin] = useState(true);
   const quick = getQuickResults(query);
   const profileRef = useRef<HTMLDivElement>(null);
+  const isAuthenticated = !isLoading && user !== null;
+
+  async function handleLogout() {
+    setLogoutError(null);
+    try {
+      await signOut();
+      setProfileOpen(false);
+      router.replace("/auth");
+    } catch (error: unknown) {
+      setLogoutError(
+        error instanceof Error
+          ? error.message
+          : "Không thể đăng xuất khỏi phiên hiện tại.",
+      );
+    }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (query.trim()) {
@@ -189,6 +208,12 @@ export function Navbar() {
     const t = setTimeout(() => setToast(null), 2800);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!logoutError) return;
+    const timeout = setTimeout(() => setLogoutError(null), 4000);
+    return () => clearTimeout(timeout);
+  }, [logoutError]);
 
   useEffect(() => {
     const open = () => router.push("/upload");
@@ -380,7 +405,7 @@ export function Navbar() {
         </Link>
 
         {/* Đăng tác phẩm — Upload button */}
-        {isLogin === true && (
+        {isAuthenticated && (
           <Button
             onClick={() => router.push("/upload")}
             className="hidden sm:inline-flex btn-son border-0 rounded-full px-3 lg:px-4 h-9"
@@ -392,7 +417,7 @@ export function Navbar() {
         )}
 
         {/* Notification bell */}
-        {isLogin === true && (
+        {isAuthenticated && (
           <Link
             href="/notification"
             className="relative p-2 rounded-full hover:bg-white/5 transition shrink-0"
@@ -402,10 +427,13 @@ export function Navbar() {
           </Link>
         )}
         {/* Avatar */}
-        {isLogin === true ? (
+        {isLoading ? (
+          <div aria-hidden="true" className="w-9 h-9 shrink-0" />
+        ) : user ? (
           <div className="relative" ref={profileRef}>
             <Button
               onClick={() => setProfileOpen(!profileOpen)}
+              aria-label={user.displayName}
               className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 ring-2 ring-pink-400/40 hover:ring-pink-400/60 transition shrink-0"
             ></Button>
             {profileOpen === true && (
@@ -429,15 +457,10 @@ export function Navbar() {
                   className="flex items-start gap-3 px-3 py-2.5 rounded-xl transition group color border border-[#d4a648]/35 bg-[#d4a648]/10 hover:bg-[#d4a648]/20 hover:border-[#d4a648]/60 shrink-0"
                 >
                   <LayoutDashboard className="w-4 h-4 text-pink-300/70 mt-0.5" />
-              
-                    Admin
-
+                  Admin
                 </Link>
                 <Button
-                  onClick={() => {
-                    setIsLogin(false);
-                    setProfileOpen(false);
-                  }}
+                  onClick={() => void handleLogout()}
                   className="flex w-full items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition group"
                 >
                   <LogOut className="w-4 h-4 text-pink-300/70 mt-0.5" />
@@ -506,6 +529,14 @@ export function Navbar() {
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-full bg-[#1a0f2e] border border-pink-400/40 text-white text-sm shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex items-center gap-2">
           <Check className="w-4 h-4 text-pink-300" /> {toast}
+        </div>
+      )}
+      {logoutError && (
+        <div
+          role="alert"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-full bg-[#1a0f2e] border border-red-400/40 text-red-200 text-sm shadow-[0_10px_40px_rgba(0,0,0,0.5)]"
+        >
+          {logoutError}
         </div>
       )}
     </header>

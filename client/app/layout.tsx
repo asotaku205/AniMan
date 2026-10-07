@@ -1,6 +1,7 @@
 import "./styles/globals.css";
 import "./styles/fonts.css";
 import "./styles/theme.css";
+import { AuthProvider } from "./auth/AuthProvider";
 
 export const metadata = {
   title: "AniMan",
@@ -14,7 +15,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi" suppressHydrationWarning>
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
