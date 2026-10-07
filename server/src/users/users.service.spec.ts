@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException } from "@nestjs/common";
 import * as argon2 from "argon2";
 import { QueryFailedError, Repository } from "typeorm";
 import { User } from "./user.entity.js";
+import { UserRole } from "./user-role.enum.js";
 import { UsersService } from "./users.service.js";
 
 describe("UsersService", () => {
@@ -23,6 +24,7 @@ describe("UsersService", () => {
       id: "user-id",
       username: "ani_man",
       displayName: "Ani Man",
+      role: UserRole.User,
       passwordHash: await argon2.hash("123456"),
       termsAcceptedAt: now,
       createdAt: now,
@@ -45,6 +47,7 @@ describe("UsersService", () => {
       expect.objectContaining({
         username: "ani_man",
         displayName: "Ani Man",
+        role: UserRole.User,
         passwordHash: expect.any(String),
         termsAcceptedAt: expect.any(Date),
       }),
@@ -57,6 +60,7 @@ describe("UsersService", () => {
       id: "user-id",
       username: "ani_man",
       displayName: "Ani Man",
+      role: UserRole.User,
       termsAcceptedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -102,6 +106,7 @@ describe("UsersService", () => {
       id: "user-id",
       username: "ani_man",
       displayName: "Ani Man",
+      role: UserRole.User,
       passwordHash: "hash",
       termsAcceptedAt: new Date(),
       createdAt: new Date(),
@@ -125,5 +130,72 @@ describe("UsersService", () => {
         agree: true,
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("promotes an existing account only after verifying its password", async () => {
+    const user = {
+      id: "user-id",
+      username: "ani_man",
+      displayName: "Ani Man",
+      role: UserRole.User,
+      passwordHash: await argon2.hash("correct-password"),
+      termsAcceptedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as User;
+    vi.mocked(repository.findOneBy).mockResolvedValue(user);
+    vi.mocked(repository.save).mockImplementation(
+      async (savedUser) => savedUser,
+    );
+
+    await expect(
+      usersService.promoteToAdmin("ANI_MAN", "correct-password"),
+    ).resolves.toMatchObject({
+      id: user.id,
+      username: user.username,
+      role: UserRole.Admin,
+    });
+    expect(repository.findOneBy).toHaveBeenCalledWith({ username: "ani_man" });
+    expect(repository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ role: UserRole.Admin }),
+    );
+  });
+
+  it("does not promote an account with invalid credentials", async () => {
+    const user = {
+      id: "user-id",
+      username: "ani_man",
+      passwordHash: await argon2.hash("correct-password"),
+    } as User;
+    vi.mocked(repository.findOneBy).mockResolvedValue(user);
+
+    await expect(
+      usersService.promoteToAdmin("ani_man", "incorrect-password"),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
+  it("rejects promoting a second account to admin", async () => {
+    const user = {
+      id: "user-id",
+      username: "ani_man",
+      displayName: "Ani Man",
+      role: UserRole.User,
+      passwordHash: await argon2.hash("correct-password"),
+    } as User;
+    vi.mocked(repository.findOneBy).mockResolvedValue(user);
+    vi.mocked(repository.save).mockRejectedValue(
+      new QueryFailedError("UPDATE", [], {
+        code: "23505",
+        constraint: "uq_users_single_admin",
+      }),
+    );
+
+    await expect(
+      usersService.promoteToAdmin("ani_man", "correct-password"),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: "An admin account already exists",
+    });
   });
 });

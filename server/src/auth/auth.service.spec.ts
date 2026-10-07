@@ -3,6 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import * as argon2 from "argon2";
 import { PublicUser, UsersService } from "../users/users.service.js";
 import { User } from "../users/user.entity.js";
+import { UserRole } from "../users/user-role.enum.js";
 import { ACCESS_TOKEN_EXPIRES_IN_SECONDS } from "./auth.config.js";
 import { AuthService } from "./auth.service.js";
 import { RefreshSessionsService } from "./refresh-sessions.service.js";
@@ -14,6 +15,7 @@ describe("AuthService", () => {
       id: user.id,
       username: user.username,
       displayName: user.displayName,
+      role: user.role,
       termsAcceptedAt: user.termsAcceptedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -43,6 +45,7 @@ describe("AuthService", () => {
       id: "user-id",
       username: "ani_man",
       displayName: "Ani Man",
+      role: UserRole.User,
       passwordHash: await argon2.hash("123456"),
       termsAcceptedAt: new Date(),
       createdAt: new Date(),
@@ -61,6 +64,7 @@ describe("AuthService", () => {
       id: user.id,
       username: user.username,
       displayName: user.displayName,
+      role: user.role,
       termsAcceptedAt: user.termsAcceptedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

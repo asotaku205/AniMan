@@ -1,6 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/app/auth/AuthProvider";
 import AdminPageClient from "../AdminPageClient";
 
 const ROUTE_TO_MODULE: Record<string, string> = {
@@ -24,9 +26,38 @@ const ROUTE_TO_MODULE: Record<string, string> = {
   settings: "settings",
 };
 
-export function AdminRoute({ module, children }: { module?: string; children?: React.ReactNode }) {
+export function AdminRoute({
+  module,
+  children,
+}: {
+  module?: string;
+  children?: React.ReactNode;
+}) {
   const pathname = usePathname();
-  const routeModule = module ?? pathname.split("/").filter(Boolean).at(-1) ?? "dashboard";
+  const router = useRouter();
+  const { user, isLoading } = useAuth();
+  const routeModule =
+    module ?? pathname.split("/").filter(Boolean).at(-1) ?? "dashboard";
 
-  return <AdminPageClient initialActive={ROUTE_TO_MODULE[routeModule] ?? "dashboard"}>{children}</AdminPageClient>;
+  useEffect(() => {
+    if (!isLoading && user?.role !== "admin") {
+      router.replace(user ? "/" : "/auth");
+    }
+  }, [isLoading, router, user]);
+
+  if (isLoading || user?.role !== "admin") {
+    return (
+      <div className="min-h-screen grid place-items-center bg-[#0b0612] text-white/70">
+        Checking admin permissions...
+      </div>
+    );
+  }
+
+  return (
+    <AdminPageClient
+      initialActive={ROUTE_TO_MODULE[routeModule] ?? "dashboard"}
+    >
+      {children}
+    </AdminPageClient>
+  );
 }

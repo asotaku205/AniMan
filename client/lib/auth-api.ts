@@ -2,6 +2,7 @@ export interface AuthUser {
   id: string;
   username: string;
   displayName: string;
+  role: "user" | "admin";
   termsAcceptedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -170,6 +171,8 @@ function isAuthResponse(value: unknown): value is AuthResponse {
     typeof user.username === "string" &&
     "displayName" in user &&
     typeof user.displayName === "string" &&
+    "role" in user &&
+    (user.role === "user" || user.role === "admin") &&
     "termsAcceptedAt" in user &&
     typeof user.termsAcceptedAt === "string" &&
     "createdAt" in user &&

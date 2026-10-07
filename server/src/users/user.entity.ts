@@ -6,6 +6,7 @@ import {
   PrimaryColumn,
   UpdateDateColumn,
 } from "typeorm";
+import { UserRole } from "./user-role.enum.js";
 
 @Entity({ name: "users" })
 @Index("uq_users_username", ["username"], { unique: true })
@@ -21,6 +22,9 @@ export class User {
 
   @Column({ name: "password_hash", type: "text" })
   passwordHash: string;
+
+  @Column({ type: "text", default: UserRole.User })
+  role: UserRole;
 
   @Column({ name: "terms_accepted_at", type: "timestamptz" })
   termsAcceptedAt: Date;

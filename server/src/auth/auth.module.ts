@@ -11,9 +11,11 @@ import {
   getJwtAccessSecret,
 } from "./auth.config.js";
 import { AuthController } from "./auth.controller.js";
+import { AdminController } from "./admin.controller.js";
 import { AuthService } from "./auth.service.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
 import { LocalAuthGuard } from "./guards/local-auth.guard.js";
+import { RolesGuard } from "./guards/roles.guard.js";
 import { JwtStrategy } from "./strategies/jwt.strategy.js";
 import { LocalStrategy } from "./strategies/local.strategy.js";
 
@@ -30,7 +32,7 @@ import { LocalStrategy } from "./strategies/local.strategy.js";
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, AdminController],
   providers: [
     AuthService,
     RefreshSessionsService,
@@ -38,6 +40,7 @@ import { LocalStrategy } from "./strategies/local.strategy.js";
     JwtStrategy,
     LocalAuthGuard,
     JwtAuthGuard,
+    RolesGuard,
   ],
   exports: [AuthService],
 })

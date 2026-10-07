@@ -2,12 +2,14 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import * as argon2 from "argon2";
 import { randomUUID } from "node:crypto";
 import { QueryFailedError, Repository } from "typeorm";
 import { User } from "./user.entity.js";
+import { UserRole } from "./user-role.enum.js";
 
 export interface RegisterUserInput {
   displayName: string;
@@ -21,12 +23,21 @@ export type PublicUser = Pick<
   | "id"
   | "username"
   | "displayName"
+  | "role"
   | "termsAcceptedAt"
   | "createdAt"
   | "updatedAt"
 >;
 
 function isUsernameConflict(error: unknown): boolean {
+  return isConstraintConflict(error, "uq_users_username");
+}
+
+function isSingleAdminConflict(error: unknown): boolean {
+  return isConstraintConflict(error, "uq_users_single_admin");
+}
+
+function isConstraintConflict(error: unknown, constraint: string): boolean {
   if (!(error instanceof QueryFailedError)) {
     return false;
   }
@@ -40,7 +51,7 @@ function isUsernameConflict(error: unknown): boolean {
     "code" in driverError &&
     driverError.code === "23505" &&
     "constraint" in driverError &&
-    driverError.constraint === "uq_users_username"
+    driverError.constraint === constraint
   );
 }
 
@@ -71,6 +82,7 @@ export class UsersService {
       username,
       displayName: input.displayName,
       passwordHash,
+      role: UserRole.User,
       termsAcceptedAt: new Date(),
     });
 
@@ -80,6 +92,32 @@ export class UsersService {
     } catch (error: unknown) {
       if (isUsernameConflict(error)) {
         throw new ConflictException("Username is already taken");
+      }
+
+      throw error;
+    }
+  }
+
+  async promoteToAdmin(
+    username: string,
+    password: string,
+  ): Promise<PublicUser> {
+    const user = await this.findByUsernameForAuthentication(username);
+    if (!user || !(await argon2.verify(user.passwordHash, password))) {
+      throw new UnauthorizedException("Unable to verify account credentials");
+    }
+
+    if (user.role === UserRole.Admin) {
+      return this.toPublicUser(user);
+    }
+
+    user.role = UserRole.Admin;
+    try {
+      const savedUser = await this.usersRepository.save(user);
+      return this.toPublicUser(savedUser);
+    } catch (error: unknown) {
+      if (isSingleAdminConflict(error)) {
+        throw new ConflictException("An admin account already exists");
       }
 
       throw error;
@@ -100,6 +138,7 @@ export class UsersService {
       id: user.id,
       username: user.username,
       displayName: user.displayName,
+      role: user.role,
       termsAcceptedAt: user.termsAcceptedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

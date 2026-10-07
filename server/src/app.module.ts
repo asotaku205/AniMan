@@ -5,6 +5,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { RefreshSession } from "./auth/refresh-session.entity.js";
 import { CreateAuthTables1780768800000 } from "./database/migrations/1780768800000-CreateAuthTables.js";
+import { AddUserRoles1791400000000 } from "./database/migrations/1791400000000-AddUserRoles.js";
 import { User } from "./users/user.entity.js";
 import { AuthModule } from "./auth/auth.module.js";
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
@@ -32,7 +33,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         password: configService.get<string>("DATABASE_PASSWORD"),
         database: "animan",
         entities: [User, RefreshSession],
-        migrations: [CreateAuthTables1780768800000],
+        migrations: [CreateAuthTables1780768800000, AddUserRoles1791400000000],
         migrationsRun: false,
         synchronize: false,
       }),

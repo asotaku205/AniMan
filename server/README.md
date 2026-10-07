@@ -40,8 +40,19 @@ npm run migration:revert
 - `POST /auth/refresh` rotates the refresh cookie and returns a new access token. Reuse of an already rotated token revokes its refresh-token family.
 - `POST /auth/logout` revokes the current refresh session and clears the cookie.
 - `GET /auth/me` requires `Authorization: Bearer <access-token>`.
+- `GET /admin/me` requires a valid access token and the `admin` role.
 
 Refresh sessions expire after one day by default or 30 days when `rememberMe` is true; each successful refresh renews that inactivity window. Cookies use `SameSite=Lax`, `Path=/auth`, and `Secure` in production. Configure allowed frontend origins and CSRF protections before exposing the API outside local development.
+
+## Account roles
+
+Public registration always creates a `user`. The database allows at most one `admin` account. To grant that role, first register the account normally, then temporarily set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in the ignored `server/.env` file and run:
+
+```powershell
+npm run admin:promote
+```
+
+The command verifies the account password before promoting it and refuses to promote another account if an admin already exists. Remove the two temporary environment entries after successful promotion. Admin-only backend routes enforce the role; the client also hides the admin link and redirects non-admin users away from admin pages.
 
 ## Checks
 

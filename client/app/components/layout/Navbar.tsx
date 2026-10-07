@@ -452,13 +452,15 @@ export function Navbar() {
                   <Settings className="w-4 h-4 text-pink-300/70 mt-0.5" />
                   Cài đặt
                 </Link>
-                <Link
-                  href="/admin"
-                  className="flex items-start gap-3 px-3 py-2.5 rounded-xl transition group color border border-[#d4a648]/35 bg-[#d4a648]/10 hover:bg-[#d4a648]/20 hover:border-[#d4a648]/60 shrink-0"
-                >
-                  <LayoutDashboard className="w-4 h-4 text-pink-300/70 mt-0.5" />
-                  Admin
-                </Link>
+                {user.role === "admin" && (
+                  <Link
+                    href="/admin"
+                    className="flex items-start gap-3 px-3 py-2.5 rounded-xl transition group color border border-[#d4a648]/35 bg-[#d4a648]/10 hover:bg-[#d4a648]/20 hover:border-[#d4a648]/60 shrink-0"
+                  >
+                    <LayoutDashboard className="w-4 h-4 text-pink-300/70 mt-0.5" />
+                    Admin
+                  </Link>
+                )}
                 <Button
                   onClick={() => void handleLogout()}
                   className="flex w-full items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition group"

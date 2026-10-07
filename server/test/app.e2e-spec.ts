@@ -11,6 +11,7 @@ import { Repository } from "typeorm";
 import { AppModule } from "./../src/app.module.js";
 import { RefreshSession } from "./../src/auth/refresh-session.entity.js";
 import { User } from "./../src/users/user.entity.js";
+import { UserRole } from "./../src/users/user-role.enum.js";
 
 describe("AppController (e2e)", () => {
   let app: INestApplication<App>;
@@ -62,6 +63,31 @@ describe("AppController (e2e)", () => {
       .expect(401);
   });
 
+  it("allows only an admin account to access the admin endpoint", async () => {
+    const user = await createTestUser(usersRepository, testUsername);
+    const loginResponse = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ username: testUsername, password: "test-password-123" })
+      .expect(201);
+    const accessToken = loginResponse.body.accessToken as string;
+
+    await request(app.getHttpServer()).get("/admin/me").expect(401);
+    await request(app.getHttpServer())
+      .get("/admin/me")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(403);
+
+    await usersRepository.update({ id: user.id }, { role: UserRole.Admin });
+    await request(app.getHttpServer())
+      .get("/admin/me")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.username).toBe(testUsername);
+        expect(body.role).toBe(UserRole.Admin);
+      });
+  });
+
   it("registers a user and immediately creates an authenticated session", async () => {
     const response = await request(app.getHttpServer())
       .post("/auth/register")
@@ -79,6 +105,7 @@ describe("AppController (e2e)", () => {
       expiresIn: 900,
       user: {
         username: testUsername,
+        role: UserRole.User,
         displayName: "New E2E User",
       },
     });
@@ -190,6 +217,33 @@ describe("AppController (e2e)", () => {
       expect(durationDays).toBeCloseTo(expectedDays, 2);
     },
   );
+
+  it("rejects and revokes an expired refresh session", async () => {
+    await createTestUser(usersRepository, testUsername);
+    const loginResponse = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ username: testUsername, password: "test-password-123" })
+      .expect(201);
+    const cookie = getCookie(loginResponse, "refresh_token");
+    const session = await refreshSessionsRepository.findOneByOrFail({
+      tokenHash: hashToken(getCookieValue(cookie)),
+    });
+
+    await refreshSessionsRepository.update(
+      { id: session.id },
+      { expiresAt: new Date(Date.now() - 1000) },
+    );
+
+    await request(app.getHttpServer())
+      .post("/auth/refresh")
+      .set("Cookie", cookie.split(";")[0])
+      .expect(401);
+
+    const expiredSession = await refreshSessionsRepository.findOneByOrFail({
+      id: session.id,
+    });
+    expect(expiredSession.revokedAt).toBeInstanceOf(Date);
+  });
 
   it("rotates refresh tokens and revokes the entire family on token reuse", async () => {
     await createTestUser(usersRepository, testUsername);
@@ -319,6 +373,7 @@ async function createTestUser(
     passwordHash: await argon2.hash("test-password-123", {
       type: argon2.argon2id,
     }),
+    role: UserRole.User,
     termsAcceptedAt: new Date(),
   });
 
