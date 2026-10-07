@@ -76,14 +76,7 @@ export class UsersService {
 
     try {
       const savedUser = await this.usersRepository.save(user);
-      return {
-        id: savedUser.id,
-        username: savedUser.username,
-        displayName: savedUser.displayName,
-        termsAcceptedAt: savedUser.termsAcceptedAt,
-        createdAt: savedUser.createdAt,
-        updatedAt: savedUser.updatedAt,
-      };
+      return this.toPublicUser(savedUser);
     } catch (error: unknown) {
       if (isUsernameConflict(error)) {
         throw new ConflictException("Username is already taken");
@@ -91,5 +84,25 @@ export class UsersService {
 
       throw error;
     }
+  }
+
+  findByUsernameForAuthentication(username: string): Promise<User | null> {
+    return this.usersRepository.findOneBy({ username: username.toLowerCase() });
+  }
+
+  async findPublicById(id: string): Promise<PublicUser | null> {
+    const user = await this.usersRepository.findOneBy({ id });
+    return user ? this.toPublicUser(user) : null;
+  }
+
+  private toPublicUser(user: User): PublicUser {
+    return {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      termsAcceptedAt: user.termsAcceptedAt,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 }
