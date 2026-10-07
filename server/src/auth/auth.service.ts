@@ -2,7 +2,11 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as argon2 from "argon2";
 import { randomUUID } from "node:crypto";
-import { PublicUser, UsersService } from "../users/users.service.js";
+import {
+  PublicUser,
+  RegisterUserInput,
+  UsersService,
+} from "../users/users.service.js";
 import { ACCESS_TOKEN_EXPIRES_IN_SECONDS } from "./auth.config.js";
 import {
   IssuedRefreshToken,
@@ -90,6 +94,13 @@ export class AuthService {
     );
 
     return this.withRefreshToken(loginResult, refreshToken);
+  }
+
+  async registerAndCreateSession(
+    input: RegisterUserInput,
+  ): Promise<SessionLoginResult> {
+    const user = await this.usersService.register(input);
+    return this.createSessionLogin(user, false);
   }
 
   async refreshLogin(token: string): Promise<SessionLoginResult> {

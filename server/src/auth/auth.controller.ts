@@ -18,6 +18,7 @@ import {
   REFRESH_COOKIE_NAME,
 } from "./auth.cookies.js";
 import { LoginDto } from "./dto/login.dto.js";
+import { RegisterDto } from "./dto/register.dto.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
 import { LocalAuthGuard } from "./guards/local-auth.guard.js";
 
@@ -44,6 +45,25 @@ export class AuthController {
       request.user,
       options.rememberMe,
     );
+    this.setRefreshCookie(
+      response,
+      result.refreshToken,
+      result.refreshExpiresAt,
+    );
+    return this.toLoginResult(result);
+  }
+
+  @Post("register")
+  async register(
+    @Body() input: RegisterDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<LoginResult> {
+    const result = await this.authService.registerAndCreateSession({
+      displayName: input.displayName,
+      username: input.username,
+      password: input.password,
+      agree: input.agree,
+    });
     this.setRefreshCookie(
       response,
       result.refreshToken,

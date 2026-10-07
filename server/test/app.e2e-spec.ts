@@ -62,6 +62,65 @@ describe("AppController (e2e)", () => {
       .expect(401);
   });
 
+  it("registers a user and immediately creates an authenticated session", async () => {
+    const response = await request(app.getHttpServer())
+      .post("/auth/register")
+      .send({
+        displayName: "New E2E User",
+        username: testUsername.toUpperCase(),
+        password: "test-password-123",
+        confirmPassword: "test-password-123",
+        agree: true,
+      })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      tokenType: "Bearer",
+      expiresIn: 900,
+      user: {
+        username: testUsername,
+        displayName: "New E2E User",
+      },
+    });
+    expect(response.body.accessToken).toEqual(expect.any(String));
+    expect(response.body.user).not.toHaveProperty("passwordHash");
+    expect(response.body).not.toHaveProperty("refreshToken");
+
+    const user = await usersRepository.findOneByOrFail({
+      username: testUsername,
+    });
+    await expect(
+      argon2.verify(user.passwordHash, "test-password-123"),
+    ).resolves.toBe(true);
+
+    const cookie = getCookie(response, "refresh_token");
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/SameSite=Lax/i);
+    expect(cookie).toMatch(/Path=\/auth/i);
+    expect(cookie).not.toMatch(/Secure/i);
+    const storedSession = await refreshSessionsRepository.findOneByOrFail({
+      tokenHash: hashToken(getCookieValue(cookie)),
+    });
+    expect(storedSession.userId).toBe(user.id);
+  });
+
+  it("rejects registration when terms are not accepted", async () => {
+    await request(app.getHttpServer())
+      .post("/auth/register")
+      .send({
+        displayName: "New E2E User",
+        username: testUsername,
+        password: "test-password-123",
+        confirmPassword: "test-password-123",
+        agree: false,
+      })
+      .expect(400);
+
+    await expect(
+      usersRepository.findOneBy({ username: testUsername }),
+    ).resolves.toBeNull();
+  });
+
   it("logs in and uses the access token to retrieve the current user", async () => {
     const user = await createTestUser(usersRepository, testUsername);
     const loginResponse = await request(app.getHttpServer())
