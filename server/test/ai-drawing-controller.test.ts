@@ -20,7 +20,7 @@ const user: PublicUser = {
   createdAt: new Date(),
   updatedAt: new Date(),
 };
-const request = { user } as Express.Request & { user: PublicUser };
+const request = { user } as Parameters<AiDrawingController["execute"]>[0];
 const drawingInput = {
   task: AiDrawingTask.CompositionGuidance,
   image: {
