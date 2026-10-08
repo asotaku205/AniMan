@@ -66,6 +66,7 @@ export class AiDrawingConsentService {
 
   private toStatus(user: User): AiDrawingConsentStatus {
     const eligible =
+      user.adultAccessConfirmedAt instanceof Date &&
       user.aiAgeConfirmedAt instanceof Date &&
       user.aiDataNoticeVersion === AI_DRAWING_DATA_NOTICE_VERSION;
     return {

@@ -288,35 +288,55 @@ export default function AuthPageClient({
                 </Link>
               </div>
             ) : (
-              <label className="flex items-start gap-2 text-xs text-white/60 cursor-pointer">
-                <input
-                  {...registerForm.register("agree")}
-                  type="checkbox"
-                  className="accent-pink-500 mt-0.5"
-                />
-                <span>
-                  Tôi đồng ý với{" "}
-                  <Link
-                    href="/dieu-khoan"
-                    className="text-pink-300 hover:text-pink-200"
-                  >
-                    Điều khoản dịch vụ
-                  </Link>{" "}
-                  và{" "}
-                  <Link
-                    href="/quyen-rieng-tu"
-                    className="text-pink-300 hover:text-pink-200"
-                  >
-                    Chính sách riêng tư
-                  </Link>{" "}
-                  của AniMan.
-                </span>
+              <>
+                <label className="flex items-start gap-2 text-xs text-white/60 cursor-pointer">
+                  <input
+                    {...registerForm.register("agree")}
+                    type="checkbox"
+                    className="accent-pink-500 mt-0.5"
+                  />
+                  <span>
+                    Tôi đồng ý với{" "}
+                    <Link
+                      href="/dieu-khoan"
+                      className="text-pink-300 hover:text-pink-200"
+                    >
+                      Điều khoản dịch vụ
+                    </Link>{" "}
+                    và{" "}
+                    <Link
+                      href="/quyen-rieng-tu"
+                      className="text-pink-300 hover:text-pink-200"
+                    >
+                      Chính sách riêng tư
+                    </Link>{" "}
+                    của AniMan.
+                  </span>
+                </label>
                 {registerForm.formState.errors.agree && (
-                  <p className="text-red-400 text-xs mt-1">
+                  <p className="text-red-400 text-xs">
                     {registerForm.formState.errors.agree.message}
                   </p>
                 )}
-              </label>
+                <label className="flex items-start gap-2 text-xs text-white/60 cursor-pointer">
+                  <input
+                    {...registerForm.register("adultAccessConfirmed")}
+                    type="checkbox"
+                    className="accent-pink-500 mt-0.5"
+                  />
+                  <span>
+                    Tôi xác nhận đã đủ 18 tuổi và hiểu AniMan chỉ dành cho người
+                    trưởng thành. AniMan lưu thời điểm xác nhận, không lưu ngày
+                    sinh; cookie xác nhận cho khách chưa đăng nhập được lưu tối
+                    đa một năm.
+                  </span>
+                </label>
+                {registerForm.formState.errors.adultAccessConfirmed && (
+                  <p className="text-red-400 text-xs">
+                    {registerForm.formState.errors.adultAccessConfirmed.message}
+                  </p>
+                )}
+              </>
             )}
 
             {(submitError || sessionError) && (

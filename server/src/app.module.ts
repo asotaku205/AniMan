@@ -10,6 +10,7 @@ import { User } from "./users/user.entity.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { AiConsentModule } from "./ai/consent/ai-consent.module.js";
 import { AddAiDrawingConsent1791500000000 } from "./database/migrations/1791500000000-AddAiDrawingConsent.js";
+import { AddAdultAccessConfirmation1791600000000 } from "./database/migrations/1791600000000-AddAdultAccessConfirmation.js";
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
@@ -39,6 +40,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
           CreateAuthTables1780768800000,
           AddUserRoles1791400000000,
           AddAiDrawingConsent1791500000000,
+          AddAdultAccessConfirmation1791600000000,
         ],
         migrationsRun: false,
         synchronize: false,

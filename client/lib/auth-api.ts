@@ -4,6 +4,7 @@ export interface AuthUser {
   displayName: string;
   role: "user" | "admin";
   termsAcceptedAt: string;
+  adultAccessConfirmedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -27,7 +28,13 @@ export interface RegisterRequest {
   password: string;
   confirmPassword: string;
   agree: true;
+  adultAccessConfirmed: true;
 }
+
+export type AuthenticatedFetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export class AuthApiError extends Error {
   constructor(
@@ -49,6 +56,26 @@ export async function register(
   request: RegisterRequest,
 ): Promise<AuthResponse> {
   return postAuth("register", request);
+}
+
+export async function confirmAdultAccess(
+  authenticatedFetch: AuthenticatedFetch,
+): Promise<AuthUser> {
+  const response = await authenticatedFetch("/auth/adult-access/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ adultAccessConfirmed: true }),
+  });
+  const payload = await readResponsePayload(response);
+
+  if (!response.ok) {
+    throw new AuthApiError(getErrorMessage(payload), response.status);
+  }
+  if (!isAuthUser(payload) || !payload.adultAccessConfirmedAt) {
+    throw new Error("Máy chủ không xác nhận được quyền truy cập AniMan.");
+  }
+
+  return payload;
 }
 
 export function refreshSession(): Promise<AuthResponse | null> {
@@ -163,21 +190,25 @@ function isAuthResponse(value: unknown): value is AuthResponse {
     response.accessToken.length > 0 &&
     response.tokenType === "Bearer" &&
     typeof response.expiresIn === "number" &&
-    typeof user === "object" &&
-    user !== null &&
-    "id" in user &&
+    isAuthUser(user)
+  );
+}
+
+export function isAuthUser(value: unknown): value is AuthUser {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const user = value as Record<string, unknown>;
+  return (
     typeof user.id === "string" &&
-    "username" in user &&
     typeof user.username === "string" &&
-    "displayName" in user &&
     typeof user.displayName === "string" &&
-    "role" in user &&
     (user.role === "user" || user.role === "admin") &&
-    "termsAcceptedAt" in user &&
     typeof user.termsAcceptedAt === "string" &&
-    "createdAt" in user &&
+    (typeof user.adultAccessConfirmedAt === "string" ||
+      user.adultAccessConfirmedAt === null) &&
     typeof user.createdAt === "string" &&
-    "updatedAt" in user &&
     typeof user.updatedAt === "string"
   );
 }

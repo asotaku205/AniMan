@@ -21,6 +21,7 @@ function createUser(): User {
     passwordHash: "not-used",
     role: UserRole.User,
     termsAcceptedAt: new Date("2026-10-01T00:00:00.000Z"),
+    adultAccessConfirmedAt: null,
     aiAgeConfirmedAt: null,
     aiDataNoticeVersion: null,
     createdAt: new Date("2026-10-01T00:00:00.000Z"),
@@ -61,8 +62,20 @@ describe("AI drawing consent", () => {
     );
   });
 
+  it("also requires the platform-wide adult-access receipt", async () => {
+    const user = createUser();
+    user.aiAgeConfirmedAt = new Date();
+    user.aiDataNoticeVersion = AI_DRAWING_DATA_NOTICE_VERSION;
+    const { service } = createService(user);
+
+    await expect(service.assertEligible(user.id)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
   it("allows AI access only for a complete receipt at the current version", async () => {
     const user = createUser();
+    user.adultAccessConfirmedAt = new Date();
     user.aiAgeConfirmedAt = new Date();
     user.aiDataNoticeVersion = AI_DRAWING_DATA_NOTICE_VERSION;
     const { service } = createService(user);
@@ -72,6 +85,7 @@ describe("AI drawing consent", () => {
 
   it("records only the self-attestation timestamp and accepted notice version", async () => {
     const user = createUser();
+    user.adultAccessConfirmedAt = new Date();
     const { service, repository } = createService(user);
 
     const status = await service.confirm(user.id);
@@ -100,6 +114,7 @@ describe("AI drawing consent", () => {
 
   it("does not treat a partial or expired-version receipt as eligible", async () => {
     const user = createUser();
+    user.adultAccessConfirmedAt = new Date();
     user.aiAgeConfirmedAt = new Date();
     user.aiDataNoticeVersion = "old-notice";
     const { service } = createService(user);

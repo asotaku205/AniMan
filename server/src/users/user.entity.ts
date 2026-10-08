@@ -29,6 +29,13 @@ export class User {
   @Column({ name: "terms_accepted_at", type: "timestamptz" })
   termsAcceptedAt: Date;
 
+  @Column({
+    name: "adult_access_confirmed_at",
+    type: "timestamptz",
+    nullable: true,
+  })
+  adultAccessConfirmedAt: Date | null;
+
   @Column({ name: "ai_age_confirmed_at", type: "timestamptz", nullable: true })
   aiAgeConfirmedAt: Date | null;
 

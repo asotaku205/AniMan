@@ -17,6 +17,7 @@ const user: PublicUser = {
   displayName: "Reader",
   role: UserRole.User,
   termsAcceptedAt: new Date(),
+  adultAccessConfirmedAt: new Date(),
   createdAt: new Date(),
   updatedAt: new Date(),
 };
