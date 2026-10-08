@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { User } from "../../users/user.entity.js";
@@ -25,6 +29,15 @@ export class AiDrawingConsentService {
   async getStatus(userId: string): Promise<AiDrawingConsentStatus> {
     const user = await this.findUser(userId);
     return this.toStatus(user);
+  }
+
+  async assertEligible(userId: string): Promise<void> {
+    const user = await this.findUser(userId);
+    if (!this.toStatus(user).eligible) {
+      throw new ForbiddenException(
+        "Confirm current AI drawing consent before using this feature",
+      );
+    }
   }
 
   async confirm(userId: string): Promise<AiDrawingConsentStatus> {

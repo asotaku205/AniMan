@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { NotFoundException } from "@nestjs/common";
+import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { GUARDS_METADATA } from "@nestjs/common/constants";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
@@ -51,6 +51,23 @@ describe("AI drawing consent", () => {
       noticeVersion: null,
       currentNoticeVersion: AI_DRAWING_DATA_NOTICE_VERSION,
     });
+  });
+
+  it("rejects AI access unless the current consent receipt is complete", async () => {
+    const { service } = createService(createUser());
+
+    await expect(service.assertEligible("reader")).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it("allows AI access only for a complete receipt at the current version", async () => {
+    const user = createUser();
+    user.aiAgeConfirmedAt = new Date();
+    user.aiDataNoticeVersion = AI_DRAWING_DATA_NOTICE_VERSION;
+    const { service } = createService(user);
+
+    await expect(service.assertEligible(user.id)).resolves.toBeUndefined();
   });
 
   it("records only the self-attestation timestamp and accepted notice version", async () => {
