@@ -2,10 +2,27 @@
 
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { BarChart2, Bot, Brush, Check, ChevronDown, ChevronRight, Lightbulb, Minimize2, X } from "lucide-react";
+import {
+  BarChart2,
+  Bot,
+  Brush,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Lightbulb,
+  Minimize2,
+  X,
+} from "lucide-react";
 import { GhostComp, GhostPose, GuideOverlay } from "./SvgComponent";
 import { CompThumb } from "./SvgComponent";
-import { SCENE_TYPE_LABEL, COMP_SUGGESTIONS, type DrawTool, type GuideId, type LayoutDef, type PanelDef } from "../data";
+import {
+  SCENE_TYPE_LABEL,
+  COMP_SUGGESTIONS,
+  type DrawTool,
+  type GuideId,
+  type LayoutDef,
+  type PanelDef,
+} from "../data";
 import type { SceneType } from "../data";
 
 type Props = {
@@ -32,6 +49,7 @@ type Props = {
   setGhostOpacity: (v: number) => void;
   setSelectedComp: (v: string | null) => void;
   activeGuides: GuideId[];
+  aiConsentEligible: boolean;
   // Analysis
   analyzing: boolean;
   analysisResult: { score: number; items: string[] } | null;
@@ -52,59 +70,144 @@ type Props = {
 };
 
 export function CanvasArea({
-  activePanel, layout, panelData, panelHints, panelFullscreen, panelAspect, panelDef,
-  canvasRef, tool, down, move, up,
-  ghostType, ghostId, ghostOpacity, setGhostType, setGhostId, setGhostOpacity, setSelectedComp,
+  activePanel,
+  layout,
+  panelData,
+  panelHints,
+  panelFullscreen,
+  panelAspect,
+  panelDef,
+  canvasRef,
+  tool,
+  down,
+  move,
+  up,
+  ghostType,
+  ghostId,
+  ghostOpacity,
+  setGhostType,
+  setGhostId,
+  setGhostOpacity,
+  setSelectedComp,
   activeGuides,
-  analyzing, analysisResult, showAnalysis, runAnalysis,
-  sceneType, selectedComp,
-  showPanelSuggestions, setShowPanelSuggestions,
-  panelSuggestPulse, showSuggestBtn, setShowSuggestBtn,
-  applyComp, enterPanel, setPanelFullscreen,
+  aiConsentEligible,
+  analyzing,
+  analysisResult,
+  showAnalysis,
+  runAnalysis,
+  sceneType,
+  selectedComp,
+  showPanelSuggestions,
+  setShowPanelSuggestions,
+  panelSuggestPulse,
+  showSuggestBtn,
+  setShowSuggestBtn,
+  applyComp,
+  enterPanel,
+  setPanelFullscreen,
 }: Props) {
   return (
-    <div className={`flex-1 bg-[#1a1226] flex items-center justify-center transition-all ${
-      !activePanel ? "overflow-auto p-6" : panelFullscreen ? "overflow-hidden" : "overflow-hidden p-2"
-    }`}>
+    <div
+      className={`flex-1 bg-[#1a1226] flex items-center justify-center transition-all ${
+        !activePanel
+          ? "overflow-auto p-6"
+          : panelFullscreen
+            ? "overflow-hidden"
+            : "overflow-hidden p-2"
+      }`}
+    >
       <div
         className="shadow-2xl shadow-black/60 transition-all duration-300"
-        style={!activePanel
-          ? { width: "min(480px, 100%)", aspectRatio: "3/4", position: "relative" }
-          : panelFullscreen
-            ? { position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "#0b0612", padding: "12px" }
-            : { height: "calc(100% - 8px)", aspectRatio: String(panelAspect), maxWidth: "100%", position: "relative", flexShrink: 0 }
+        style={
+          !activePanel
+            ? {
+                width: "min(480px, 100%)",
+                aspectRatio: "3/4",
+                position: "relative",
+              }
+            : panelFullscreen
+              ? {
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 100,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "#0b0612",
+                  padding: "12px",
+                }
+              : {
+                  height: "calc(100% - 8px)",
+                  aspectRatio: String(panelAspect),
+                  maxWidth: "100%",
+                  position: "relative",
+                  flexShrink: 0,
+                }
         }
       >
         {/* ── PAGE VIEW (no active panel) */}
         {!activePanel && (
           <div className="absolute inset-0 bg-white rounded-xl overflow-hidden">
-            {layout.panels.map(p => {
+            {layout.panels.map((p) => {
               const hasData = !!panelData[p.id];
-              const hint    = panelHints[p.id];
-              const idx     = layout.panels.indexOf(p);
+              const hint = aiConsentEligible ? panelHints[p.id] : undefined;
+              const idx = layout.panels.indexOf(p);
               return (
                 <div
                   key={p.id}
                   onClick={() => enterPanel(p.id)}
                   className={`absolute border cursor-pointer hover:border-pink-300 transition-colors group overflow-hidden ${
-                    ghostType && ghostId && !hasData ? "border-purple-300/60" : "border-gray-200"
+                    aiConsentEligible && ghostType && ghostId && !hasData
+                      ? "border-purple-300/60"
+                      : "border-gray-200"
                   }`}
-                  style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.w}%`, height: `${p.h}%` }}
+                  style={{
+                    left: `${p.x}%`,
+                    top: `${p.y}%`,
+                    width: `${p.w}%`,
+                    height: `${p.h}%`,
+                  }}
                 >
                   {hasData ? (
-                    <img src={panelData[p.id]} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={panelData[p.id]}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
                   ) : hint ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-purple-50">
-                      {ghostType === "comp" && ghostId && <GhostComp id={ghostId} opacity={0.18} />}
-                      <Bot size={10} className="text-purple-400 relative z-10" />
-                      <p className="text-purple-500 text-center px-1 leading-tight relative z-10" style={{ fontSize: "6px" }}>{hint}</p>
+                      {aiConsentEligible && ghostType === "comp" && ghostId && (
+                        <GhostComp id={ghostId} opacity={0.18} />
+                      )}
+                      <Bot
+                        size={10}
+                        className="text-purple-400 relative z-10"
+                      />
+                      <p
+                        className="text-purple-500 text-center px-1 leading-tight relative z-10"
+                        style={{ fontSize: "6px" }}
+                      >
+                        {hint}
+                      </p>
                     </div>
                   ) : (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 group-hover:bg-pink-50/30 transition-colors">
-                      {ghostType === "comp" && ghostId && <GhostComp id={ghostId} opacity={0.18} />}
-                      {ghostType === "pose" && ghostId && <GhostPose id={ghostId} opacity={0.18} />}
-                      <Brush size={10} className="text-gray-300 group-hover:text-pink-400 transition-colors relative z-10" />
-                      <p className="text-gray-300 group-hover:text-pink-400 transition-colors relative z-10" style={{ fontSize: "7px" }}>Khung {idx + 1}</p>
+                      {aiConsentEligible && ghostType === "comp" && ghostId && (
+                        <GhostComp id={ghostId} opacity={0.18} />
+                      )}
+                      {aiConsentEligible && ghostType === "pose" && ghostId && (
+                        <GhostPose id={ghostId} opacity={0.18} />
+                      )}
+                      <Brush
+                        size={10}
+                        className="text-gray-300 group-hover:text-pink-400 transition-colors relative z-10"
+                      />
+                      <p
+                        className="text-gray-300 group-hover:text-pink-400 transition-colors relative z-10"
+                        style={{ fontSize: "7px" }}
+                      >
+                        Khung {idx + 1}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -117,43 +220,62 @@ export function CanvasArea({
         {activePanel && (
           <div
             className="bg-white overflow-hidden"
-            style={panelFullscreen
-              ? { position: "relative", height: "calc(100vh - 24px)", aspectRatio: String(panelAspect), maxWidth: "calc(100vw - 24px)", borderRadius: "12px", boxShadow: "0 25px 60px rgba(0,0,0,0.9)" }
-              : { position: "absolute", inset: 0, borderRadius: "0.75rem" }
+            style={
+              panelFullscreen
+                ? {
+                    position: "relative",
+                    height: "calc(100vh - 24px)",
+                    aspectRatio: String(panelAspect),
+                    maxWidth: "calc(100vw - 24px)",
+                    borderRadius: "12px",
+                    boxShadow: "0 25px 60px rgba(0,0,0,0.9)",
+                  }
+                : { position: "absolute", inset: 0, borderRadius: "0.75rem" }
             }
           >
             {/* Drawing canvas */}
             <canvas
               ref={canvasRef}
               className="absolute inset-0 w-full h-full z-30"
-              style={{ cursor: tool === "pan" ? "grab" : tool === "eraser" ? "cell" : "crosshair", touchAction: "none" }}
-              onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up}
+              style={{
+                cursor:
+                  tool === "pan"
+                    ? "grab"
+                    : tool === "eraser"
+                      ? "cell"
+                      : "crosshair",
+                touchAction: "none",
+              }}
+              onPointerDown={down}
+              onPointerMove={move}
+              onPointerUp={up}
+              onPointerLeave={up}
             />
 
             {/* Ghost overlays */}
-            {ghostType === "comp" && ghostId && (
+            {aiConsentEligible && ghostType === "comp" && ghostId && (
               <div className="absolute inset-0 z-20 pointer-events-none">
                 <GhostComp id={ghostId} opacity={ghostOpacity / 100} />
               </div>
             )}
-            {ghostType === "pose" && ghostId && (
+            {aiConsentEligible && ghostType === "pose" && ghostId && (
               <div className="absolute inset-0 z-20 pointer-events-none">
                 <GhostPose id={ghostId} opacity={ghostOpacity / 100} />
               </div>
             )}
 
             {/* Guide overlay */}
-            {activeGuides.length > 0 && (
+            {aiConsentEligible && activeGuides.length > 0 && (
               <div className="absolute inset-0 z-10 pointer-events-none">
                 <GuideOverlay guides={activeGuides} />
               </div>
             )}
 
             {/* In-panel suggestion widget */}
-            {showSuggestBtn && (
+            {aiConsentEligible && showSuggestBtn && (
               <div className="absolute top-2 left-2" style={{ zIndex: 45 }}>
                 <button
-                  onClick={() => setShowPanelSuggestions(v => !v)}
+                  onClick={() => setShowPanelSuggestions((v) => !v)}
                   className={`flex items-center gap-1 px-2 py-1.5 rounded-xl text-[10px] font-medium transition-all shadow-lg backdrop-blur-sm ${
                     showPanelSuggestions
                       ? "bg-purple-600 text-white shadow-purple-500/30"
@@ -164,7 +286,11 @@ export function CanvasArea({
                 >
                   <Lightbulb size={10} />
                   <span>Gợi ý vẽ</span>
-                  {showPanelSuggestions ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                  {showPanelSuggestions ? (
+                    <ChevronDown size={9} />
+                  ) : (
+                    <ChevronRight size={9} />
+                  )}
                 </button>
 
                 <AnimatePresence>
@@ -180,19 +306,27 @@ export function CanvasArea({
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5">
                           <Bot size={10} className="text-purple-400" />
-                          <span className="text-purple-300 text-[10px] font-medium">Gợi ý cho cảnh {SCENE_TYPE_LABEL[sceneType]}</span>
+                          <span className="text-purple-300 text-[10px] font-medium">
+                            Gợi ý cho cảnh {SCENE_TYPE_LABEL[sceneType]}
+                          </span>
                         </div>
-                        <button onClick={() => setShowPanelSuggestions(false)} className="text-white/20 hover:text-white/60 transition-colors">
+                        <button
+                          onClick={() => setShowPanelSuggestions(false)}
+                          className="text-white/20 hover:text-white/60 transition-colors"
+                        >
                           <X size={10} />
                         </button>
                       </div>
 
                       {/* Comp thumbnails */}
                       <div className="grid grid-cols-3 gap-1.5 mb-2.5">
-                        {COMP_SUGGESTIONS[sceneType].slice(0, 3).map(c => (
+                        {COMP_SUGGESTIONS[sceneType].slice(0, 3).map((c) => (
                           <button
                             key={c.id}
-                            onClick={() => { applyComp(c.id); setShowPanelSuggestions(false); }}
+                            onClick={() => {
+                              applyComp(c.id);
+                              setShowPanelSuggestions(false);
+                            }}
                             className={`rounded-xl overflow-hidden border-2 transition-all group ${
                               selectedComp === c.id
                                 ? "border-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.5)]"
@@ -202,9 +336,15 @@ export function CanvasArea({
                             <div className="h-14 bg-white flex items-center justify-center p-1">
                               <CompThumb id={c.id} />
                             </div>
-                            <div className={`py-1 px-1 transition-colors ${selectedComp === c.id ? "bg-purple-700" : "bg-[#1a1226] group-hover:bg-purple-900/40"}`}>
-                              <p className="text-[8px] text-white leading-tight text-center truncate">{c.name}</p>
-                              <p className="text-[7px] text-white/40 leading-tight text-center truncate">{c.desc}</p>
+                            <div
+                              className={`py-1 px-1 transition-colors ${selectedComp === c.id ? "bg-purple-700" : "bg-[#1a1226] group-hover:bg-purple-900/40"}`}
+                            >
+                              <p className="text-[8px] text-white leading-tight text-center truncate">
+                                {c.name}
+                              </p>
+                              <p className="text-[7px] text-white/40 leading-tight text-center truncate">
+                                {c.desc}
+                              </p>
                             </div>
                           </button>
                         ))}
@@ -212,16 +352,23 @@ export function CanvasArea({
 
                       {/* Bottom actions */}
                       <div className="mt-2 flex items-center gap-2">
-                        {ghostType && ghostId && (
+                        {aiConsentEligible && ghostType && ghostId && (
                           <button
-                            onClick={() => { setGhostType(null); setGhostId(null); setSelectedComp(null); }}
+                            onClick={() => {
+                              setGhostType(null);
+                              setGhostId(null);
+                              setSelectedComp(null);
+                            }}
                             className="flex-1 text-center text-[9px] text-white/25 hover:text-white/50 transition-colors"
                           >
                             Tắt gợi ý mờ ✕
                           </button>
                         )}
                         <button
-                          onClick={() => { setShowPanelSuggestions(false); setShowSuggestBtn(false); }}
+                          onClick={() => {
+                            setShowPanelSuggestions(false);
+                            setShowSuggestBtn(false);
+                          }}
                           className="flex-1 text-center text-[9px] text-white/20 hover:text-red-400/60 transition-colors"
                         >
                           Ẩn nút này
@@ -234,13 +381,21 @@ export function CanvasArea({
             )}
 
             {/* Analyzing overlay */}
-            {analyzing && (
+            {aiConsentEligible && analyzing && (
               <div className="absolute inset-0 z-40 bg-black/50 flex flex-col items-center justify-center gap-3">
-                <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                >
                   <BarChart2 size={28} className="text-pink-400" />
                 </motion.div>
                 <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <motion.div className="h-full bg-pink-500 rounded-full" initial={{ width: "0%" }} animate={{ width: "100%" }} transition={{ duration: 2 }} />
+                  <motion.div
+                    className="h-full bg-pink-500 rounded-full"
+                    initial={{ width: "0%" }}
+                    animate={{ width: "100%" }}
+                    transition={{ duration: 2 }}
+                  />
                 </div>
                 <p className="text-white/60 text-xs">Đang phân tích...</p>
               </div>
@@ -248,31 +403,63 @@ export function CanvasArea({
 
             {/* Analysis result */}
             <AnimatePresence>
-              {showAnalysis && analysisResult && (
+              {aiConsentEligible && showAnalysis && analysisResult && (
                 <motion.div
-                  initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
                   className="absolute top-2 right-2 z-50 bg-[#0d0817]/90 border border-white/10 rounded-2xl p-3 w-40 shadow-xl"
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <div className="relative w-10 h-10 flex-shrink-0">
                       <svg viewBox="0 0 36 36" className="w-10 h-10 -rotate-90">
-                        <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
-                        <circle cx="18" cy="18" r="15" fill="none" stroke="#ec4899" strokeWidth="3"
-                          strokeDasharray={`${analysisResult.score * 0.942} 94.2`} strokeLinecap="round" />
+                        <circle
+                          cx="18"
+                          cy="18"
+                          r="15"
+                          fill="none"
+                          stroke="rgba(255,255,255,0.1)"
+                          strokeWidth="3"
+                        />
+                        <circle
+                          cx="18"
+                          cy="18"
+                          r="15"
+                          fill="none"
+                          stroke="#ec4899"
+                          strokeWidth="3"
+                          strokeDasharray={`${analysisResult.score * 0.942} 94.2`}
+                          strokeLinecap="round"
+                        />
                       </svg>
-                      <span className="absolute inset-0 flex items-center justify-center text-white text-[10px] font-bold rotate-90">{analysisResult.score}</span>
+                      <span className="absolute inset-0 flex items-center justify-center text-white text-[10px] font-bold rotate-90">
+                        {analysisResult.score}
+                      </span>
                     </div>
-                    <p className="text-white text-[10px] font-semibold">Điểm AI</p>
+                    <p className="text-white text-[10px] font-semibold">
+                      Điểm AI
+                    </p>
                   </div>
                   <div className="space-y-1">
                     {analysisResult.items.map((item, i) => (
                       <div key={i} className="flex items-start gap-1">
-                        <Check size={8} className="text-green-400 mt-0.5 flex-shrink-0" />
-                        <p className="text-white/60 leading-tight" style={{ fontSize: "8px" }}>{item}</p>
+                        <Check
+                          size={8}
+                          className="text-green-400 mt-0.5 flex-shrink-0"
+                        />
+                        <p
+                          className="text-white/60 leading-tight"
+                          style={{ fontSize: "8px" }}
+                        >
+                          {item}
+                        </p>
                       </div>
                     ))}
                   </div>
-                  <button onClick={runAnalysis} className="mt-2 w-full text-[9px] text-pink-400 hover:text-pink-300 transition-colors">
+                  <button
+                    onClick={runAnalysis}
+                    className="mt-2 w-full text-[9px] text-pink-400 hover:text-pink-300 transition-colors"
+                  >
                     Phân tích lại
                   </button>
                 </motion.div>
@@ -280,18 +467,33 @@ export function CanvasArea({
             </AnimatePresence>
 
             {/* Ghost control bar */}
-            {ghostType && ghostId && (
+            {aiConsentEligible && ghostType && ghostId && (
               <div className="absolute bottom-2 left-2 right-2 z-40 bg-[#0d0817]/90 border border-purple-500/30 rounded-xl px-3 py-2 flex items-center gap-2">
                 <span className="text-purple-300 text-[10px] flex-shrink-0">
                   {ghostType === "comp"
-                    ? (Object.values(COMP_SUGGESTIONS).flat().find(c => c.id === ghostId)?.name ?? ghostId)
+                    ? (Object.values(COMP_SUGGESTIONS)
+                        .flat()
+                        .find((c) => c.id === ghostId)?.name ?? ghostId)
                     : ghostId}
                 </span>
-                <input type="range" min={8} max={60} value={ghostOpacity}
-                  onChange={e => setGhostOpacity(+e.target.value)}
-                  className="flex-1 h-1 accent-purple-500" />
-                <span className="text-purple-400 text-[9px] w-6">{ghostOpacity}%</span>
-                <button onClick={() => { setGhostType(null); setGhostId(null); }} className="text-white/40 hover:text-white transition-colors">
+                <input
+                  type="range"
+                  min={8}
+                  max={60}
+                  value={ghostOpacity}
+                  onChange={(e) => setGhostOpacity(+e.target.value)}
+                  className="flex-1 h-1 accent-purple-500"
+                />
+                <span className="text-purple-400 text-[9px] w-6">
+                  {ghostOpacity}%
+                </span>
+                <button
+                  onClick={() => {
+                    setGhostType(null);
+                    setGhostId(null);
+                  }}
+                  className="text-white/40 hover:text-white transition-colors"
+                >
                   <X size={12} />
                 </button>
               </div>
