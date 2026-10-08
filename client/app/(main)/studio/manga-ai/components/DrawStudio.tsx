@@ -12,22 +12,7 @@ import { useAuth } from "@/app/auth/AuthProvider";
 
 export function DrawStudio() {
   const s = useDrawStudio();
-  const { user } = useAuth();
-  const [aiConsent, setAiConsent] = useState<{
-    eligible: boolean;
-    userId: string | null;
-  }>({ eligible: false, userId: null });
-  const aiConsentEligible = aiConsent.eligible && aiConsent.userId === user?.id;
-  const clearAiSuggestions = s.clearAiSuggestions;
-  const handleAiEligibilityChange = useCallback(
-    (eligible: boolean, userId: string | null) => {
-      if (!eligible || aiConsent.userId !== userId || user?.id !== userId) {
-        clearAiSuggestions();
-      }
-      setAiConsent({ eligible, userId });
-    },
-    [aiConsent.userId, clearAiSuggestions, user?.id],
-  );
+  const aiConsentEligible = true;
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -108,11 +93,7 @@ export function DrawStudio() {
       </div>
 
       {/* Right panel */}
-      <RightPanel
-        s={s}
-        onAiEligibilityChange={handleAiEligibilityChange}
-        onAiConsentRevoked={clearAiSuggestions}
-      />
+      <RightPanel s={s} />
 
       {/* Toast */}
       <AnimatePresence>

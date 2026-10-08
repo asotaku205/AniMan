@@ -103,10 +103,6 @@ export class AuthService {
     return this.createSessionLogin(user, false);
   }
 
-  confirmAdultAccess(userId: string): Promise<PublicUser> {
-    return this.usersService.confirmAdultAccess(userId);
-  }
-
   async refreshLogin(token: string): Promise<SessionLoginResult> {
     const refreshToken = await this.refreshSessionsService.rotate(token);
     const user = await this.usersService.findPublicById(refreshToken.userId);

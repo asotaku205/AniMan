@@ -21,9 +21,6 @@ export const signUpSchema = z
     agree: z.literal(true, {
       errorMap: () => ({ message: "Bạn phải đồng ý với điều khoản dịch vụ" }),
     }),
-    adultAccessConfirmed: z.literal(true, {
-      errorMap: () => ({ message: "AniMan chỉ dành cho người từ đủ 18 tuổi" }),
-    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Mật khẩu và xác nhận mật khẩu không khớp",

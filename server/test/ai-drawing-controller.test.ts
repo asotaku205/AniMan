@@ -1,9 +1,8 @@
 import "reflect-metadata";
-import { ForbiddenException, HttpException, HttpStatus } from "@nestjs/common";
+import { HttpException, HttpStatus } from "@nestjs/common";
 import { GUARDS_METADATA } from "@nestjs/common/constants";
 import { JwtAuthGuard } from "../src/auth/guards/jwt-auth.guard.js";
 import { AiDrawingController } from "../src/ai/consent/ai-drawing.controller.js";
-import { AiDrawingConsentService } from "../src/ai/consent/ai-drawing-consent.service.js";
 import { AiDrawingDriver } from "../src/ai/driver/ai-drawing-driver.service.js";
 import { AiDrawingTask } from "../src/ai/contracts/ai-drawing-request.dto.js";
 import type { AiDrawingResponse } from "../src/ai/contracts/ai-drawing-response.js";
@@ -17,7 +16,6 @@ const user: PublicUser = {
   displayName: "Reader",
   role: UserRole.User,
   termsAcceptedAt: new Date(),
-  adultAccessConfirmedAt: new Date(),
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -55,17 +53,13 @@ describe("AI drawing controller", () => {
     expect(guards).toContain(JwtAuthGuard);
   });
 
-  it("checks current server-side consent before executing the driver", async () => {
+  it("checks rate limit and delegates to drawing driver", async () => {
     const rateLimiter = { assertCanRequest: vi.fn() };
-    const consentService = {
-      assertEligible: vi.fn(async () => undefined),
-    };
     const drawingDriver = {
       execute: vi.fn(async () => drawingResponse),
     };
     const controller = new AiDrawingController(
       rateLimiter as unknown as AiDrawingRateLimiter,
-      consentService as unknown as AiDrawingConsentService,
       drawingDriver as unknown as AiDrawingDriver,
     );
 
@@ -73,11 +67,10 @@ describe("AI drawing controller", () => {
       drawingResponse,
     );
     expect(rateLimiter.assertCanRequest).toHaveBeenCalledWith(user.id);
-    expect(consentService.assertEligible).toHaveBeenCalledWith(user.id);
     expect(drawingDriver.execute).toHaveBeenCalledWith(drawingInput);
   });
 
-  it("stops at the per-user limit before checking consent or calling the driver", async () => {
+  it("stops at the per-user limit before calling the driver", async () => {
     const rateLimiter = {
       assertCanRequest: vi.fn(() => {
         throw new HttpException(
@@ -86,11 +79,9 @@ describe("AI drawing controller", () => {
         );
       }),
     };
-    const consentService = { assertEligible: vi.fn() };
     const drawingDriver = { execute: vi.fn() };
     const controller = new AiDrawingController(
       rateLimiter as unknown as AiDrawingRateLimiter,
-      consentService as unknown as AiDrawingConsentService,
       drawingDriver as unknown as AiDrawingDriver,
     );
 
@@ -99,26 +90,6 @@ describe("AI drawing controller", () => {
     ).rejects.toMatchObject({
       status: HttpStatus.TOO_MANY_REQUESTS,
     });
-    expect(consentService.assertEligible).not.toHaveBeenCalled();
-    expect(drawingDriver.execute).not.toHaveBeenCalled();
-  });
-
-  it("never calls the drawing driver when server-side consent is missing", async () => {
-    const consentService = {
-      assertEligible: vi.fn(async () => {
-        throw new ForbiddenException();
-      }),
-    };
-    const drawingDriver = { execute: vi.fn() };
-    const controller = new AiDrawingController(
-      { assertCanRequest: vi.fn() } as unknown as AiDrawingRateLimiter,
-      consentService as unknown as AiDrawingConsentService,
-      drawingDriver as unknown as AiDrawingDriver,
-    );
-
-    await expect(controller.execute(request, drawingInput)).rejects.toThrow(
-      ForbiddenException,
-    );
     expect(drawingDriver.execute).not.toHaveBeenCalled();
   });
 });

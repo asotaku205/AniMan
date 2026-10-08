@@ -15,7 +15,6 @@ import {
   X,
 } from "lucide-react";
 import { AiTab } from "./AiTab";
-import { AiConsentGate } from "./AiConsentGate";
 import {
   LAYOUTS,
   type LayerItem,
@@ -26,15 +25,9 @@ import type { DrawStudioState } from "../hooks/useDrawStudio";
 
 type Props = {
   s: DrawStudioState;
-  onAiEligibilityChange: (eligible: boolean, userId: string | null) => void;
-  onAiConsentRevoked: () => void;
 };
 
-export function RightPanel({
-  s,
-  onAiEligibilityChange,
-  onAiConsentRevoked,
-}: Props) {
+export function RightPanel({ s }: Props) {
   return (
     <div className="w-[340px] bg-[#120a1f] border-l border-white/5 flex flex-col flex-shrink-0">
       {/* Tab bar */}
@@ -62,45 +55,40 @@ export function RightPanel({
 
       {/* AI Tab */}
       {s.rightTab === "ai" && (
-        <AiConsentGate
-          onEligibilityChange={onAiEligibilityChange}
-          onRevoke={onAiConsentRevoked}
-        >
-          <AiTab
-            sceneType={s.sceneType}
-            setSceneType={s.setSceneType}
-            setCompletionReady={s.setCompletionReady}
-            setAppliedCompletion={s.setAppliedCompletion}
-            runCompletion={s.runCompletion}
-            strokeCount={s.strokeCount}
-            completionLoading={s.completionLoading}
-            completionReady={s.completionReady}
-            completions={s.completions}
-            layout={s.layout}
-            activePanel={s.activePanel}
-            appliedCompletion={s.appliedCompletion}
-            applyCompletion={s.applyCompletion}
-            runAnalysis={s.runAnalysis}
-            processingTool={s.processingTool}
-            analyzing={s.analyzing}
-            runTool={s.runTool}
-            showCompSection={s.showCompSection}
-            setShowCompSection={s.setShowCompSection}
-            applyComp={s.applyComp}
-            selectedComp={s.selectedComp}
-            showPoseSection={s.showPoseSection}
-            setShowPoseSection={s.setShowPoseSection}
-            poseCategory={s.poseCategory}
-            setPoseCategory={s.setPoseCategory}
-            applyPose={s.applyPose}
-            ghostType={s.ghostType}
-            ghostId={s.ghostId}
-            showGuideSection={s.showGuideSection}
-            setShowGuideSection={s.setShowGuideSection}
-            toggleGuide={s.toggleGuide}
-            activeGuides={s.activeGuides}
-          />
-        </AiConsentGate>
+        <AiTab
+          sceneType={s.sceneType}
+          setSceneType={s.setSceneType}
+          setCompletionReady={s.setCompletionReady}
+          setAppliedCompletion={s.setAppliedCompletion}
+          runCompletion={s.runCompletion}
+          strokeCount={s.strokeCount}
+          completionLoading={s.completionLoading}
+          completionReady={s.completionReady}
+          completions={s.completions}
+          layout={s.layout}
+          activePanel={s.activePanel}
+          appliedCompletion={s.appliedCompletion}
+          applyCompletion={s.applyCompletion}
+          runAnalysis={s.runAnalysis}
+          processingTool={s.processingTool}
+          analyzing={s.analyzing}
+          runTool={s.runTool}
+          showCompSection={s.showCompSection}
+          setShowCompSection={s.setShowCompSection}
+          applyComp={s.applyComp}
+          selectedComp={s.selectedComp}
+          showPoseSection={s.showPoseSection}
+          setShowPoseSection={s.setShowPoseSection}
+          poseCategory={s.poseCategory}
+          setPoseCategory={s.setPoseCategory}
+          applyPose={s.applyPose}
+          ghostType={s.ghostType}
+          ghostId={s.ghostId}
+          showGuideSection={s.showGuideSection}
+          setShowGuideSection={s.setShowGuideSection}
+          toggleGuide={s.toggleGuide}
+          activeGuides={s.activeGuides}
+        />
       )}
 
       {/* Layout Tab */}

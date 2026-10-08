@@ -19,10 +19,8 @@ import {
 } from "./auth.cookies.js";
 import { LoginDto } from "./dto/login.dto.js";
 import { RegisterDto } from "./dto/register.dto.js";
-import { ConfirmAdultAccessDto } from "./dto/confirm-adult-access.dto.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
 import { LocalAuthGuard } from "./guards/local-auth.guard.js";
-import { AllowPendingAdultAccess } from "./allow-pending-adult-access.decorator.js";
 
 interface AuthenticatedRequest extends Request {
   user: PublicUser;
@@ -65,7 +63,6 @@ export class AuthController {
       username: input.username,
       password: input.password,
       agree: input.agree,
-      adultAccessConfirmed: input.adultAccessConfirmed,
     });
     this.setRefreshCookie(
       response,
@@ -108,16 +105,6 @@ export class AuthController {
   @Get("me")
   getCurrentUser(@Req() request: AuthenticatedRequest): PublicUser {
     return request.user;
-  }
-
-  @AllowPendingAdultAccess()
-  @UseGuards(JwtAuthGuard)
-  @Post("adult-access/confirm")
-  confirmAdultAccess(
-    @Req() request: AuthenticatedRequest,
-    @Body() _confirmation: ConfirmAdultAccessDto,
-  ): Promise<PublicUser> {
-    return this.authService.confirmAdultAccess(request.user.id);
   }
 
   private setRefreshCookie(

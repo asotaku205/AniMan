@@ -1,4 +1,4 @@
-import type { AuthenticatedFetch } from "./ai-consent-api";
+import type { AuthenticatedFetch } from "./auth-api";
 
 export type AiDrawingTask = "composition_guidance" | "drawing_review";
 

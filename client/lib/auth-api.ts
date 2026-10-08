@@ -4,7 +4,6 @@ export interface AuthUser {
   displayName: string;
   role: "user" | "admin";
   termsAcceptedAt: string;
-  adultAccessConfirmedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -28,7 +27,6 @@ export interface RegisterRequest {
   password: string;
   confirmPassword: string;
   agree: true;
-  adultAccessConfirmed: true;
 }
 
 export type AuthenticatedFetch = (
@@ -56,26 +54,6 @@ export async function register(
   request: RegisterRequest,
 ): Promise<AuthResponse> {
   return postAuth("register", request);
-}
-
-export async function confirmAdultAccess(
-  authenticatedFetch: AuthenticatedFetch,
-): Promise<AuthUser> {
-  const response = await authenticatedFetch("/auth/adult-access/confirm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ adultAccessConfirmed: true }),
-  });
-  const payload = await readResponsePayload(response);
-
-  if (!response.ok) {
-    throw new AuthApiError(getErrorMessage(payload), response.status);
-  }
-  if (!isAuthUser(payload) || !payload.adultAccessConfirmedAt) {
-    throw new Error("Máy chủ không xác nhận được quyền truy cập AniMan.");
-  }
-
-  return payload;
 }
 
 export function refreshSession(): Promise<AuthResponse | null> {
@@ -206,8 +184,6 @@ export function isAuthUser(value: unknown): value is AuthUser {
     typeof user.displayName === "string" &&
     (user.role === "user" || user.role === "admin") &&
     typeof user.termsAcceptedAt === "string" &&
-    (typeof user.adultAccessConfirmedAt === "string" ||
-      user.adultAccessConfirmedAt === null) &&
     typeof user.createdAt === "string" &&
     typeof user.updatedAt === "string"
   );

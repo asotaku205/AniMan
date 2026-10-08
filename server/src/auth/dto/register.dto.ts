@@ -29,8 +29,5 @@ export class RegisterDto {
   @IsBoolean()
   @Equals(true)
   agree: boolean;
-
-  @IsBoolean()
-  @Equals(true)
-  adultAccessConfirmed: boolean;
 }
+

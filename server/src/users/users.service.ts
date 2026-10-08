@@ -17,7 +17,6 @@ export interface RegisterUserInput {
   username: string;
   password: string;
   agree: boolean;
-  adultAccessConfirmed: boolean;
 }
 
 export type PublicUser = Pick<
@@ -27,7 +26,6 @@ export type PublicUser = Pick<
   | "displayName"
   | "role"
   | "termsAcceptedAt"
-  | "adultAccessConfirmedAt"
   | "createdAt"
   | "updatedAt"
 >;
@@ -69,9 +67,6 @@ export class UsersService {
     if (!input.agree) {
       throw new BadRequestException("Terms must be accepted");
     }
-    if (!input.adultAccessConfirmed) {
-      throw new BadRequestException("Adult access confirmation is required");
-    }
 
     const username = input.username.toLowerCase();
     const existingUser = await this.usersRepository.findOneBy({ username });
@@ -91,7 +86,6 @@ export class UsersService {
       passwordHash,
       role: UserRole.User,
       termsAcceptedAt: confirmedAt,
-      adultAccessConfirmedAt: confirmedAt,
     });
 
     try {
@@ -141,17 +135,6 @@ export class UsersService {
     return user ? this.toPublicUser(user) : null;
   }
 
-  async confirmAdultAccess(userId: string): Promise<PublicUser> {
-    const user = await this.usersRepository.findOneBy({ id: userId });
-    if (!user) {
-      throw new NotFoundException("Account not found");
-    }
-
-    user.adultAccessConfirmedAt = new Date();
-    const savedUser = await this.usersRepository.save(user);
-    return this.toPublicUser(savedUser);
-  }
-
   toPublicUser(user: User): PublicUser {
     return {
       id: user.id,
@@ -159,7 +142,6 @@ export class UsersService {
       displayName: user.displayName,
       role: user.role,
       termsAcceptedAt: user.termsAcceptedAt,
-      adultAccessConfirmedAt: user.adultAccessConfirmedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
