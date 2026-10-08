@@ -124,7 +124,7 @@ export class AiDrawingModelRegistry {
 export const GEMINI_DRAWING_MODEL_PROFILE: AiDrawingModelProfile = {
   id: "gemini-drawing-assistant",
   provider: "google-gemini",
-  modelId: "gemini-3.8-flash",
+  modelId: "gemini-2.0-flash",
   description:
     "Candidate vision model for structured composition guidance and drawing review.",
   version: "1",
@@ -139,5 +139,5 @@ export const GEMINI_DRAWING_MODEL_PROFILE: AiDrawingModelProfile = {
     maxOutputTokens: 2048,
     timeoutMs: 30_000,
   },
-  enabled: false,
+  enabled: true,
 };

@@ -287,7 +287,7 @@ describe("AI Drawing End-to-End Suite (Slice 7)", () => {
         generate: vi.fn(async () => {
           callCount += 1;
           if (callCount === 1) {
-            throw new AiDrawingProviderTransientError("Rate limit tạm thời");
+            throw new AiDrawingProviderTransientError();
           }
           return {
             schemaVersion: "1",

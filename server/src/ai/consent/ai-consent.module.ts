@@ -1,13 +1,12 @@
 import { Module } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuthModule } from "../../auth/auth.module.js";
 import { User } from "../../users/user.entity.js";
 import { AiDrawingRateLimiter } from "../ai-drawing-rate-limiter.service.js";
 import { AiDrawingModule } from "../ai-drawing.module.js";
-import {
-  AiDrawingProviderError,
-  GEMINI_DRAWING_MODEL_PROFILE,
-} from "../driver/ai-drawing-driver.js";
+import { GEMINI_DRAWING_MODEL_PROFILE } from "../driver/ai-drawing-driver.js";
+import { createGeminiDrawingProvider } from "../driver/gemini-drawing-provider.js";
 import { AiDrawingController } from "./ai-drawing.controller.js";
 import { AiDrawingConsentController } from "./ai-drawing-consent.controller.js";
 import { AiDrawingConsentService } from "./ai-drawing-consent.service.js";
@@ -16,15 +15,14 @@ import { AiDrawingConsentService } from "./ai-drawing-consent.service.js";
   imports: [
     AuthModule,
     TypeOrmModule.forFeature([User]),
-    AiDrawingModule.register({
-      profile: GEMINI_DRAWING_MODEL_PROFILE,
-      provider: {
-        generate: async () => {
-          throw new AiDrawingProviderError(
-            "AI drawing provider is not configured",
-          );
-        },
-      },
+    AiDrawingModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        profile: GEMINI_DRAWING_MODEL_PROFILE,
+        provider: createGeminiDrawingProvider(
+          config.getOrThrow<string>("GEMINI_API_KEY"),
+        ),
+      }),
     }),
   ],
   controllers: [AiDrawingConsentController, AiDrawingController],
