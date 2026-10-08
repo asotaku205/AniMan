@@ -13,15 +13,15 @@ import {
   Minimize2,
   X,
 } from "lucide-react";
-import { GhostComp, GhostPose, GuideOverlay } from "./SvgComponent";
+import { DrawingPlaceholderOverlay, GhostComp, GhostPose, GuideOverlay } from "./SvgComponent";
 import { CompThumb } from "./SvgComponent";
 import {
   SCENE_TYPE_LABEL,
   COMP_SUGGESTIONS,
   type DrawTool,
+  type DrawingPlaceholderId,
   type GuideId,
   type LayoutDef,
-  type PanelDef,
 } from "../data";
 import type { SceneType } from "../data";
 
@@ -33,7 +33,6 @@ type Props = {
   panelHints: Record<string, string>;
   panelFullscreen: boolean;
   panelAspect: number;
-  panelDef: PanelDef | null;
   // Canvas
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   tool: DrawTool;
@@ -44,6 +43,8 @@ type Props = {
   ghostType: "comp" | "pose" | null;
   ghostId: string | null;
   ghostOpacity: number;
+  drawingPlaceholder: DrawingPlaceholderId | null;
+  setDrawingPlaceholder: (v: DrawingPlaceholderId | null) => void;
   setGhostType: (v: "comp" | "pose" | null) => void;
   setGhostId: (v: string | null) => void;
   setGhostOpacity: (v: number) => void;
@@ -76,7 +77,6 @@ export function CanvasArea({
   panelHints,
   panelFullscreen,
   panelAspect,
-  panelDef,
   canvasRef,
   tool,
   down,
@@ -85,6 +85,8 @@ export function CanvasArea({
   ghostType,
   ghostId,
   ghostOpacity,
+  drawingPlaceholder,
+  setDrawingPlaceholder,
   setGhostType,
   setGhostId,
   setGhostOpacity,
@@ -261,6 +263,16 @@ export function CanvasArea({
             {aiConsentEligible && ghostType === "pose" && ghostId && (
               <div className="absolute inset-0 z-20 pointer-events-none">
                 <GhostPose id={ghostId} opacity={ghostOpacity / 100} />
+              </div>
+            )}
+
+            {/* Drawing placeholder overlay */}
+            {aiConsentEligible && drawingPlaceholder && (
+              <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 25 }}>
+                <DrawingPlaceholderOverlay
+                  id={drawingPlaceholder}
+                  opacity={ghostOpacity / 100}
+                />
               </div>
             )}
 
@@ -465,6 +477,33 @@ export function CanvasArea({
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Placeholder control bar */}
+            {aiConsentEligible && drawingPlaceholder && !(ghostType && ghostId) && (
+              <div className="absolute bottom-2 left-2 right-2 z-40 bg-[#0d0817]/90 border border-amber-400/30 rounded-xl px-3 py-2 flex items-center gap-2">
+                <span className="text-amber-300 text-[10px] flex-shrink-0">
+                  Nét gợi ý
+                </span>
+                <input
+                  type="range"
+                  min={8}
+                  max={60}
+                  value={ghostOpacity}
+                  onChange={(e) => setGhostOpacity(+e.target.value)}
+                  className="flex-1 h-1 accent-amber-400"
+                />
+                <span className="text-amber-300 text-[9px] w-6">
+                  {ghostOpacity}%
+                </span>
+                <button
+                  onClick={() => setDrawingPlaceholder(null)}
+                  className="text-white/40 hover:text-white transition-colors"
+                  title="Tắt nét gợi ý"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
 
             {/* Ghost control bar */}
             {aiConsentEligible && ghostType && ghostId && (

@@ -69,7 +69,6 @@ export function DrawStudio() {
           panelHints={s.panelHints}
           panelFullscreen={s.panelFullscreen}
           panelAspect={s.panelAspect}
-          panelDef={s.panelDef}
           canvasRef={s.canvasRef}
           tool={s.tool}
           down={s.down}
@@ -78,6 +77,8 @@ export function DrawStudio() {
           ghostType={s.ghostType}
           ghostId={s.ghostId}
           ghostOpacity={s.ghostOpacity}
+          drawingPlaceholder={s.drawingPlaceholder}
+          setDrawingPlaceholder={s.setDrawingPlaceholder}
           setGhostType={s.setGhostType}
           setGhostId={s.setGhostId}
           setGhostOpacity={s.setGhostOpacity}

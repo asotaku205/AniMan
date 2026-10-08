@@ -6,8 +6,8 @@ import {
   COMP_SUGGESTIONS,
   LAYOUTS,
   PAGE_COMPLETIONS,
-  POSES,
   type DrawTool,
+  type DrawingPlaceholderId,
   type GuideId,
   type LayoutDef,
   type LayerItem,
@@ -51,6 +51,17 @@ export const GUIDE_DOT: Record<GuideId, string> = {
   vanishing: "bg-green-400",
 };
 
+const DRAWING_PLACEHOLDER_IDS: DrawingPlaceholderId[] = [
+  "clean-lines",
+  "screentone",
+  "speech-bubble",
+  "speed-lines",
+];
+
+function isDrawingPlaceholderId(id: string): id is DrawingPlaceholderId {
+  return DRAWING_PLACEHOLDER_IDS.includes(id as DrawingPlaceholderId);
+}
+
 // ─── Hook return type ──────────────────────────────────────────────────────────
 
 export type DrawStudioState = ReturnType<typeof useDrawStudio>;
@@ -66,6 +77,7 @@ export function useDrawStudio() {
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Drawing state
   const [tool, setTool] = useState<DrawTool>("pen");
@@ -102,6 +114,8 @@ export function useDrawStudio() {
   const [ghostType, setGhostType] = useState<"comp" | "pose" | null>(null);
   const [ghostId, setGhostId] = useState<string | null>(null);
   const [ghostOpacity, setGhostOpacity] = useState(28);
+  const [drawingPlaceholder, setDrawingPlaceholder] =
+    useState<DrawingPlaceholderId | null>(null);
 
   // Completion
   const [completionLoading, setCompletionLoading] = useState(false);
@@ -143,20 +157,6 @@ export function useDrawStudio() {
     setTimeout(() => setToast(null), 2500);
   }, []);
 
-  // Pulse suggest button after 8 strokes with no ghost active
-  useEffect(() => {
-    if (strokeCount === 8 && !ghostType && activePanel) {
-      setPanelSuggestPulse(true);
-      const t = setTimeout(() => setPanelSuggestPulse(false), 5000);
-      return () => clearTimeout(t);
-    }
-  }, [strokeCount, ghostType, activePanel]);
-
-  // Reset suggestion state on panel change
-  useEffect(() => {
-    setShowPanelSuggestions(false);
-    setShowSuggestBtn(true);
-  }, [activePanel]);
 
   // ESC exits fullscreen
   useEffect(() => {
@@ -306,8 +306,19 @@ export function useDrawStudio() {
       ctx.beginPath();
     }
     snapshot();
-    setStrokeCount((n) => n + 1);
-  }, [getCtx, snapshot]);
+    setStrokeCount((n) => {
+      const next = n + 1;
+      if (next === 8 && !ghostType && activePanel) {
+        setPanelSuggestPulse(true);
+        if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+        pulseTimerRef.current = setTimeout(
+          () => setPanelSuggestPulse(false),
+          5000,
+        );
+      }
+      return next;
+    });
+  }, [activePanel, getCtx, ghostType, snapshot]);
 
   // ── AI actions ────────────────────────────────────────────────────────────────
 
@@ -371,6 +382,7 @@ export function useDrawStudio() {
       toolTimerRef.current = setTimeout(() => {
         setProcessingTool(null);
         if (toolId === "fix-comp") {
+          setDrawingPlaceholder(null);
           const suggestions = COMP_SUGGESTIONS[sceneType];
           const pick =
             suggestions[Math.floor(Math.random() * suggestions.length)];
@@ -379,7 +391,13 @@ export function useDrawStudio() {
           setGhostId(pick.id);
           setActiveGuides((prev) => [...new Set([...prev, ...pick.guides])]);
           showToast(`Gợi ý bố cục "${pick.name}" đã hiện trên canvas`);
+        } else if (isDrawingPlaceholderId(toolId)) {
+          setDrawingPlaceholder(toolId);
+          showToast(
+            `Đã hiện nét gợi ý: ${AI_TOOLS.find((t) => t.id === toolId)?.label}`,
+          );
         } else {
+          setDrawingPlaceholder(null);
           showToast(
             `Đã áp dụng: ${AI_TOOLS.find((t) => t.id === toolId)?.label}`,
           );
@@ -393,9 +411,12 @@ export function useDrawStudio() {
     if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
     if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     if (toolTimerRef.current) clearTimeout(toolTimerRef.current);
+    if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
     completionTimerRef.current = null;
     analysisTimerRef.current = null;
     toolTimerRef.current = null;
+    pulseTimerRef.current = null;
+    setPanelSuggestPulse(false);
     setCompletionLoading(false);
     setCompletionReady(false);
     setCompletions([]);
@@ -408,6 +429,7 @@ export function useDrawStudio() {
     setProcessingTool(null);
     setGhostType(null);
     setGhostId(null);
+    setDrawingPlaceholder(null);
     setSelectedComp(null);
     setActiveGuides([]);
     setShowPanelSuggestions(false);
@@ -427,6 +449,7 @@ export function useDrawStudio() {
         setGhostId(null);
       } else {
         setSelectedComp(id);
+        setDrawingPlaceholder(null);
         setGhostType("comp");
         setGhostId(id);
         const comp = Object.values(COMP_SUGGESTIONS)
@@ -445,6 +468,7 @@ export function useDrawStudio() {
         setGhostType(null);
         setGhostId(null);
       } else {
+        setDrawingPlaceholder(null);
         setGhostType("pose");
         setGhostId(id);
       }
@@ -455,6 +479,8 @@ export function useDrawStudio() {
   const enterPanel = useCallback(
     (panelId: string) => {
       setActivePanel(panelId);
+      setShowPanelSuggestions(false);
+      setShowSuggestBtn(true);
       setShowAnalysis(false);
       setAnalysisResult(null);
       historyRef.current = [];
@@ -471,6 +497,8 @@ export function useDrawStudio() {
 
   const exitPanel = useCallback(() => {
     setActivePanel(null);
+    setShowPanelSuggestions(false);
+    setShowSuggestBtn(true);
     setPanelFullscreen(false);
     setShowAnalysis(false);
     historyRef.current = [];
@@ -528,6 +556,8 @@ export function useDrawStudio() {
     setGhostId,
     ghostOpacity,
     setGhostOpacity,
+    drawingPlaceholder,
+    setDrawingPlaceholder,
     // Completion
     completionLoading,
     completionReady,

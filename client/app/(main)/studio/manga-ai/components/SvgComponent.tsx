@@ -1,6 +1,6 @@
 // ─── SVG Sub-components ────────────────────────────────────────────────────────
 
-import type { GuideId } from "../data";
+import type { DrawingPlaceholderId, GuideId } from "../data";
 
 export function Person({ cx, cy, h, color = "#374151", sw = 1.5, poseKey = "stand" }: {
   cx: number; cy: number; h: number; color?: string; sw?: number; poseKey?: string;
@@ -179,6 +179,55 @@ export function GuideOverlay({ guides }: { guides: GuideId[] }) {
         {[10,30,50,70,90].map(x => <line key={x} x1={x} y1="0" x2="50" y2="55" stroke="#4ade80" strokeWidth="0.4" opacity="0.5" />)}
         {[10,30,50,70,90].map(y => <line key={`y${y}`} x1="0" y1={y} x2="50" y2="55" stroke="#4ade80" strokeWidth="0.4" opacity="0.5" />)}
       </>}
+    </svg>
+  );
+}
+export function DrawingPlaceholderOverlay({ id, opacity = 0.34 }: { id: DrawingPlaceholderId; opacity?: number }) {
+  const s: React.CSSProperties = { opacity, pointerEvents: "none", position: "absolute", inset: 0, width: "100%", height: "100%" };
+  const purple = "#a855f7";
+  const pink = "#f472b6";
+  const amber = "#fbbf24";
+  const cyan = "#38bdf8";
+
+  if (id === "speed-lines") return (
+    <svg style={s} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <marker id="speed-arrow" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto">
+          <path d="M0,0 L4,2 L0,4" fill={pink} />
+        </marker>
+      </defs>
+      {[10, 18, 26, 34, 42, 50, 58, 66].map((y, i) => (
+        <path key={y} d={"M 4 " + y + " C 28 " + (y - 12) + ", 58 " + (y + 8) + ", 94 " + (y - 10)} fill="none" stroke={pink} strokeWidth={i % 2 ? 0.6 : 0.9} strokeLinecap="round" strokeDasharray="4 4" markerEnd="url(#speed-arrow)" />
+      ))}
+      <ellipse cx="72" cy="46" rx="14" ry="22" fill="none" stroke={pink} strokeWidth="0.8" strokeDasharray="3 3" />
+    </svg>
+  );
+
+  if (id === "speech-bubble") return (
+    <svg style={s} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M 55 12 C 77 10, 93 22, 91 40 C 89 56, 72 63, 52 60 C 47 67, 41 72, 32 76 C 36 69, 37 63, 35 57 C 22 51, 15 40, 18 29 C 21 18, 34 13, 55 12 Z" fill="none" stroke={purple} strokeWidth="0.9" strokeDasharray="3 2" />
+      <path d="M 31 82 C 42 78, 56 79, 68 85" fill="none" stroke={purple} strokeWidth="0.6" strokeDasharray="2 3" />
+      {[38, 52, 66].map((x) => <line key={x} x1={x} y1="34" x2={x + 10} y2="34" stroke={purple} strokeWidth="0.7" strokeLinecap="round" />)}
+    </svg>
+  );
+
+  if (id === "screentone") return (
+    <svg style={s} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M 14 62 C 30 42, 55 35, 84 44 L 88 92 L 18 92 Z" fill={cyan} fillOpacity="0.06" stroke={cyan} strokeWidth="0.8" strokeDasharray="3 3" />
+      {Array.from({ length: 8 }, (_, row) =>
+        Array.from({ length: 10 }, (_, col) => (
+          <circle key={row + "-" + col} cx={18 + col * 7 + (row % 2 ? 3 : 0)} cy={45 + row * 6} r="0.9" fill={cyan} opacity="0.8" />
+        )),
+      )}
+      <path d="M 18 38 C 37 26, 62 25, 84 34" fill="none" stroke={cyan} strokeWidth="0.6" strokeDasharray="2 3" />
+    </svg>
+  );
+
+  return (
+    <svg style={s} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M 13 33 C 27 24, 44 25, 56 37 C 68 50, 82 50, 91 39" fill="none" stroke={amber} strokeWidth="1.1" strokeLinecap="round" strokeDasharray="5 4" />
+      <path d="M 16 57 C 31 50, 44 51, 58 61 C 70 70, 82 70, 90 60" fill="none" stroke={amber} strokeWidth="0.9" strokeLinecap="round" strokeDasharray="4 4" />
+      <path d="M 26 77 C 40 72, 55 75, 71 82" fill="none" stroke={amber} strokeWidth="0.7" strokeLinecap="round" strokeDasharray="3 4" />
     </svg>
   );
 }

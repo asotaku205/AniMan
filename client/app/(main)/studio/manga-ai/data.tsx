@@ -6,6 +6,7 @@ export type RightTab     = "ai" | "layout" | "layers";
 export type DrawTool     = "pen" | "brush" | "eraser" | "fill" | "select" | "shape" | "text" | "pan";
 export type GuideId      = "thirds" | "horizon" | "proportions" | "vanishing";
 export type PoseCategory = "stand" | "sit" | "action" | "emotion";
+export type DrawingPlaceholderId = "clean-lines" | "screentone" | "speech-bubble" | "speed-lines";
 
 export interface PanelDef { id: string; x: number; y: number; w: number; h: number }
 export interface LayoutDef { id: string; label: string; panels: PanelDef[] }
