@@ -13,6 +13,7 @@ import {
   AiDrawingTask,
   MAX_AI_IMAGE_BYTES,
 } from "../contracts/ai-drawing-request.dto.js";
+import { AiDrawingPromptService } from "../prompts/ai-drawing-prompt.service.js";
 import {
   AiDrawingResponseValidationError,
   parseAiDrawingResponse,
@@ -44,22 +45,26 @@ export class AiDrawingDriver {
     private readonly provider: AiDrawingProvider,
     @Inject(AI_DRAWING_MODEL_PROFILE)
     profile: AiDrawingModelProfile,
+    @Inject(AiDrawingPromptService)
+    private readonly promptService: AiDrawingPromptService,
   ) {
     this.modelRegistry = new AiDrawingModelRegistry(profile);
   }
 
-  async execute(
-    input: unknown,
-    availableSourceIds: ReadonlySet<string>,
-  ): Promise<AiDrawingResponse> {
+  async execute(input: unknown): Promise<AiDrawingResponse> {
     const request = await this.validateRequest(input);
     const profile = this.selectProfile(request.task);
     this.validateImageSize(request.image.data, profile);
+    const prompt = this.promptService.assemble(request);
 
     const providerRequest: AiDrawingProviderRequest = {
       modelId: profile.modelId,
       task: request.task,
-      prompt: request.prompt,
+      templateId: prompt.templateId,
+      templateVersion: prompt.templateVersion,
+      systemInstruction: prompt.systemInstruction,
+      prompt: prompt.userPrompt,
+      evidence: prompt.evidence,
       image: request.image,
       maxOutputTokens: profile.limits.maxOutputTokens,
     };
@@ -69,7 +74,11 @@ export class AiDrawingDriver {
     );
 
     try {
-      return parseAiDrawingResponse(response, request.task, availableSourceIds);
+      return parseAiDrawingResponse(
+        response,
+        request.task,
+        new Set(prompt.sourceIds),
+      );
     } catch (error) {
       if (error instanceof AiDrawingResponseValidationError) {
         throw new BadGatewayException(

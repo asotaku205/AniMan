@@ -17,10 +17,11 @@ import {
   AiDrawingProviderTransientError,
 } from "../src/ai/driver/ai-drawing-driver.js";
 import { AiDrawingDriver } from "../src/ai/driver/ai-drawing-driver.service.js";
+import { AiDrawingPromptService } from "../src/ai/prompts/ai-drawing-prompt.service.js";
 
 const validRequest = {
   task: AiDrawingTask.CompositionGuidance,
-  prompt: "Đề xuất đường dẫn mắt cho panel",
+  prompt: "Xin hãy xem bản vẽ này giúp tôi",
   image: {
     data: "aGVsbG8=",
     mimeType: "image/png",
@@ -75,7 +76,11 @@ function createDriver(
   generate: AiDrawingProvider["generate"],
   profile = enabledProfile,
 ): AiDrawingDriver {
-  return new AiDrawingDriver({ generate }, profile);
+  return new AiDrawingDriver(
+    { generate },
+    profile,
+    new AiDrawingPromptService(),
+  );
 }
 
 describe("AI drawing driver", () => {
@@ -109,8 +114,41 @@ describe("AI drawing driver", () => {
   it("validates requests and parses provider output against the application contract", async () => {
     const driver = createDriver(async () => validResponse);
 
-    await expect(driver.execute(validRequest, new Set())).resolves.toEqual(
-      validResponse,
+    await expect(driver.execute(validRequest)).resolves.toEqual(validResponse);
+  });
+
+  it("passes versioned prompt and retrieved evidence separately to the provider", async () => {
+    let receivedRequest: AiDrawingProviderRequest | undefined;
+    const driver = createDriver(async (request) => {
+      receivedRequest = request;
+      return {
+        ...validResponse,
+        sourceIds: request.evidence.map(({ id }) => id),
+      };
+    });
+
+    await driver.execute({
+      ...validRequest,
+      prompt: "Gợi ý bố cục và điểm nhấn",
+    });
+
+    expect(receivedRequest?.templateId).toBe("manga-composition-guidance");
+    expect(receivedRequest?.templateVersion).toBe("1");
+    expect(receivedRequest?.systemInstruction).toContain(
+      "người dùng luôn là tác giả",
+    );
+    expect(receivedRequest?.prompt).toBe("Gợi ý bố cục và điểm nhấn");
+    expect(receivedRequest?.evidence.length).toBeGreaterThan(0);
+  });
+
+  it("rejects provider citations that were not retrieved for the request", async () => {
+    const driver = createDriver(async () => ({
+      ...validResponse,
+      sourceIds: ["unretrieved-source"],
+    }));
+
+    await expect(driver.execute(validRequest)).rejects.toThrow(
+      "AI provider returned a response that violates the drawing contract",
     );
   });
 
@@ -122,10 +160,7 @@ describe("AI drawing driver", () => {
     });
 
     await expect(
-      driver.execute(
-        { ...validRequest, arbitraryModel: "attacker-model" },
-        new Set(),
-      ),
+      driver.execute({ ...validRequest, arbitraryModel: "attacker-model" }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(calls).toBe(0);
   });
@@ -140,9 +175,9 @@ describe("AI drawing driver", () => {
       { ...enabledProfile, enabled: false },
     );
 
-    await expect(
-      driver.execute(validRequest, new Set()),
-    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(driver.execute(validRequest)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
     expect(calls).toBe(0);
   });
 
@@ -154,10 +189,7 @@ describe("AI drawing driver", () => {
     });
 
     await expect(
-      driver.execute(
-        { ...validRequest, modelId: "unapproved-model" },
-        new Set(),
-      ),
+      driver.execute({ ...validRequest, modelId: "unapproved-model" }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(capturedModel).toBe("");
   });
@@ -172,9 +204,7 @@ describe("AI drawing driver", () => {
       return validResponse;
     });
 
-    await expect(driver.execute(validRequest, new Set())).resolves.toEqual(
-      validResponse,
-    );
+    await expect(driver.execute(validRequest)).resolves.toEqual(validResponse);
     expect(calls).toBe(2);
   });
 
@@ -185,7 +215,7 @@ describe("AI drawing driver", () => {
       throw new AiDrawingProviderTransientError();
     });
 
-    await expect(driver.execute(validRequest, new Set())).rejects.toThrow(
+    await expect(driver.execute(validRequest)).rejects.toThrow(
       "AI provider is temporarily unavailable",
     );
     expect(calls).toBe(2);
@@ -205,9 +235,9 @@ describe("AI drawing driver", () => {
       { ...enabledProfile, limits: { ...enabledProfile.limits, timeoutMs: 5 } },
     );
 
-    await expect(
-      driver.execute(validRequest, new Set()),
-    ).rejects.toBeInstanceOf(GatewayTimeoutException);
+    await expect(driver.execute(validRequest)).rejects.toBeInstanceOf(
+      GatewayTimeoutException,
+    );
     expect(calls).toBe(1);
     expect(wasAborted).toBe(true);
   });
@@ -218,7 +248,7 @@ describe("AI drawing driver", () => {
       generatedImage: "private-provider-payload",
     }));
 
-    await expect(driver.execute(validRequest, new Set())).rejects.toThrow(
+    await expect(driver.execute(validRequest)).rejects.toThrow(
       "AI provider returned a response that violates the drawing contract",
     );
   });
@@ -231,11 +261,11 @@ describe("AI drawing driver", () => {
       throw new TypeError("unexpected internal failure");
     });
 
-    await expect(
-      providerFailure.execute(validRequest, new Set()),
-    ).rejects.toThrow("AI provider request failed");
-    await expect(
-      programmingFailure.execute(validRequest, new Set()),
-    ).rejects.toThrow("unexpected internal failure");
+    await expect(providerFailure.execute(validRequest)).rejects.toThrow(
+      "AI provider request failed",
+    );
+    await expect(programmingFailure.execute(validRequest)).rejects.toThrow(
+      "unexpected internal failure",
+    );
   });
 });

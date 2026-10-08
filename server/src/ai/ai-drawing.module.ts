@@ -6,6 +6,7 @@ import {
   AiDrawingProvider,
 } from "./driver/ai-drawing-driver.js";
 import { AiDrawingDriver } from "./driver/ai-drawing-driver.service.js";
+import { AiDrawingPromptService } from "./prompts/ai-drawing-prompt.service.js";
 
 export interface AiDrawingModuleOptions {
   profile: AiDrawingModelProfile;
@@ -19,6 +20,7 @@ export class AiDrawingModule {
       module: AiDrawingModule,
       providers: [
         AiDrawingDriver,
+        AiDrawingPromptService,
         { provide: AI_DRAWING_MODEL_PROFILE, useValue: options.profile },
         { provide: AI_DRAWING_PROVIDER, useValue: options.provider },
       ],

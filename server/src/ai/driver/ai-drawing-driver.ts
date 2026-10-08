@@ -1,4 +1,5 @@
 import { AiDrawingTask } from "../contracts/ai-drawing-request.dto.js";
+import type { AiDrawingPromptEvidence } from "../prompts/ai-drawing-prompt.service.js";
 
 const MAX_AI_DRAWING_TIMEOUT_MS = 60_000;
 const MAX_AI_DRAWING_OUTPUT_TOKENS = 4096;
@@ -29,7 +30,11 @@ export interface AiDrawingModelProfile {
 export interface AiDrawingProviderRequest {
   readonly modelId: string;
   readonly task: AiDrawingTask;
-  readonly prompt?: string;
+  readonly templateId: string;
+  readonly templateVersion: string;
+  readonly systemInstruction: string;
+  readonly prompt: string;
+  readonly evidence: readonly AiDrawingPromptEvidence[];
   readonly image: {
     readonly data: string;
     readonly mimeType: string;
