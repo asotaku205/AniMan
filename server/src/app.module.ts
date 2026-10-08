@@ -8,6 +8,8 @@ import { CreateAuthTables1780768800000 } from "./database/migrations/17807688000
 import { AddUserRoles1791400000000 } from "./database/migrations/1791400000000-AddUserRoles.js";
 import { User } from "./users/user.entity.js";
 import { AuthModule } from "./auth/auth.module.js";
+import { AiConsentModule } from "./ai/consent/ai-consent.module.js";
+import { AddAiDrawingConsent1791500000000 } from "./database/migrations/1791500000000-AddAiDrawingConsent.js";
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
@@ -33,12 +35,17 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         password: configService.get<string>("DATABASE_PASSWORD"),
         database: "animan",
         entities: [User, RefreshSession],
-        migrations: [CreateAuthTables1780768800000, AddUserRoles1791400000000],
+        migrations: [
+          CreateAuthTables1780768800000,
+          AddUserRoles1791400000000,
+          AddAiDrawingConsent1791500000000,
+        ],
         migrationsRun: false,
         synchronize: false,
       }),
     }),
     AuthModule,
+    AiConsentModule,
   ],
   controllers: [AppController],
   providers: [],

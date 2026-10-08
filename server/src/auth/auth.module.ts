@@ -42,6 +42,6 @@ import { LocalStrategy } from "./strategies/local.strategy.js";
     JwtAuthGuard,
     RolesGuard,
   ],
-  exports: [AuthService],
+  exports: [AuthService, JwtAuthGuard],
 })
 export class AuthModule {}

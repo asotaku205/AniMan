@@ -29,6 +29,12 @@ export class User {
   @Column({ name: "terms_accepted_at", type: "timestamptz" })
   termsAcceptedAt: Date;
 
+  @Column({ name: "ai_age_confirmed_at", type: "timestamptz", nullable: true })
+  aiAgeConfirmedAt: Date | null;
+
+  @Column({ name: "ai_data_notice_version", type: "text", nullable: true })
+  aiDataNoticeVersion: string | null;
+
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt: Date;
 
