@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuthModule } from "../../auth/auth.module.js";
 import { User } from "../../users/user.entity.js";
+import { AiDrawingRateLimiter } from "../ai-drawing-rate-limiter.service.js";
 import { AiDrawingModule } from "../ai-drawing.module.js";
 import {
   AiDrawingProviderError,
@@ -27,7 +28,7 @@ import { AiDrawingConsentService } from "./ai-drawing-consent.service.js";
     }),
   ],
   controllers: [AiDrawingConsentController, AiDrawingController],
-  providers: [AiDrawingConsentService],
+  providers: [AiDrawingConsentService, AiDrawingRateLimiter],
   exports: [AiDrawingConsentService],
 })
 export class AiConsentModule {}
