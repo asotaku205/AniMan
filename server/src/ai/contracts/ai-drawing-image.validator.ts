@@ -1,4 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
+import sharp from "sharp";
 import {
   AiDrawingImageMimeType,
   MAX_AI_IMAGE_BYTES,
@@ -10,6 +11,7 @@ const PNG_SIGNATURE = Buffer.from([
 ]);
 const MIN_AI_IMAGE_DIMENSION = 256;
 const MAX_AI_IMAGE_DIMENSION = 4096;
+const MAX_AI_IMAGE_PIXELS = MAX_AI_IMAGE_DIMENSION * MAX_AI_IMAGE_DIMENSION;
 const JPEG_START_OF_FRAME_MARKERS = new Set([
   0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
 ]);
@@ -216,7 +218,9 @@ function readImageDimensions(
   return invalidImage();
 }
 
-export function validateAiDrawingImage(image: AiDrawingImageDto): void {
+export async function validateAiDrawingImage(
+  image: AiDrawingImageDto,
+): Promise<void> {
   const bytes = Buffer.from(image.data, "base64");
   if (
     bytes.length === 0 ||
@@ -236,5 +240,30 @@ export function validateAiDrawingImage(image: AiDrawingImageDto): void {
     dimensions.height > MAX_AI_IMAGE_DIMENSION
   ) {
     invalidImage();
+  }
+
+  const decoder = sharp(bytes, {
+    failOn: "error",
+    limitInputPixels: MAX_AI_IMAGE_PIXELS,
+    sequentialRead: true,
+  });
+  try {
+    const metadata = await decoder.metadata();
+    if (
+      metadata.format !== image.mimeType.slice("image/".length) ||
+      metadata.width !== dimensions.width ||
+      metadata.height !== dimensions.height
+    ) {
+      invalidImage();
+    }
+    await decoder.stats();
+  } catch (error) {
+    if (error instanceof BadRequestException) {
+      throw error;
+    }
+    if (error instanceof Error) {
+      return invalidImage();
+    }
+    throw error;
   }
 }

@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import sharp from "sharp";
 import { AiDrawingTask } from "../src/ai/contracts/ai-drawing-request.dto.js";
 import { AiDrawingModule } from "../src/ai/ai-drawing.module.js";
 import {
@@ -19,38 +20,25 @@ import {
 import { AiDrawingDriver } from "../src/ai/driver/ai-drawing-driver.service.js";
 import { AiDrawingPromptService } from "../src/ai/prompts/ai-drawing-prompt.service.js";
 
-function createPngBase64(width: number, height: number): string {
-  const makeChunk = (type: string, payload: Buffer): Buffer => {
-    const chunk = Buffer.alloc(12 + payload.length);
-    chunk.writeUInt32BE(payload.length, 0);
-    chunk.write(type, 4, "ascii");
-    payload.copy(chunk, 8);
-    return chunk;
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header[8] = 8;
-  header[9] = 2;
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    makeChunk("IHDR", header),
-    makeChunk(
-      "IDAT",
-      Buffer.from([0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01]),
-    ),
-    makeChunk("IEND", Buffer.alloc(0)),
-  ]).toString("base64");
-}
-
 const validRequest = {
   task: AiDrawingTask.CompositionGuidance,
   prompt: "Xin hãy xem bản vẽ này giúp tôi",
   image: {
-    data: createPngBase64(1024, 1024),
+    data: (
+      await sharp({
+        create: {
+          width: 256,
+          height: 256,
+          channels: 3,
+          background: { r: 80, g: 120, b: 160 },
+        },
+      })
+        .png({ compressionLevel: 9 })
+        .toBuffer()
+    ).toString("base64"),
     mimeType: "image/png",
-    width: 1024,
-    height: 1024,
+    width: 256,
+    height: 256,
   },
 };
 

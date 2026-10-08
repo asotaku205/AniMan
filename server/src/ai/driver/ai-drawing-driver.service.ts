@@ -54,7 +54,7 @@ export class AiDrawingDriver {
 
   async execute(input: unknown): Promise<AiDrawingResponse> {
     const request = await this.validateRequest(input);
-    validateAiDrawingImage(request.image);
+    await validateAiDrawingImage(request.image);
     const profile = this.selectProfile(request.task);
     this.validateImageSize(request.image.data, profile);
     const prompt = this.promptService.assemble(request);
