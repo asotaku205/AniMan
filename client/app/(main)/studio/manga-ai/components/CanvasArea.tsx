@@ -3,7 +3,9 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  AlertCircle,
   BarChart2,
+  BookOpen,
   Bot,
   Brush,
   Check,
@@ -18,12 +20,15 @@ import { CompThumb } from "./SvgComponent";
 import {
   SCENE_TYPE_LABEL,
   COMP_SUGGESTIONS,
+  PRINCIPLE_LABELS,
+  KNOWLEDGE_SOURCE_TITLES,
   type DrawTool,
   type DrawingPlaceholderId,
   type GuideId,
   type LayoutDef,
 } from "../data";
 import type { SceneType } from "../data";
+import type { AiDrawingReviewResponse } from "@/lib/ai-drawing-api";
 
 type Props = {
   // Layout / panel state
@@ -51,10 +56,15 @@ type Props = {
   setSelectedComp: (v: string | null) => void;
   activeGuides: GuideId[];
   aiConsentEligible: boolean;
-  // Analysis
+  // Analysis & Review
   analyzing: boolean;
-  analysisResult: { score: number; items: string[] } | null;
+  analysisResult?: { score: number; items: string[] } | null;
+  analysisError?: string | null;
+  reviewResult?: AiDrawingReviewResponse | null;
+  selectedFindingIndex?: number | null;
+  setSelectedFindingIndex?: (v: number | null) => void;
   showAnalysis: boolean;
+  dismissAnalysis?: () => void;
   runAnalysis: () => void;
   // Suggestion widget
   sceneType: SceneType;
@@ -95,7 +105,12 @@ export function CanvasArea({
   aiConsentEligible,
   analyzing,
   analysisResult,
+  analysisError,
+  reviewResult,
+  selectedFindingIndex,
+  setSelectedFindingIndex,
   showAnalysis,
+  dismissAnalysis,
   runAnalysis,
   sceneType,
   selectedComp,
@@ -276,6 +291,54 @@ export function CanvasArea({
               </div>
             )}
 
+            {/* AI Review Findings Overlay (chỗ vẽ lệch / cần xem lại) */}
+            {aiConsentEligible && showAnalysis && reviewResult && reviewResult.findings.length > 0 && (
+              <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 26 }}>
+                <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  {reviewResult.findings.map((finding, idx) => {
+                    const isSelected = selectedFindingIndex === idx;
+                    const rx = finding.region.x * 100;
+                    const ry = finding.region.y * 100;
+                    const rw = finding.region.width * 100;
+                    const rh = finding.region.height * 100;
+                    const strokeColor =
+                      finding.severity === "high"
+                        ? "#f43f5e"
+                        : finding.severity === "medium"
+                          ? "#fbbf24"
+                          : "#a855f7";
+                    return (
+                      <g key={idx}>
+                        <rect
+                          x={rx}
+                          y={ry}
+                          width={rw}
+                          height={rh}
+                          fill={strokeColor}
+                          fillOpacity={isSelected ? 0.18 : 0.08}
+                          stroke={strokeColor}
+                          strokeWidth={isSelected ? 0.8 : 0.45}
+                          strokeDasharray={isSelected ? undefined : "3,2"}
+                          rx="1"
+                        />
+                        <circle cx={rx + 2.5} cy={ry + 2.5} r="2" fill={strokeColor} />
+                        <text
+                          x={rx + 2.5}
+                          y={ry + 3.2}
+                          fontSize="1.8"
+                          fill="#ffffff"
+                          textAnchor="middle"
+                          fontWeight="bold"
+                        >
+                          {idx + 1}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+            )}
+
             {/* Guide overlay */}
             {aiConsentEligible && activeGuides.length > 0 && (
               <div className="absolute inset-0 z-10 pointer-events-none">
@@ -413,58 +476,201 @@ export function CanvasArea({
               </div>
             )}
 
-            {/* Analysis result */}
+            {/* Analysis & Review Result */}
             <AnimatePresence>
-              {aiConsentEligible && showAnalysis && analysisResult && (
+              {/* Error card */}
+              {aiConsentEligible && showAnalysis && analysisError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="absolute top-2 right-2 z-50 bg-[#160d26]/95 border border-rose-500/30 rounded-2xl p-3 w-64 shadow-2xl backdrop-blur-md"
+                >
+                  <div className="flex items-start gap-2 mb-2">
+                    <AlertCircle size={14} className="text-rose-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-rose-200 text-xs font-semibold">Chưa thể đánh giá</p>
+                      <p className="text-white/70 text-[10px] leading-relaxed mt-0.5">{analysisError}</p>
+                    </div>
+                    {dismissAnalysis && (
+                      <button
+                        onClick={dismissAnalysis}
+                        className="text-white/30 hover:text-white transition-colors"
+                        title="Đóng"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5 mt-2">
+                    <button
+                      onClick={runAnalysis}
+                      className="flex-1 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 text-[10px] font-medium transition-colors"
+                    >
+                      Thử lại
+                    </button>
+                    {dismissAnalysis && (
+                      <button
+                        onClick={dismissAnalysis}
+                        className="flex-1 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 text-[10px] transition-colors"
+                      >
+                        Đóng
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Review Findings card */}
+              {aiConsentEligible && showAnalysis && reviewResult && (
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
-                  className="absolute top-2 right-2 z-50 bg-[#0d0817]/90 border border-white/10 rounded-2xl p-3 w-40 shadow-xl"
+                  className="absolute top-2 right-2 z-50 bg-[#0d0817]/95 border border-purple-500/30 rounded-2xl p-3 w-72 shadow-2xl backdrop-blur-md flex flex-col max-h-[calc(100%-16px)] overflow-hidden"
                 >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="relative w-10 h-10 flex-shrink-0">
-                      <svg viewBox="0 0 36 36" className="w-10 h-10 -rotate-90">
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="15"
-                          fill="none"
-                          stroke="rgba(255,255,255,0.1)"
-                          strokeWidth="3"
-                        />
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="15"
-                          fill="none"
-                          stroke="#ec4899"
-                          strokeWidth="3"
-                          strokeDasharray={`${analysisResult.score * 0.942} 94.2`}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <span className="absolute inset-0 flex items-center justify-center text-white text-[10px] font-bold rotate-90">
-                        {analysisResult.score}
-                      </span>
+                  {/* Header */}
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 flex-shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <Bot size={13} className="text-purple-400" />
+                      <p className="text-white text-xs font-semibold">
+                        AI Nhận xét bản vẽ
+                      </p>
                     </div>
-                    <p className="text-white text-[10px] font-semibold">
-                      Điểm AI
-                    </p>
+                    {dismissAnalysis && (
+                      <button
+                        onClick={dismissAnalysis}
+                        className="text-white/30 hover:text-white transition-colors"
+                        title="Đóng nhận xét"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="overflow-y-auto space-y-2.5 pr-1 flex-1">
+                    {/* Summary */}
+                    <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-2 text-[10px] text-purple-200 leading-relaxed">
+                      {reviewResult.summary}
+                    </div>
+
+                    {/* Findings list */}
+                    {reviewResult.findings.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <p className="text-white/40 text-[9px] uppercase tracking-wider font-semibold">
+                          Gợi ý chỗ cần xem lại ({reviewResult.findings.length})
+                        </p>
+                        {reviewResult.findings.map((f, i) => {
+                          const isSel = selectedFindingIndex === i;
+                          const principleName = PRINCIPLE_LABELS[f.principle] ?? f.principle;
+                          const sevColor =
+                            f.severity === "high"
+                              ? "text-rose-400 bg-rose-500/10 border-rose-500/30"
+                              : f.severity === "medium"
+                                ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
+                                : "text-purple-400 bg-purple-500/10 border-purple-500/30";
+                          const sevLabel =
+                            f.severity === "high"
+                              ? "Lệch nhiều"
+                              : f.severity === "medium"
+                                ? "Lưu ý"
+                                : "Góp ý";
+
+                          return (
+                            <div
+                              key={i}
+                              onClick={() => setSelectedFindingIndex?.(isSel ? null : i)}
+                              className={`p-2 rounded-xl border text-[10px] transition-all cursor-pointer ${
+                                isSel
+                                  ? "bg-purple-500/20 border-purple-400 shadow-md ring-1 ring-purple-400/40"
+                                  : "bg-white/[0.03] border-white/5 hover:border-white/15 hover:bg-white/5"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-semibold text-white flex items-center gap-1">
+                                  <span className="w-4 h-4 rounded-full bg-purple-600/80 text-white text-[9px] flex items-center justify-center font-bold">
+                                    {i + 1}
+                                  </span>
+                                  {principleName}
+                                </span>
+                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full border ${sevColor}`}>
+                                  {sevLabel}
+                                </span>
+                              </div>
+                              <p className="text-white/70 leading-relaxed text-[9px] mb-1">
+                                <span className="text-white/40">Vấn đề: </span>
+                                {f.issue}
+                              </p>
+                              <p className="text-purple-300 leading-relaxed text-[9px]">
+                                <span className="text-white/40">Gợi ý: </span>
+                                {f.recommendation}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-white/40 text-[10px] text-center py-2">
+                        Bản vẽ hài hòa, không phát hiện điểm lệch lớn.
+                      </p>
+                    )}
+
+                    {/* Citations */}
+                    {reviewResult.sourceIds.length > 0 && (
+                      <div className="pt-1 border-t border-white/5 text-[8px] text-white/30 space-y-0.5">
+                        <span className="flex items-center gap-1 text-white/40">
+                          <BookOpen size={9} /> Nguồn kiến thức tham chiếu:
+                        </span>
+                        {reviewResult.sourceIds.map((srcId) => (
+                          <p key={srcId} className="italic pl-2.5 truncate">
+                            • {KNOWLEDGE_SOURCE_TITLES[srcId] ?? srcId}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-2 mt-2 border-t border-white/10 flex-shrink-0">
+                    <button
+                      onClick={runAnalysis}
+                      className="flex-1 py-1.5 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/30 text-pink-300 text-[10px] font-medium transition-colors"
+                    >
+                      Đánh giá lại
+                    </button>
+                    {dismissAnalysis && (
+                      <button
+                        onClick={dismissAnalysis}
+                        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-[10px] transition-colors"
+                      >
+                        Ẩn
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Legacy fallback if reviewResult is not yet set */}
+              {aiConsentEligible && showAnalysis && !reviewResult && !analysisError && analysisResult && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="absolute top-2 right-2 z-50 bg-[#0d0817]/90 border border-white/10 rounded-2xl p-3 w-48 shadow-xl"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-white text-[10px] font-semibold">Nhận xét nhanh</p>
+                    {dismissAnalysis && (
+                      <button onClick={dismissAnalysis} className="text-white/30 hover:text-white">
+                        <X size={10} />
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-1">
                     {analysisResult.items.map((item, i) => (
                       <div key={i} className="flex items-start gap-1">
-                        <Check
-                          size={8}
-                          className="text-green-400 mt-0.5 flex-shrink-0"
-                        />
-                        <p
-                          className="text-white/60 leading-tight"
-                          style={{ fontSize: "8px" }}
-                        >
-                          {item}
-                        </p>
+                        <Check size={8} className="text-green-400 mt-0.5 flex-shrink-0" />
+                        <p className="text-white/60 leading-tight text-[9px]">{item}</p>
                       </div>
                     ))}
                   </div>

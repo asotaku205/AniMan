@@ -211,9 +211,37 @@ export const SCENE_TYPE_LABEL: Record<SceneType, string> = {
 
 // Contextual drawing tips shown inside the in-panel suggestion widget
 export const PANEL_DRAWING_TIPS: Record<SceneType, string> = {
-  action:    "Nghiêng người về phía trước tạo lực. Đường chéo = chuyển động. Để trống vùng phía trước hướng di chuyển.",
-  dialogue:  "Mắt ở đường 1/3 trên khung. Người đang nói chiếm nhiều diện tích hơn. Nhân vật luôn nhìn vào nhau.",
-  landscape: "Chân trời không bao giờ ở giữa — chọn 1/3 trên hoặc 1/3 dưới. Thêm nhân vật nhỏ để tạo quy mô.",
-  closeup:   "Vẽ mắt trước — quyết định 80% cảm xúc. Vị trí mắt thực ở giữa đầu, không phải giữa mặt.",
-  wide:      "Nhân vật phải rất nhỏ so với bối cảnh. Điểm tụ luôn nằm trên đường chân trời.",
+  action:
+    "Nghiêng người về phía trước tạo lực. Đường chéo = chuyển động. Để trống vùng phía trước hướng di chuyển.",
+  dialogue:
+    "Mắt ở đường 1/3 trên khung. Người đang nói chiếm nhiều diện tích hơn. Nhân vật luôn nhìn vào nhau.",
+  landscape:
+    "Chân trời không bao giờ ở giữa — chọn 1/3 trên hoặc 1/3 dưới. Thêm nhân vật nhỏ để tạo quy mô.",
+  closeup:
+    "Vẽ mắt trước — quyết định 80% cảm xúc. Vị trí mắt thực ở giữa đầu, không phải giữa mặt.",
+  wide:
+    "Nhân vật phải rất nhỏ so với bối cảnh. Điểm tụ luôn nằm trên đường chân trời.",
+};
+
+export const PRINCIPLE_LABELS: Record<string, string> = {
+  composition: "Bố cục",
+  proportion: "Tỷ lệ",
+  color: "Màu sắc",
+  flow: "Đường dẫn mắt",
+  perspective: "Phối cảnh",
+  lighting: "Ánh sáng",
+  shadow: "Bóng đổ",
+};
+
+export const KNOWLEDGE_SOURCE_TITLES: Record<string, string> = {
+  "sachant-introduction-to-art-2016":
+    "Introduction to Art (Sachant et al., CC BY-SA 4.0)",
+  "composition-focal-hierarchy": "Điểm nhấn & thứ tự thị giác",
+  "composition-balance-and-thirds": "Cân bằng khung & tỷ lệ 1/3",
+  "visual-flow-reading-direction": "Đường dẫn mắt trong manga",
+  "character-proportion-gesture": "Tỷ lệ nhân vật & đường động tác",
+  "color-palette-relationship": "Phối màu & bảng màu",
+  "value-light-shadow-planes": "Sáng tối & bóng đổ",
+  "perspective-overlap-scale": "Phối cảnh & chiều sâu",
+  "panel-storytelling-variation": "Nhịp kể chuyện giữa các panel",
 };

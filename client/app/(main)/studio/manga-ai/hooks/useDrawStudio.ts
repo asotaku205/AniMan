@@ -15,6 +15,12 @@ import {
   type PoseCategory,
   type SceneType,
 } from "../data";
+import { useAuth } from "@/app/auth/AuthProvider";
+import {
+  createCanvasSnapshot,
+  requestAiDrawingReview,
+  type AiDrawingReviewResponse,
+} from "@/lib/ai-drawing-api";
 
 // ─── Derived constants (stable — defined outside hook) ────────────────────────
 
@@ -130,13 +136,37 @@ export function useDrawStudio() {
   >({});
 
   // Stroke / analysis
+  const { authenticatedFetch } = useAuth();
+  const reviewAbortRef = useRef<AbortController | null>(null);
   const [strokeCount, setStrokeCount] = useState(0);
   const [analyzing, setAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<{
-    score: number;
-    items: string[];
-  } | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [reviewResult, setReviewResult] =
+    useState<AiDrawingReviewResponse | null>(null);
+  const [selectedFindingIndex, setSelectedFindingIndex] = useState<
+    number | null
+  >(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
+
+  const analysisResult = reviewResult
+    ? {
+        score: Math.max(
+          50,
+          100 -
+            reviewResult.findings.reduce(
+              (acc, f) =>
+                acc +
+                (f.severity === "high"
+                  ? 15
+                  : f.severity === "medium"
+                    ? 8
+                    : 4),
+              0,
+            ),
+        ),
+        items: reviewResult.findings.map((f) => f.issue),
+      }
+    : null;
 
   // Processing & toast
   const [processingTool, setProcessingTool] = useState<string | null>(null);
@@ -224,6 +254,10 @@ export function useDrawStudio() {
     snapshot();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (activePanel) setPanelData((d) => ({ ...d, [activePanel]: "" }));
+    setReviewResult(null);
+    setAnalysisError(null);
+    setSelectedFindingIndex(null);
+    setShowAnalysis(false);
   }, [getCtx, snapshot, activePanel]);
 
   // Resize canvas on panel change
@@ -352,24 +386,68 @@ export function useDrawStudio() {
     [layout.panels, activePanel, showToast],
   );
 
-  const runAnalysis = useCallback(() => {
-    setAnalyzing(true);
+  const dismissAnalysis = useCallback(() => {
+    if (reviewAbortRef.current) {
+      reviewAbortRef.current.abort();
+      reviewAbortRef.current = null;
+    }
     setShowAnalysis(false);
-    if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
-    analysisTimerRef.current = setTimeout(() => {
-      setAnalyzing(false);
-      setAnalysisResult({
-        score: 78,
-        items: [
-          "Bố cục cân bằng tốt",
-          "Thiếu điểm nhấn chính",
-          "Nên thêm đường dẫn mắt",
-          "Tỷ lệ nhân vật hợp lý",
-        ],
-      });
-      setShowAnalysis(true);
-    }, 2200);
+    setAnalyzing(false);
+    setAnalysisError(null);
+    setSelectedFindingIndex(null);
   }, []);
+
+  const runAnalysis = useCallback(async () => {
+    const canvas = canvasRef.current;
+    if (!activePanel || !canvas) {
+      showToast("Vui lòng mở một khung truyện để phân tích nét vẽ.");
+      return;
+    }
+
+    if (strokeCount === 0) {
+      showToast("Vui lòng vẽ nét phác thảo trên khung trước khi phân tích.");
+      return;
+    }
+
+    const snapshotPayload = createCanvasSnapshot(canvas);
+    if (!snapshotPayload) {
+      showToast("Không thể tạo ảnh chụp canvas để gửi tới AI.");
+      return;
+    }
+
+    if (reviewAbortRef.current) {
+      reviewAbortRef.current.abort();
+    }
+    const abortController = new AbortController();
+    reviewAbortRef.current = abortController;
+
+    setAnalyzing(true);
+    setShowAnalysis(true);
+    setAnalysisError(null);
+    setReviewResult(null);
+    setSelectedFindingIndex(null);
+
+    try {
+      const result = await requestAiDrawingReview(
+        authenticatedFetch,
+        snapshotPayload,
+        undefined,
+        abortController.signal,
+      );
+      if (abortController.signal.aborted) return;
+      setReviewResult(result);
+      showToast("AI đã hoàn tất nhận xét bức vẽ!");
+    } catch (err: unknown) {
+      if (abortController.signal.aborted) return;
+      const errorMsg =
+        err instanceof Error ? err.message : "Không thể phân tích nét vẽ.";
+      setAnalysisError(errorMsg);
+    } finally {
+      if (!abortController.signal.aborted) {
+        setAnalyzing(false);
+      }
+    }
+  }, [activePanel, authenticatedFetch, strokeCount, showToast]);
 
   const runTool = useCallback(
     (toolId: string) => {
@@ -412,6 +490,10 @@ export function useDrawStudio() {
     if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     if (toolTimerRef.current) clearTimeout(toolTimerRef.current);
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
+    if (reviewAbortRef.current) {
+      reviewAbortRef.current.abort();
+      reviewAbortRef.current = null;
+    }
     completionTimerRef.current = null;
     analysisTimerRef.current = null;
     toolTimerRef.current = null;
@@ -424,7 +506,9 @@ export function useDrawStudio() {
     setPanelHints({});
     setPanelAutoComp({});
     setAnalyzing(false);
-    setAnalysisResult(null);
+    setAnalysisError(null);
+    setReviewResult(null);
+    setSelectedFindingIndex(null);
     setShowAnalysis(false);
     setProcessingTool(null);
     setGhostType(null);
@@ -478,11 +562,18 @@ export function useDrawStudio() {
 
   const enterPanel = useCallback(
     (panelId: string) => {
+      if (reviewAbortRef.current) {
+        reviewAbortRef.current.abort();
+        reviewAbortRef.current = null;
+      }
       setActivePanel(panelId);
       setShowPanelSuggestions(false);
       setShowSuggestBtn(true);
       setShowAnalysis(false);
-      setAnalysisResult(null);
+      setAnalyzing(false);
+      setAnalysisError(null);
+      setReviewResult(null);
+      setSelectedFindingIndex(null);
       historyRef.current = [];
       futureRef.current = [];
       const autoCompId = panelAutoComp[panelId];
@@ -496,13 +587,29 @@ export function useDrawStudio() {
   );
 
   const exitPanel = useCallback(() => {
+    if (reviewAbortRef.current) {
+      reviewAbortRef.current.abort();
+      reviewAbortRef.current = null;
+    }
     setActivePanel(null);
     setShowPanelSuggestions(false);
     setShowSuggestBtn(true);
     setPanelFullscreen(false);
     setShowAnalysis(false);
+    setAnalyzing(false);
+    setAnalysisError(null);
+    setReviewResult(null);
+    setSelectedFindingIndex(null);
     historyRef.current = [];
     futureRef.current = [];
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (reviewAbortRef.current) {
+        reviewAbortRef.current.abort();
+      }
+    };
   }, []);
 
   // ── Derived values ────────────────────────────────────────────────────────────
@@ -567,11 +674,16 @@ export function useDrawStudio() {
     setAppliedCompletion,
     panelHints,
     panelAutoComp,
-    // Analysis
+    // Analysis & Review
     strokeCount,
     analyzing,
     analysisResult,
+    analysisError,
+    reviewResult,
+    selectedFindingIndex,
+    setSelectedFindingIndex,
     showAnalysis,
+    dismissAnalysis,
     // Processing & toast
     processingTool,
     toast,

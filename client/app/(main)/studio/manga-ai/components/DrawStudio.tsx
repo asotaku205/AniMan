@@ -87,7 +87,12 @@ export function DrawStudio() {
           aiConsentEligible={aiConsentEligible}
           analyzing={s.analyzing}
           analysisResult={s.analysisResult}
+          analysisError={s.analysisError}
+          reviewResult={s.reviewResult}
+          selectedFindingIndex={s.selectedFindingIndex}
+          setSelectedFindingIndex={s.setSelectedFindingIndex}
           showAnalysis={s.showAnalysis}
+          dismissAnalysis={s.dismissAnalysis}
           runAnalysis={s.runAnalysis}
           sceneType={s.sceneType}
           selectedComp={s.selectedComp}
