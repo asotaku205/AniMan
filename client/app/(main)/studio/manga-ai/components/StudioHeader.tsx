@@ -7,6 +7,8 @@ import {
   Download,
   FileText,
   HelpCircle,
+  FolderOpen,
+  ChevronDown,
   Keyboard,
   LayoutGrid,
   Send,
@@ -18,10 +20,18 @@ import type { StudioMode } from "../data";
 type Props = {
   mode: StudioMode;
   setMode: (m: StudioMode) => void;
+  projectName?: string;
+  onOpenProjectManager?: () => void;
   onExport?: () => void;
 };
 
-export function StudioHeader({ mode, setMode, onExport }: Props) {
+export function StudioHeader({
+  mode,
+  setMode,
+  projectName,
+  onOpenProjectManager,
+  onExport,
+}: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   return (
@@ -32,14 +42,30 @@ export function StudioHeader({ mode, setMode, onExport }: Props) {
             <div className="w-7 h-7 bg-gradient-to-br from-pink-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-pink-500/20">
               <BookOpen size={14} className="text-white" />
             </div>
-            <span className="text-white font-bold text-sm tracking-tight">
+            <span className="text-white font-bold text-sm tracking-tight hidden sm:inline">
               Manga Studio
             </span>
           </div>
 
+          {/* Nút Chọn / Đổi Dự Án */}
+          {onOpenProjectManager && (
+            <button
+              onClick={onOpenProjectManager}
+              title="Nhấn để đổi hoặc tạo dự án mới"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-200 text-xs font-medium transition-all group"
+            >
+              <FolderOpen size={13} className="text-pink-400 group-hover:scale-110 transition-transform" />
+              <span className="truncate max-w-[130px] font-semibold">
+                {projectName || "Chọn dự án"}
+              </span>
+              <ChevronDown size={12} className="text-white/40" />
+            </button>
+          )}
+
           <div className="flex bg-white/5 rounded-xl p-0.5 gap-0.5">
             {(
               [
+                ["projects", <FolderOpen size={13} />, "Dự án"],
                 ["draw", <Brush size={13} />, "Vẽ trang"],
                 ["storyboard", <LayoutGrid size={13} />, "Story Board"],
                 ["publish", <Send size={13} />, "Xuất bản"],

@@ -1,6 +1,6 @@
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-export type StudioMode   = "draw" | "storyboard" | "publish";
+export type StudioMode   = "projects" | "draw" | "storyboard" | "publish";
 export type SceneType    = "action" | "dialogue" | "landscape" | "closeup" | "wide";
 export type RightTab     = "ai" | "layout" | "layers";
 export type DrawTool     = "pen" | "brush" | "eraser" | "fill" | "select" | "shape" | "text" | "pan";

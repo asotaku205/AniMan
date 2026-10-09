@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check } from "lucide-react";
 import { LeftToolbar } from "./LeftToolbar";
@@ -8,11 +8,39 @@ import { CanvasTopBar } from "./CanvasTopBar";
 import { CanvasArea } from "./CanvasArea";
 import { RightPanel } from "./RightPanel";
 import { useDrawStudio } from "../hooks/useDrawStudio";
-import { useAuth } from "@/app/auth/AuthProvider";
+import type { MangaProject } from "../hooks/useMangaProjects";
 
-export function DrawStudio() {
+interface Props {
+  activeProject?: MangaProject | null;
+  targetPage?: number;
+  onSavePageData?: (
+    pageNumber: number,
+    layoutId: string,
+    panels: Record<string, string>,
+  ) => void;
+}
+
+export function DrawStudio({
+  activeProject,
+  targetPage,
+  onSavePageData,
+}: Props = {}) {
   const s = useDrawStudio();
   const aiConsentEligible = true;
+
+  // Đồng bộ targetPage từ Story Board nếu có
+  useEffect(() => {
+    if (targetPage && targetPage !== s.page) {
+      s.setPage(targetPage);
+    }
+  }, [targetPage, s]);
+
+  // Đồng bộ nét vẽ vào dự án khi panelData thay đổi
+  useEffect(() => {
+    if (onSavePageData && s.panelData) {
+      onSavePageData(s.page, s.layout.id, s.panelData);
+    }
+  }, [s.panelData, s.page, s.layout.id, onSavePageData]);
 
   return (
     <div className="flex flex-1 overflow-hidden">
