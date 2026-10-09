@@ -84,6 +84,13 @@ export function RightPanel({ s }: Props) {
           applyPose={s.applyPose}
           ghostType={s.ghostType}
           ghostId={s.ghostId}
+          ghostOpacity={s.ghostOpacity}
+          setGhostOpacity={s.setGhostOpacity}
+          ghostStrokes={s.ghostStrokes}
+          setGhostStrokes={s.setGhostStrokes}
+          ghostStrokesSummary={s.ghostStrokesSummary}
+          userDrawingPrompt={s.userDrawingPrompt}
+          setUserDrawingPrompt={s.setUserDrawingPrompt}
           showGuideSection={s.showGuideSection}
           setShowGuideSection={s.setShowGuideSection}
           toggleGuide={s.toggleGuide}

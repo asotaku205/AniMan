@@ -16,6 +16,22 @@ import { Type } from "class-transformer";
 export enum AiDrawingTask {
   CompositionGuidance = "composition_guidance",
   DrawingReview = "drawing_review",
+  StrokeGuidance = "stroke_guidance",
+  CompositionOverlay = "composition_overlay",
+  PoseGuidance = "pose_guidance",
+}
+
+/**
+ * Gợi ý công cụ vẽ — giúp AI hiểu người dùng đang muốn làm gì
+ * để đưa ra nét gợi ý phù hợp hơn với tool được chọn.
+ */
+export enum AiDrawingToolHint {
+  CleanLines = "clean-lines",
+  Screentone = "screentone",
+  SpeedLines = "speed-lines",
+  SpeechBubble = "speech-bubble",
+  CompositionOverlay = "composition-overlay",
+  PoseGuidance = "pose-guidance",
 }
 
 export enum AiDrawingImageMimeType {
@@ -51,11 +67,23 @@ export class AiDrawingRequestDto {
   @IsEnum(AiDrawingTask)
   task: AiDrawingTask;
 
+  /**
+   * Mô tả ý tưởng của người dùng khi hình vẽ chưa rõ ràng.
+   * Đây là user prompt — dùng để AI hiểu hướng gợi ý tốt hơn.
+   */
   @IsOptional()
   @IsString()
   @MinLength(3)
   @MaxLength(800)
   prompt?: string;
+
+  /**
+   * Context về tool người dùng đang dùng — giúp AI sinh nét gợi ý
+   * phù hợp với loại kỹ thuật vẽ được chọn (clean-lines, screentone, ...).
+   */
+  @IsOptional()
+  @IsEnum(AiDrawingToolHint)
+  toolHint?: AiDrawingToolHint;
 
   @IsDefined()
   @ValidateNested()

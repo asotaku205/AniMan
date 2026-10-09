@@ -15,8 +15,9 @@ import {
   Minimize2,
   X,
 } from "lucide-react";
-import { DrawingPlaceholderOverlay, GhostComp, GhostPose, GuideOverlay } from "./SvgComponent";
+import { GuideOverlay } from "./SvgComponent";
 import { CompThumb } from "./SvgComponent";
+import { AiGhostStrokeOverlay } from "./AiGhostStrokeOverlay";
 import {
   SCENE_TYPE_LABEL,
   COMP_SUGGESTIONS,
@@ -28,7 +29,7 @@ import {
   type LayoutDef,
 } from "../data";
 import type { SceneType } from "../data";
-import type { AiDrawingReviewResponse } from "@/lib/ai-drawing-api";
+import type { AiDrawingReviewResponse, AiStrokePath } from "@/lib/ai-drawing-api";
 
 type Props = {
   // Layout / panel state
@@ -44,12 +45,15 @@ type Props = {
   down: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   move: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   up: () => void;
-  // Ghost / guides
+  // Ghost / guides (AI dynamic strokes)
   ghostType: "comp" | "pose" | null;
   ghostId: string | null;
   ghostOpacity: number;
-  drawingPlaceholder: DrawingPlaceholderId | null;
-  setDrawingPlaceholder: (v: DrawingPlaceholderId | null) => void;
+  ghostStrokes?: AiStrokePath[] | null;
+  setGhostStrokes?: (v: AiStrokePath[] | null) => void;
+  ghostStrokesSummary?: string | null;
+  drawingPlaceholder?: DrawingPlaceholderId | null;
+  setDrawingPlaceholder?: (v: DrawingPlaceholderId | null) => void;
   setGhostType: (v: "comp" | "pose" | null) => void;
   setGhostId: (v: string | null) => void;
   setGhostOpacity: (v: number) => void;
@@ -95,6 +99,9 @@ export function CanvasArea({
   ghostType,
   ghostId,
   ghostOpacity,
+  ghostStrokes,
+  setGhostStrokes,
+  ghostStrokesSummary,
   drawingPlaceholder,
   setDrawingPlaceholder,
   setGhostType,
@@ -174,7 +181,7 @@ export function CanvasArea({
                   key={p.id}
                   onClick={() => enterPanel(p.id)}
                   className={`absolute border cursor-pointer hover:border-pink-300 transition-colors group overflow-hidden ${
-                    aiConsentEligible && ghostType && ghostId && !hasData
+                    aiConsentEligible && !hasData
                       ? "border-purple-300/60"
                       : "border-gray-200"
                   }`}
@@ -193,9 +200,6 @@ export function CanvasArea({
                     />
                   ) : hint ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-purple-50">
-                      {aiConsentEligible && ghostType === "comp" && ghostId && (
-                        <GhostComp id={ghostId} opacity={0.18} />
-                      )}
                       <Bot
                         size={10}
                         className="text-purple-400 relative z-10"
@@ -209,12 +213,6 @@ export function CanvasArea({
                     </div>
                   ) : (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 group-hover:bg-pink-50/30 transition-colors">
-                      {aiConsentEligible && ghostType === "comp" && ghostId && (
-                        <GhostComp id={ghostId} opacity={0.18} />
-                      )}
-                      {aiConsentEligible && ghostType === "pose" && ghostId && (
-                        <GhostPose id={ghostId} opacity={0.18} />
-                      )}
                       <Brush
                         size={10}
                         className="text-gray-300 group-hover:text-pink-400 transition-colors relative z-10"
@@ -269,26 +267,16 @@ export function CanvasArea({
               onPointerLeave={up}
             />
 
-            {/* Ghost overlays */}
-            {aiConsentEligible && ghostType === "comp" && ghostId && (
-              <div className="absolute inset-0 z-20 pointer-events-none">
-                <GhostComp id={ghostId} opacity={ghostOpacity / 100} />
-              </div>
-            )}
-            {aiConsentEligible && ghostType === "pose" && ghostId && (
-              <div className="absolute inset-0 z-20 pointer-events-none">
-                <GhostPose id={ghostId} opacity={ghostOpacity / 100} />
-              </div>
-            )}
-
-            {/* Drawing placeholder overlay */}
-            {aiConsentEligible && drawingPlaceholder && (
-              <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 25 }}>
-                <DrawingPlaceholderOverlay
-                  id={drawingPlaceholder}
-                  opacity={ghostOpacity / 100}
-                />
-              </div>
+            {/* Dynamic AI Ghost Stroke Overlay (SVG mờ do AI phân tích bức vẽ sinh ra) */}
+            {aiConsentEligible && ghostStrokes && ghostStrokes.length > 0 && (
+              <AiGhostStrokeOverlay
+                strokes={ghostStrokes}
+                canvasWidth={canvasRef.current?.width ?? 400}
+                canvasHeight={canvasRef.current?.height ?? 300}
+                ghostOpacity={ghostOpacity}
+                setGhostOpacity={setGhostOpacity}
+                onClear={() => setGhostStrokes?.(null)}
+              />
             )}
 
             {/* AI Review Findings Overlay (chỗ vẽ lệch / cần xem lại) */}
@@ -684,65 +672,6 @@ export function CanvasArea({
               )}
             </AnimatePresence>
 
-            {/* Placeholder control bar */}
-            {aiConsentEligible && drawingPlaceholder && !(ghostType && ghostId) && (
-              <div className="absolute bottom-2 left-2 right-2 z-40 bg-[#0d0817]/90 border border-amber-400/30 rounded-xl px-3 py-2 flex items-center gap-2">
-                <span className="text-amber-300 text-[10px] flex-shrink-0">
-                  Nét gợi ý
-                </span>
-                <input
-                  type="range"
-                  min={8}
-                  max={60}
-                  value={ghostOpacity}
-                  onChange={(e) => setGhostOpacity(+e.target.value)}
-                  className="flex-1 h-1 accent-amber-400"
-                />
-                <span className="text-amber-300 text-[9px] w-6">
-                  {ghostOpacity}%
-                </span>
-                <button
-                  onClick={() => setDrawingPlaceholder(null)}
-                  className="text-white/40 hover:text-white transition-colors"
-                  title="Tắt nét gợi ý"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            )}
-
-            {/* Ghost control bar */}
-            {aiConsentEligible && ghostType && ghostId && (
-              <div className="absolute bottom-2 left-2 right-2 z-40 bg-[#0d0817]/90 border border-purple-500/30 rounded-xl px-3 py-2 flex items-center gap-2">
-                <span className="text-purple-300 text-[10px] flex-shrink-0">
-                  {ghostType === "comp"
-                    ? (Object.values(COMP_SUGGESTIONS)
-                        .flat()
-                        .find((c) => c.id === ghostId)?.name ?? ghostId)
-                    : ghostId}
-                </span>
-                <input
-                  type="range"
-                  min={8}
-                  max={60}
-                  value={ghostOpacity}
-                  onChange={(e) => setGhostOpacity(+e.target.value)}
-                  className="flex-1 h-1 accent-purple-500"
-                />
-                <span className="text-purple-400 text-[9px] w-6">
-                  {ghostOpacity}%
-                </span>
-                <button
-                  onClick={() => {
-                    setGhostType(null);
-                    setGhostId(null);
-                  }}
-                  className="text-white/40 hover:text-white transition-colors"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            )}
 
             {/* Fullscreen exit button */}
             {panelFullscreen && (

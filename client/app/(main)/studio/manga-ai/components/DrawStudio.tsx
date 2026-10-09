@@ -62,6 +62,9 @@ export function DrawStudio() {
           ghostType={s.ghostType}
           ghostId={s.ghostId}
           ghostOpacity={s.ghostOpacity}
+          ghostStrokes={s.ghostStrokes}
+          setGhostStrokes={s.setGhostStrokes}
+          ghostStrokesSummary={s.ghostStrokesSummary}
           drawingPlaceholder={s.drawingPlaceholder}
           setDrawingPlaceholder={s.setDrawingPlaceholder}
           setGhostType={s.setGhostType}

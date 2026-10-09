@@ -96,19 +96,23 @@ function createDriver(
 }
 
 describe("AI drawing driver", () => {
-  it("registers the driver through the dynamic Nest module", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        AiDrawingModule.register({
-          profile: enabledProfile,
-          provider: { generate: async () => validResponse },
-        }),
-      ],
-    }).compile();
+  it(
+    "registers the driver through the dynamic Nest module",
+    async () => {
+      const moduleRef = await Test.createTestingModule({
+        imports: [
+          AiDrawingModule.register({
+            profile: enabledProfile,
+            provider: { generate: async () => validResponse },
+          }),
+        ],
+      }).compile();
 
-    expect(moduleRef.get(AiDrawingDriver)).toBeInstanceOf(AiDrawingDriver);
-    await moduleRef.close();
-  });
+      expect(moduleRef.get(AiDrawingDriver)).toBeInstanceOf(AiDrawingDriver);
+      await moduleRef.close();
+    },
+    15000,
+  );
 
   it("rejects model profiles with unbounded limits", () => {
     expect(

@@ -1,6 +1,19 @@
 import type { AuthenticatedFetch } from "./auth-api";
 
-export type AiDrawingTask = "composition_guidance" | "drawing_review";
+export type AiDrawingTask =
+  | "composition_guidance"
+  | "drawing_review"
+  | "stroke_guidance"
+  | "composition_overlay"
+  | "pose_guidance";
+
+export type AiDrawingToolHint =
+  | "clean-lines"
+  | "screentone"
+  | "speed-lines"
+  | "speech-bubble"
+  | "composition-overlay"
+  | "pose-guidance";
 
 export type AiDrawingPrinciple =
   | "composition"
@@ -10,6 +23,11 @@ export type AiDrawingPrinciple =
   | "perspective"
   | "lighting"
   | "shadow";
+
+export interface NormalizedPoint {
+  x: number;
+  y: number;
+}
 
 export interface NormalizedRegion {
   x: number;
@@ -35,6 +53,30 @@ export interface AiDrawingReviewResponse {
   findings: AiDrawingFinding[];
 }
 
+/** Một nét gợi ý do AI sinh ra — SVG mờ, không ghi vào canvas */
+export interface AiStrokePath {
+  kind: "path" | "line" | "ellipse" | "rectangle";
+  /** Với path: mảng điểm normalized */
+  points?: NormalizedPoint[];
+  /** Với line */
+  from?: NormalizedPoint;
+  to?: NormalizedPoint;
+  /** Với ellipse/rectangle */
+  region?: NormalizedRegion;
+  style: AiDrawingPrinciple;
+  opacity: number;
+  strokeWidth: number;
+  dashed?: boolean;
+}
+
+export interface AiGhostStrokeResponse {
+  schemaVersion: "1";
+  task: "stroke_guidance" | "composition_overlay" | "pose_guidance";
+  summary: string;
+  sourceIds: string[];
+  strokes: AiStrokePath[];
+}
+
 export interface AiDrawingImagePayload {
   data: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
@@ -45,6 +87,7 @@ export interface AiDrawingImagePayload {
 export interface AiDrawingRequestPayload {
   task: AiDrawingTask;
   prompt?: string;
+  toolHint?: AiDrawingToolHint;
   image: AiDrawingImagePayload;
 }
 
@@ -153,6 +196,52 @@ export async function requestAiDrawingReview(
   return responseData;
 }
 
+/**
+ * Yêu cầu AI sinh ghost strokes cho một trong các task: stroke_guidance,
+ * composition_overlay, pose_guidance.
+ *
+ * @param prompt  Mô tả ý tưởng của người dùng (user prompt) — để lại rỗng
+ *                nếu bức vẽ đã rõ ràng. Khi canvas còn sơ khai, người dùng
+ *                có thể nhập mô tả để AI đưa ra gợi ý phù hợp hơn.
+ */
+export async function requestAiGhostStrokes(
+  authenticatedFetch: AuthenticatedFetch,
+  image: AiDrawingImagePayload,
+  task: "stroke_guidance" | "composition_overlay" | "pose_guidance",
+  toolHint?: AiDrawingToolHint,
+  prompt?: string,
+  signal?: AbortSignal,
+): Promise<AiGhostStrokeResponse> {
+  const payload: AiDrawingRequestPayload = {
+    task,
+    image,
+    ...(toolHint ? { toolHint } : {}),
+    ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
+  };
+
+  const response = await authenticatedFetch("/ai/drawing", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  const responseData: unknown = await readPayload(response);
+
+  if (!response.ok) {
+    const message = extractErrorMessage(responseData, response.status);
+    throw new AiDrawingApiError(message, response.status);
+  }
+
+  if (!isGhostStrokeResponse(responseData)) {
+    throw new Error("Phản hồi ghost stroke từ AI không đúng cấu trúc yêu cầu.");
+  }
+
+  return responseData;
+}
+
 async function readPayload(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) {
@@ -170,10 +259,10 @@ function extractErrorMessage(payload: unknown, status: number): string {
     return "Bạn đã gửi quá số lượt yêu cầu cho phép (tối đa 5 lượt/phút và 30 lượt/ngày). Vui lòng thử lại sau.";
   }
   if (status === 403) {
-    return "Bạn cần hoàn thành xác nhận điều kiện độ tuổi và điều khoản AI để sử dụng tính năng.";
+    return "Bạn cần đăng nhập để sử dụng tính năng AI.";
   }
   if (status === 503) {
-    return "Mô hình AI hỗ trợ vẽ đang tạm thời chờ kích hoạt hoặc bảo trì. Bạn có thể tiếp tục sử dụng các gợi ý bố cục mờ sẵn có.";
+    return "Mô hình AI hỗ trợ vẽ đang tạm thời chờ kích hoạt hoặc bảo trì.";
   }
   if (status === 504) {
     return "Thời gian phân tích của AI quá lâu. Vui lòng thử lại.";
@@ -189,7 +278,9 @@ function extractErrorMessage(payload: unknown, status: number): string {
   return "Không thể hoàn thành yêu cầu phân tích nét vẽ.";
 }
 
-function isDrawingReviewResponse(value: unknown): value is AiDrawingReviewResponse {
+function isDrawingReviewResponse(
+  value: unknown,
+): value is AiDrawingReviewResponse {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -200,5 +291,26 @@ function isDrawingReviewResponse(value: unknown): value is AiDrawingReviewRespon
     typeof rec.summary === "string" &&
     Array.isArray(rec.sourceIds) &&
     Array.isArray(rec.findings)
+  );
+}
+
+const GHOST_STROKE_TASKS = new Set([
+  "stroke_guidance",
+  "composition_overlay",
+  "pose_guidance",
+]);
+
+function isGhostStrokeResponse(value: unknown): value is AiGhostStrokeResponse {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const rec = value as Record<string, unknown>;
+  return (
+    rec.schemaVersion === "1" &&
+    typeof rec.task === "string" &&
+    GHOST_STROKE_TASKS.has(rec.task) &&
+    typeof rec.summary === "string" &&
+    Array.isArray(rec.sourceIds) &&
+    Array.isArray(rec.strokes)
   );
 }

@@ -7,7 +7,6 @@ import {
   LAYOUTS,
   PAGE_COMPLETIONS,
   type DrawTool,
-  type DrawingPlaceholderId,
   type GuideId,
   type LayoutDef,
   type LayerItem,
@@ -19,7 +18,10 @@ import { useAuth } from "@/app/auth/AuthProvider";
 import {
   createCanvasSnapshot,
   requestAiDrawingReview,
+  requestAiGhostStrokes,
   type AiDrawingReviewResponse,
+  type AiStrokePath,
+  type AiDrawingToolHint,
 } from "@/lib/ai-drawing-api";
 
 // ─── Derived constants (stable — defined outside hook) ────────────────────────
@@ -57,16 +59,27 @@ export const GUIDE_DOT: Record<GuideId, string> = {
   vanishing: "bg-green-400",
 };
 
-const DRAWING_PLACEHOLDER_IDS: DrawingPlaceholderId[] = [
-  "clean-lines",
-  "screentone",
-  "speech-bubble",
-  "speed-lines",
-];
+/** Map toolId → task AI tương ứng cho ghost stroke */
+const TOOL_TASK_MAP: Record<string, "stroke_guidance" | "composition_overlay" | "pose_guidance"> = {
+  "clean-lines": "stroke_guidance",
+  "screentone": "stroke_guidance",
+  "speech-bubble": "stroke_guidance",
+  "speed-lines": "stroke_guidance",
+  "fix-comp": "composition_overlay",
+  "composition-overlay": "composition_overlay",
+  "pose-guidance": "pose_guidance",
+};
 
-function isDrawingPlaceholderId(id: string): id is DrawingPlaceholderId {
-  return DRAWING_PLACEHOLDER_IDS.includes(id as DrawingPlaceholderId);
-}
+/** Map toolId → AiDrawingToolHint để server biết context */
+const TOOL_HINT_MAP: Record<string, AiDrawingToolHint> = {
+  "clean-lines": "clean-lines",
+  "screentone": "screentone",
+  "speech-bubble": "speech-bubble",
+  "speed-lines": "speed-lines",
+  "composition-overlay": "composition-overlay",
+  "fix-comp": "composition-overlay",
+  "pose-guidance": "pose-guidance",
+};
 
 // ─── Hook return type ──────────────────────────────────────────────────────────
 
@@ -116,12 +129,20 @@ export function useDrawStudio() {
   const [showPoseSection, setShowPoseSection] = useState(false);
   const [showGuideSection, setShowGuideSection] = useState(false);
 
-  // Ghost overlay
+  // Ghost overlay — AI ghost strokes (thay thế static SVG placeholders)
   const [ghostType, setGhostType] = useState<"comp" | "pose" | null>(null);
   const [ghostId, setGhostId] = useState<string | null>(null);
   const [ghostOpacity, setGhostOpacity] = useState(28);
-  const [drawingPlaceholder, setDrawingPlaceholder] =
-    useState<DrawingPlaceholderId | null>(null);
+  /** Nét gợi ý mờ do AI sinh ra — thay thế drawingPlaceholder tĩnh */
+  const [ghostStrokes, setGhostStrokes] = useState<AiStrokePath[] | null>(null);
+  /** Tóm tắt từ AI về ghost strokes hiện tại */
+  const [ghostStrokesSummary, setGhostStrokesSummary] = useState<string | null>(null);
+  /**
+   * Mô tả ý tưởng của người dùng (user prompt).
+   * Khi hình vẽ chưa rõ ràng, người dùng nhập mô tả để AI
+   * hiểu hướng và đưa ra gợi ý phù hợp hơn.
+   */
+  const [userDrawingPrompt, setUserDrawingPrompt] = useState<string>("");
 
   // Completion
   const [completionLoading, setCompletionLoading] = useState(false);
@@ -138,6 +159,8 @@ export function useDrawStudio() {
   // Stroke / analysis
   const { authenticatedFetch } = useAuth();
   const reviewAbortRef = useRef<AbortController | null>(null);
+  /** AbortController riêng cho ghost stroke calls */
+  const ghostAbortRef = useRef<AbortController | null>(null);
   const [strokeCount, setStrokeCount] = useState(0);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -450,39 +473,74 @@ export function useDrawStudio() {
   }, [activePanel, authenticatedFetch, strokeCount, showToast]);
 
   const runTool = useCallback(
-    (toolId: string) => {
+    async (toolId: string) => {
       if (!activePanel) {
         showToast("Hãy nhấn vào một khung để vẽ trước");
         return;
       }
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const task = TOOL_TASK_MAP[toolId];
+      if (!task) {
+        showToast(`Công cụ "${toolId}" chưa được hỗ trợ`);
+        return;
+      }
+
+      const snapshotPayload = createCanvasSnapshot(canvas);
+      if (!snapshotPayload) {
+        showToast("Không thể chụp canvas để gửi tới AI.");
+        return;
+      }
+
+      // Hủy ghost stroke call đang chạy nếu có
+      if (ghostAbortRef.current) {
+        ghostAbortRef.current.abort();
+      }
+      const abortCtrl = new AbortController();
+      ghostAbortRef.current = abortCtrl;
+
+      const toolHint = TOOL_HINT_MAP[toolId] as
+        | import("@/lib/ai-drawing-api").AiDrawingToolHint
+        | undefined;
+      const promptText = userDrawingPrompt.trim() || undefined;
+
       setProcessingTool(toolId);
-      if (toolTimerRef.current) clearTimeout(toolTimerRef.current);
-      toolTimerRef.current = setTimeout(() => {
-        setProcessingTool(null);
-        if (toolId === "fix-comp") {
-          setDrawingPlaceholder(null);
-          const suggestions = COMP_SUGGESTIONS[sceneType];
-          const pick =
-            suggestions[Math.floor(Math.random() * suggestions.length)];
-          setSelectedComp(pick.id);
-          setGhostType("comp");
-          setGhostId(pick.id);
-          setActiveGuides((prev) => [...new Set([...prev, ...pick.guides])]);
-          showToast(`Gợi ý bố cục "${pick.name}" đã hiện trên canvas`);
-        } else if (isDrawingPlaceholderId(toolId)) {
-          setDrawingPlaceholder(toolId);
-          showToast(
-            `Đã hiện nét gợi ý: ${AI_TOOLS.find((t) => t.id === toolId)?.label}`,
-          );
+      setGhostStrokes(null);
+      setGhostStrokesSummary(null);
+
+      try {
+        const result = await requestAiGhostStrokes(
+          authenticatedFetch,
+          snapshotPayload,
+          task,
+          toolHint,
+          promptText,
+          abortCtrl.signal,
+        );
+        if (abortCtrl.signal.aborted) return;
+        setGhostStrokes(result.strokes.length > 0 ? result.strokes : null);
+        setGhostStrokesSummary(result.summary);
+        if (result.strokes.length === 0) {
+          showToast(`AI: ${result.summary}`);
         } else {
-          setDrawingPlaceholder(null);
-          showToast(
-            `Đã áp dụng: ${AI_TOOLS.find((t) => t.id === toolId)?.label}`,
-          );
+          showToast("Nét gợi ý AI đã hiện trên canvas");
         }
-      }, 1800);
+      } catch (err: unknown) {
+        if (abortCtrl.signal.aborted) return;
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Không thể sinh nét gợi ý AI.";
+        showToast(msg);
+      } finally {
+        if (!abortCtrl.signal.aborted) {
+          setProcessingTool(null);
+        }
+      }
     },
-    [showToast, activePanel, sceneType],
+    [showToast, activePanel, authenticatedFetch, userDrawingPrompt],
   );
 
   const clearAiSuggestions = useCallback(() => {
@@ -493,6 +551,10 @@ export function useDrawStudio() {
     if (reviewAbortRef.current) {
       reviewAbortRef.current.abort();
       reviewAbortRef.current = null;
+    }
+    if (ghostAbortRef.current) {
+      ghostAbortRef.current.abort();
+      ghostAbortRef.current = null;
     }
     completionTimerRef.current = null;
     analysisTimerRef.current = null;
@@ -513,7 +575,8 @@ export function useDrawStudio() {
     setProcessingTool(null);
     setGhostType(null);
     setGhostId(null);
-    setDrawingPlaceholder(null);
+    setGhostStrokes(null);
+    setGhostStrokesSummary(null);
     setSelectedComp(null);
     setActiveGuides([]);
     setShowPanelSuggestions(false);
@@ -527,37 +590,19 @@ export function useDrawStudio() {
 
   const applyComp = useCallback(
     (id: string) => {
-      if (selectedComp === id) {
-        setSelectedComp(null);
-        setGhostType(null);
-        setGhostId(null);
-      } else {
-        setSelectedComp(id);
-        setDrawingPlaceholder(null);
-        setGhostType("comp");
-        setGhostId(id);
-        const comp = Object.values(COMP_SUGGESTIONS)
-          .flat()
-          .find((c) => c.id === id);
-        if (comp?.guides.length)
-          setActiveGuides((prev) => [...new Set([...prev, ...comp.guides])]);
-      }
+      setSelectedComp(id);
+      // Gọi AI sinh nét gợi ý bố cục động dựa trên tranh hiện tại
+      runTool("composition-overlay");
     },
-    [selectedComp],
+    [runTool],
   );
 
   const applyPose = useCallback(
     (id: string) => {
-      if (ghostId === id && ghostType === "pose") {
-        setGhostType(null);
-        setGhostId(null);
-      } else {
-        setDrawingPlaceholder(null);
-        setGhostType("pose");
-        setGhostId(id);
-      }
+      // Gọi AI sinh nét gợi ý dáng động dựa trên tranh hiện tại
+      runTool("pose-guidance");
     },
-    [ghostId, ghostType],
+    [runTool],
   );
 
   const enterPanel = useCallback(
@@ -565,6 +610,10 @@ export function useDrawStudio() {
       if (reviewAbortRef.current) {
         reviewAbortRef.current.abort();
         reviewAbortRef.current = null;
+      }
+      if (ghostAbortRef.current) {
+        ghostAbortRef.current.abort();
+        ghostAbortRef.current = null;
       }
       setActivePanel(panelId);
       setShowPanelSuggestions(false);
@@ -574,13 +623,13 @@ export function useDrawStudio() {
       setAnalysisError(null);
       setReviewResult(null);
       setSelectedFindingIndex(null);
+      setGhostStrokes(null);
+      setGhostStrokesSummary(null);
       historyRef.current = [];
       futureRef.current = [];
       const autoCompId = panelAutoComp[panelId];
       if (autoCompId) {
         setSelectedComp(autoCompId);
-        setGhostType("comp");
-        setGhostId(autoCompId);
       }
     },
     [panelAutoComp],
@@ -591,6 +640,10 @@ export function useDrawStudio() {
       reviewAbortRef.current.abort();
       reviewAbortRef.current = null;
     }
+    if (ghostAbortRef.current) {
+      ghostAbortRef.current.abort();
+      ghostAbortRef.current = null;
+    }
     setActivePanel(null);
     setShowPanelSuggestions(false);
     setShowSuggestBtn(true);
@@ -600,6 +653,8 @@ export function useDrawStudio() {
     setAnalysisError(null);
     setReviewResult(null);
     setSelectedFindingIndex(null);
+    setGhostStrokes(null);
+    setGhostStrokesSummary(null);
     historyRef.current = [];
     futureRef.current = [];
   }, []);
@@ -608,6 +663,9 @@ export function useDrawStudio() {
     return () => {
       if (reviewAbortRef.current) {
         reviewAbortRef.current.abort();
+      }
+      if (ghostAbortRef.current) {
+        ghostAbortRef.current.abort();
       }
     };
   }, []);
@@ -656,15 +714,21 @@ export function useDrawStudio() {
     setShowPoseSection,
     showGuideSection,
     setShowGuideSection,
-    // Ghost
+    // Ghost overlay (AI dynamic strokes)
     ghostType,
     setGhostType,
     ghostId,
     setGhostId,
     ghostOpacity,
     setGhostOpacity,
-    drawingPlaceholder,
-    setDrawingPlaceholder,
+    ghostStrokes,
+    setGhostStrokes,
+    ghostStrokesSummary,
+    userDrawingPrompt,
+    setUserDrawingPrompt,
+    // Legacy placeholder compat
+    drawingPlaceholder: null,
+    setDrawingPlaceholder: () => {},
     // Completion
     completionLoading,
     completionReady,

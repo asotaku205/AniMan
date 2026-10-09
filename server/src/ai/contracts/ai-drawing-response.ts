@@ -88,8 +88,50 @@ export interface AiDrawingReviewResponse extends AiDrawingResponseBase {
   findings: AiDrawingFinding[];
 }
 
+// ─── Ghost stroke response (StrokeGuidance / CompositionOverlay / PoseGuidance) ──
+
+export const MAX_AI_GHOST_STROKES = 20;
+export const MAX_AI_STROKE_POINTS = 30;
+export const AI_STROKE_OPACITY_MIN = 0.05;
+export const AI_STROKE_OPACITY_MAX = 0.25;
+export const AI_STROKE_WIDTH_MIN = 0.002;
+export const AI_STROKE_WIDTH_MAX = 0.02;
+
+/**
+ * Một nét vẽ gợi ý do AI sinh ra — được render dưới dạng SVG mờ,
+ * không ghi vào canvas của người dùng.
+ */
+export interface AiStrokePath {
+  /** Loại primitive SVG */
+  kind: "path" | "line" | "ellipse" | "rectangle";
+  /** Với "path": mảng điểm normalized (cubic bezier / polyline) */
+  points?: NormalizedPoint[];
+  /** Với "line": điểm đầu */
+  from?: NormalizedPoint;
+  /** Với "line": điểm cuối */
+  to?: NormalizedPoint;
+  /** Với "ellipse"/"rectangle": vùng bao */
+  region?: NormalizedRegion;
+  /** Nguyên lý mỹ thuật liên quan */
+  style: AiDrawingPrinciple;
+  /** Độ trong suốt (0.05..0.25) */
+  opacity: number;
+  /** Chiều rộng nét (normalized, 0.002..0.02) */
+  strokeWidth: number;
+  /** true nếu là guide phụ (đường đứt) */
+  dashed?: boolean;
+}
+
+export interface AiGhostStrokeResponse extends AiDrawingResponseBase {
+  task:
+    | AiDrawingTask.StrokeGuidance
+    | AiDrawingTask.CompositionOverlay
+    | AiDrawingTask.PoseGuidance;
+  strokes: AiStrokePath[];
+}
+
 export type AiDrawingResponse =
-  AiCompositionGuidanceResponse | AiDrawingReviewResponse;
+  AiCompositionGuidanceResponse | AiDrawingReviewResponse | AiGhostStrokeResponse;
 
 export class AiDrawingResponseValidationError extends Error {
   constructor(message: string) {
@@ -115,6 +157,7 @@ const RESPONSE_KEYS = new Set([
   "sourceIds",
   "recommendations",
   "findings",
+  "strokes",
 ]);
 
 const BASE_RESPONSE_KEYS = [
@@ -383,6 +426,99 @@ function validateFindings(value: unknown): asserts value is AiDrawingFinding[] {
   value.forEach(validateFinding);
 }
 
+// ─── Ghost stroke validation ────────────────────────────────────────────────
+
+function requireFiniteNumber(
+  value: unknown,
+  path: string,
+  min: number,
+  max: number,
+): void {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < min ||
+    value > max
+  ) {
+    throw new AiDrawingResponseValidationError(
+      `${path} must be a finite number between ${min} and ${max}`,
+    );
+  }
+}
+
+function validateNormalizedPoint(value: unknown, path: string): void {
+  if (!isRecord(value)) {
+    throw new AiDrawingResponseValidationError(`${path} must be an object`);
+  }
+  requireExactKeys(value, ["x", "y"], path);
+  requireUnitCoordinate(value.x, `${path}.x`);
+  requireUnitCoordinate(value.y, `${path}.y`);
+}
+
+function validateStrokePath(value: unknown, index: number): void {
+  const path = `strokes[${index}]`;
+  if (!isRecord(value)) {
+    throw new AiDrawingResponseValidationError(`${path} must be an object`);
+  }
+
+  const kind = value.kind;
+  if (
+    kind !== "path" &&
+    kind !== "line" &&
+    kind !== "ellipse" &&
+    kind !== "rectangle"
+  ) {
+    throw new AiDrawingResponseValidationError(
+      `${path}.kind must be path, line, ellipse or rectangle`,
+    );
+  }
+
+  if (kind === "path") {
+    if (!Array.isArray(value.points) || value.points.length === 0 || value.points.length > MAX_AI_STROKE_POINTS) {
+      throw new AiDrawingResponseValidationError(
+        `${path}.points must be an array of 1..${MAX_AI_STROKE_POINTS} points`,
+      );
+    }
+    value.points.forEach((pt: unknown, pi: number) =>
+      validateNormalizedPoint(pt, `${path}.points[${pi}]`),
+    );
+  } else if (kind === "line") {
+    if (!isRecord(value.from) || !isRecord(value.to)) {
+      throw new AiDrawingResponseValidationError(
+        `${path}.from and ${path}.to must be objects for kind=line`,
+      );
+    }
+    validateNormalizedPoint(value.from, `${path}.from`);
+    validateNormalizedPoint(value.to, `${path}.to`);
+  } else {
+    // ellipse or rectangle
+    validateRegion(value.region, `${path}.region`);
+  }
+
+  requirePrinciple(value.style, `${path}.style`);
+  requireFiniteNumber(value.opacity, `${path}.opacity`, AI_STROKE_OPACITY_MIN, AI_STROKE_OPACITY_MAX);
+  requireFiniteNumber(value.strokeWidth, `${path}.strokeWidth`, AI_STROKE_WIDTH_MIN, AI_STROKE_WIDTH_MAX);
+
+  if (value.dashed !== undefined && typeof value.dashed !== "boolean") {
+    throw new AiDrawingResponseValidationError(`${path}.dashed must be boolean`);
+  }
+}
+
+function validateStrokes(value: unknown): asserts value is AiStrokePath[] {
+  if (!Array.isArray(value) || value.length > MAX_AI_GHOST_STROKES) {
+    throw new AiDrawingResponseValidationError(
+      `strokes must be an array of at most ${MAX_AI_GHOST_STROKES} items`,
+    );
+  }
+  value.forEach(validateStrokePath);
+}
+
+const GHOST_STROKE_TASKS = new Set<AiDrawingTask>([
+  AiDrawingTask.StrokeGuidance,
+  AiDrawingTask.CompositionOverlay,
+  AiDrawingTask.PoseGuidance,
+]);
+
 export function parseAiDrawingResponse(
   value: unknown,
   expectedTask: AiDrawingTask,
@@ -426,14 +562,37 @@ export function parseAiDrawingResponse(
     };
   }
 
-  requireExactKeys(value, [...BASE_RESPONSE_KEYS, "findings"], "response");
-  const findings = value.findings;
-  validateFindings(findings);
-  return {
-    schemaVersion: AI_DRAWING_RESPONSE_SCHEMA_VERSION,
-    task: AiDrawingTask.DrawingReview,
-    summary,
-    sourceIds,
-    findings,
-  };
+  if (expectedTask === AiDrawingTask.DrawingReview) {
+    requireExactKeys(value, [...BASE_RESPONSE_KEYS, "findings"], "response");
+    const findings = value.findings;
+    validateFindings(findings);
+    return {
+      schemaVersion: AI_DRAWING_RESPONSE_SCHEMA_VERSION,
+      task: AiDrawingTask.DrawingReview,
+      summary,
+      sourceIds,
+      findings,
+    };
+  }
+
+  // Ghost stroke tasks: StrokeGuidance, CompositionOverlay, PoseGuidance
+  if (GHOST_STROKE_TASKS.has(expectedTask)) {
+    requireExactKeys(value, [...BASE_RESPONSE_KEYS, "strokes"], "response");
+    const strokes = value.strokes;
+    validateStrokes(strokes);
+    return {
+      schemaVersion: AI_DRAWING_RESPONSE_SCHEMA_VERSION,
+      task: expectedTask as
+        | AiDrawingTask.StrokeGuidance
+        | AiDrawingTask.CompositionOverlay
+        | AiDrawingTask.PoseGuidance,
+      summary,
+      sourceIds,
+      strokes,
+    };
+  }
+
+  throw new AiDrawingResponseValidationError(
+    `Unsupported AI drawing task: ${String(expectedTask)}`,
+  );
 }

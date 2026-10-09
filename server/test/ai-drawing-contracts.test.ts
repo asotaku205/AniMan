@@ -228,4 +228,105 @@ describe("AI drawing response contract", () => {
       parseAiDrawingResponse(response, AiDrawingTask.DrawingReview, new Set()),
     ).toThrow(/confidence must be between 0 and 1/);
   });
+
+  it("validates and parses a valid ghost stroke response for stroke_guidance", () => {
+    const ghostResponse = {
+      schemaVersion: "1",
+      task: AiDrawingTask.StrokeGuidance,
+      summary: "Gợi ý nét contour rõ ràng hơn quanh khuôn mặt và mắt.",
+      sourceIds: [],
+      strokes: [
+        {
+          kind: "path",
+          points: [
+            { x: 0.2, y: 0.3 },
+            { x: 0.25, y: 0.35 },
+            { x: 0.3, y: 0.32 },
+          ],
+          style: "proportion",
+          opacity: 0.15,
+          strokeWidth: 0.005,
+          dashed: false,
+        },
+        {
+          kind: "line",
+          from: { x: 0.1, y: 0.1 },
+          to: { x: 0.5, y: 0.5 },
+          style: "flow",
+          opacity: 0.1,
+          strokeWidth: 0.003,
+          dashed: true,
+        },
+        {
+          kind: "ellipse",
+          region: { x: 0.3, y: 0.2, width: 0.2, height: 0.25 },
+          style: "composition",
+          opacity: 0.12,
+          strokeWidth: 0.004,
+        },
+      ],
+    };
+
+    const parsed = parseAiDrawingResponse(
+      ghostResponse,
+      AiDrawingTask.StrokeGuidance,
+      new Set(),
+    );
+
+    expect(parsed.task).toBe(AiDrawingTask.StrokeGuidance);
+    expect((parsed as any).strokes.length).toBe(3);
+  });
+
+  it("rejects ghost stroke responses with opacity outside allowed bounds", () => {
+    const invalidResponse = {
+      schemaVersion: "1",
+      task: AiDrawingTask.CompositionOverlay,
+      summary: "Gợi ý đường dẫn mắt.",
+      sourceIds: [],
+      strokes: [
+        {
+          kind: "line",
+          from: { x: 0.1, y: 0.1 },
+          to: { x: 0.9, y: 0.9 },
+          style: "composition",
+          opacity: 0.5, // > 0.25 cap
+          strokeWidth: 0.005,
+        },
+      ],
+    };
+
+    expect(() =>
+      parseAiDrawingResponse(
+        invalidResponse,
+        AiDrawingTask.CompositionOverlay,
+        new Set(),
+      ),
+    ).toThrow(/opacity must be a finite number between 0.05 and 0.25/);
+  });
+
+  it("rejects ghost strokes with points coordinates outside [0, 1]", () => {
+    const invalidResponse = {
+      schemaVersion: "1",
+      task: AiDrawingTask.PoseGuidance,
+      summary: "Gợi ý tỷ lệ dáng.",
+      sourceIds: [],
+      strokes: [
+        {
+          kind: "path",
+          points: [{ x: 1.5, y: 0.5 }], // x > 1
+          style: "proportion",
+          opacity: 0.15,
+          strokeWidth: 0.005,
+        },
+      ],
+    };
+
+    expect(() =>
+      parseAiDrawingResponse(
+        invalidResponse,
+        AiDrawingTask.PoseGuidance,
+        new Set(),
+      ),
+    ).toThrow(/must be a finite number between 0 and 1/);
+  });
 });
