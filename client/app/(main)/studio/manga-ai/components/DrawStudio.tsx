@@ -25,6 +25,10 @@ export function DrawStudio() {
         size={s.size}
         onSizeChange={s.setSize}
         disabled={!s.activePanel}
+        shapeType={s.shapeType}
+        onShapeTypeChange={s.setShapeType}
+        shapeFill={s.shapeFill}
+        onShapeFillChange={s.setShapeFill}
       />
 
       {/* Center Canvas area */}
@@ -37,8 +41,16 @@ export function DrawStudio() {
           layout={s.layout}
           page={s.page}
           setPage={s.setPage}
+          pages={s.pages}
+          addPage={s.addPage}
           undo={s.undo}
           redo={s.redo}
+          canUndo={s.canUndo}
+          canRedo={s.canRedo}
+          isSaved={s.isSaved}
+          saveDraft={s.saveDraft}
+          exportCurrentPanel={s.exportCurrentPanel}
+          exportFullPage={s.exportFullPage}
           clearCanvas={s.clearCanvas}
           panelFullscreen={s.panelFullscreen}
           setPanelFullscreen={s.setPanelFullscreen}
@@ -73,6 +85,10 @@ export function DrawStudio() {
           setSelectedComp={s.setSelectedComp}
           activeGuides={s.activeGuides}
           aiConsentEligible={aiConsentEligible}
+          showTextInput={s.showTextInput}
+          textInputPos={s.textInputPos}
+          insertText={s.insertText}
+          cancelText={s.cancelText}
           analyzing={s.analyzing}
           analysisResult={s.analysisResult}
           analysisError={s.analysisError}

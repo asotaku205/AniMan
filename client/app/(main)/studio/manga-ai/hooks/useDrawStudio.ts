@@ -81,6 +81,94 @@ const TOOL_HINT_MAP: Record<string, AiDrawingToolHint> = {
   "pose-guidance": "pose-guidance",
 };
 
+/** Chuyển đổi mã màu hex (#111111 hoặc #fff) sang mảng RGBA [r, g, b, a] */
+function hexToRgba(hex: string): [number, number, number, number] {
+  let c = hex.replace("#", "");
+  if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+  const num = parseInt(c, 16);
+  if (Number.isNaN(num)) return [0, 0, 0, 255];
+  return [(num >> 16) & 255, (num >> 8) & 255, num & 255, 255];
+}
+
+/** Thuật toán Flood Fill (BFS) đổ màu liên tục trên canvas */
+function floodFill(
+  ctx: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  fillRgba: [number, number, number, number],
+  tolerance = 36,
+) {
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
+  if (startX < 0 || startX >= width || startY < 0 || startY >= height) return;
+
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+
+  const startIdx = (startY * width + startX) * 4;
+  const startR = data[startIdx];
+  const startG = data[startIdx + 1];
+  const startB = data[startIdx + 2];
+  const startA = data[startIdx + 3];
+
+  // Nếu điểm click đã trùng màu đổ thì bỏ qua
+  if (
+    Math.abs(startR - fillRgba[0]) < 6 &&
+    Math.abs(startG - fillRgba[1]) < 6 &&
+    Math.abs(startB - fillRgba[2]) < 6 &&
+    Math.abs(startA - fillRgba[3]) < 6
+  ) {
+    return;
+  }
+
+  function matchesStart(idx: number): boolean {
+    const dr = Math.abs(data[idx] - startR);
+    const dg = Math.abs(data[idx + 1] - startG);
+    const db = Math.abs(data[idx + 2] - startB);
+    const da = Math.abs(data[idx + 3] - startA);
+    return dr <= tolerance && dg <= tolerance && db <= tolerance && da <= tolerance;
+  }
+
+  const visited = new Uint8Array(width * height);
+  const queue: number[] = [startX + startY * width];
+  visited[startX + startY * width] = 1;
+
+  while (queue.length > 0) {
+    const pos = queue.pop()!;
+    const px = pos % width;
+    const py = Math.floor(pos / width);
+    const idx = (py * width + px) * 4;
+
+    data[idx] = fillRgba[0];
+    data[idx + 1] = fillRgba[1];
+    data[idx + 2] = fillRgba[2];
+    data[idx + 3] = fillRgba[3];
+
+    // 4 hướng lân cận
+    const neighbors = [
+      [px + 1, py],
+      [px - 1, py],
+      [px, py + 1],
+      [px, py - 1],
+    ];
+
+    for (const [nx, ny] of neighbors) {
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const npos = nx + ny * width;
+        if (!visited[npos]) {
+          visited[npos] = 1;
+          const nidx = (ny * width + nx) * 4;
+          if (matchesStart(nidx)) {
+            queue.push(npos);
+          }
+        }
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}
+
 // ─── Hook return type ──────────────────────────────────────────────────────────
 
 export type DrawStudioState = ReturnType<typeof useDrawStudio>;
@@ -93,6 +181,8 @@ export function useDrawStudio() {
   const historyRef = useRef<ImageData[]>([]);
   const futureRef = useRef<ImageData[]>([]);
   const isDrawing = useRef(false);
+  const startPosRef = useRef<{ x: number; y: number } | null>(null);
+  const previewSnapshotRef = useRef<ImageData | null>(null);
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -103,8 +193,24 @@ export function useDrawStudio() {
   const [size, setSize] = useState(4);
   const [color, setColor] = useState("#111111");
 
+  // Shape tool config
+  const [shapeType, setShapeType] = useState<"rect" | "circle" | "line">("rect");
+  const [shapeFill, setShapeFill] = useState(false);
+
+  // Text tool inline placement
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Undo / Redo tracking
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  // Auto-save & Local persistence state
+  const [isSaved, setIsSaved] = useState(true);
+
   // Pages / panels
   const [page, setPage] = useState(1);
+  const [pages, setPages] = useState<number[]>([1, 2, 3]);
   const [layout, setLayout] = useState<LayoutDef>(LAYOUTS[0]);
   const [activePanel, setActivePanel] = useState<string | null>(null);
   const [panelData, setPanelData] = useState<Record<string, string>>({});
@@ -222,6 +328,67 @@ export function useDrawStudio() {
 
   // ── Canvas helpers ────────────────────────────────────────────────────────────
 
+  // ── Auto-save & Local persistence ──────────────────────────────────────────
+
+  // Tự động tải tiến độ các khung tranh khi chuyển trang hoặc mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(`animan_manga_page_${page}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === "object" && parsed !== null) {
+          setPanelData(parsed);
+        }
+      } else {
+        setPanelData({});
+      }
+    } catch {
+      // ignore
+    }
+  }, [page]);
+
+  const syncToStorage = useCallback(
+    (data: Record<string, string>, targetPage: number) => {
+      if (typeof window === "undefined") return;
+      try {
+        localStorage.setItem(
+          `animan_manga_page_${targetPage}`,
+          JSON.stringify(data),
+        );
+        setIsSaved(true);
+      } catch {
+        // storage quota exceeded or private mode
+      }
+    },
+    [],
+  );
+
+  const saveDraft = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(
+        `animan_manga_page_${page}`,
+        JSON.stringify(panelData),
+      );
+      setIsSaved(true);
+      showToast("Đã lưu tiến độ tranh thành công!");
+    } catch {
+      showToast("Lỗi khi lưu tranh vào bộ nhớ.");
+    }
+  }, [page, panelData, showToast]);
+
+  const addPage = useCallback(() => {
+    setPages((prev) => {
+      const next = prev.length > 0 ? Math.max(...prev) + 1 : 1;
+      setPage(next);
+      showToast(`Đã thêm Trang ${next}`);
+      return [...prev, next];
+    });
+  }, [showToast]);
+
+  // ── Canvas helpers ────────────────────────────────────────────────────────────
+
   const getCtx = useCallback(
     () => canvasRef.current?.getContext("2d") ?? null,
     [],
@@ -236,9 +403,18 @@ export function useDrawStudio() {
       ctx.getImageData(0, 0, canvas.width, canvas.height),
     ];
     futureRef.current = [];
-    if (activePanel)
-      setPanelData((prev) => ({ ...prev, [activePanel]: canvas.toDataURL() }));
-  }, [getCtx, activePanel]);
+    setCanUndo(true);
+    setCanRedo(false);
+    setIsSaved(false);
+    if (activePanel) {
+      const dataUrl = canvas.toDataURL();
+      setPanelData((prev) => {
+        const next = { ...prev, [activePanel]: dataUrl };
+        syncToStorage(next, page);
+        return next;
+      });
+    }
+  }, [getCtx, activePanel, page, syncToStorage]);
 
   const undo = useCallback(() => {
     const canvas = canvasRef.current;
@@ -251,9 +427,18 @@ export function useDrawStudio() {
     const prev = historyRef.current[historyRef.current.length - 1];
     historyRef.current = historyRef.current.slice(0, -1);
     ctx.putImageData(prev, 0, 0);
-    if (activePanel)
-      setPanelData((d) => ({ ...d, [activePanel]: canvas.toDataURL() }));
-  }, [getCtx, activePanel]);
+    setCanUndo(historyRef.current.length > 0);
+    setCanRedo(true);
+    setIsSaved(false);
+    if (activePanel) {
+      const dataUrl = canvas.toDataURL();
+      setPanelData((d) => {
+        const next = { ...d, [activePanel]: dataUrl };
+        syncToStorage(next, page);
+        return next;
+      });
+    }
+  }, [getCtx, activePanel, page, syncToStorage]);
 
   const redo = useCallback(() => {
     const canvas = canvasRef.current;
@@ -266,9 +451,18 @@ export function useDrawStudio() {
       ctx.getImageData(0, 0, canvas.width, canvas.height),
     ];
     ctx.putImageData(next, 0, 0);
-    if (activePanel)
-      setPanelData((d) => ({ ...d, [activePanel]: canvas.toDataURL() }));
-  }, [getCtx, activePanel]);
+    setCanUndo(true);
+    setCanRedo(futureRef.current.length > 0);
+    setIsSaved(false);
+    if (activePanel) {
+      const dataUrl = canvas.toDataURL();
+      setPanelData((d) => {
+        const next = { ...d, [activePanel]: dataUrl };
+        syncToStorage(next, page);
+        return next;
+      });
+    }
+  }, [getCtx, activePanel, page, syncToStorage]);
 
   const clearCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -276,12 +470,152 @@ export function useDrawStudio() {
     if (!canvas || !ctx) return;
     snapshot();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (activePanel) setPanelData((d) => ({ ...d, [activePanel]: "" }));
+    if (activePanel) {
+      setPanelData((d) => {
+        const next = { ...d, [activePanel]: "" };
+        syncToStorage(next, page);
+        return next;
+      });
+    }
     setReviewResult(null);
     setAnalysisError(null);
     setSelectedFindingIndex(null);
     setShowAnalysis(false);
-  }, [getCtx, snapshot, activePanel]);
+  }, [getCtx, snapshot, activePanel, page, syncToStorage]);
+
+  // Phím tắt bàn phím (Ctrl+Z, Ctrl+Y, Ctrl+S)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        redo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        saveDraft();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo, saveDraft]);
+
+  // Chèn chữ / lời thoại vào canvas
+  const insertText = useCallback(
+    (text: string) => {
+      const canvas = canvasRef.current;
+      const ctx = getCtx();
+      if (!canvas || !ctx || !textInputPos || !text.trim()) {
+        setShowTextInput(false);
+        setTextInputPos(null);
+        return;
+      }
+      snapshot();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.font = `${Math.max(14, size * 3.5)}px "Comic Sans MS", "Arial", sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, textInputPos.x, textInputPos.y);
+      if (activePanel) {
+        const dataUrl = canvas.toDataURL();
+        setPanelData((d) => {
+          const next = { ...d, [activePanel]: dataUrl };
+          syncToStorage(next, page);
+          return next;
+        });
+      }
+      setShowTextInput(false);
+      setTextInputPos(null);
+      showToast("Đã thêm lời thoại!");
+    },
+    [getCtx, textInputPos, size, color, activePanel, snapshot, page, syncToStorage, showToast],
+  );
+
+  const cancelText = useCallback(() => {
+    setShowTextInput(false);
+    setTextInputPos(null);
+  }, []);
+
+  // Xuất ảnh khung tranh hiện tại (PNG)
+  const exportCurrentPanel = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !activePanel) {
+      showToast("Hãy mở một khung tranh để xuất ảnh");
+      return;
+    }
+    const link = document.createElement("a");
+    link.download = `manga-panel-${activePanel}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    showToast("Đã xuất ảnh khung tranh!");
+  }, [activePanel, showToast]);
+
+  // Xuất toàn bộ trang truyện thành ảnh hoàn chỉnh (PNG 1200x1600)
+  const exportFullPage = useCallback(() => {
+    const w = 1200;
+    const h = 1600;
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = w;
+    exportCanvas.height = h;
+    const ctx = exportCanvas.getContext("2d");
+    if (!ctx) return;
+
+    // Nền giấy trắng manga
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+
+    let loaded = 0;
+    const total = layout.panels.length;
+
+    function finalize() {
+      const link = document.createElement("a");
+      link.download = `animan-page-${page}.png`;
+      link.href = exportCanvas.toDataURL("image/png");
+      link.click();
+      showToast(`Đã xuất toàn bộ Trang ${page}!`);
+    }
+
+    if (total === 0) {
+      finalize();
+      return;
+    }
+
+    layout.panels.forEach((p) => {
+      const px = (p.x / 100) * w;
+      const py = (p.y / 100) * h;
+      const pw = (p.w / 100) * w;
+      const ph = (p.h / 100) * h;
+
+      const dataUrl = panelData[p.id];
+      if (dataUrl) {
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, px, py, pw, ph);
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(px, py, pw, ph);
+          loaded++;
+          if (loaded === total) finalize();
+        };
+        img.onerror = () => {
+          loaded++;
+          if (loaded === total) finalize();
+        };
+        img.src = dataUrl;
+      } else {
+        ctx.strokeStyle = "#cccccc";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px, py, pw, ph);
+        loaded++;
+        if (loaded === total) finalize();
+      }
+    });
+  }, [layout, panelData, page, showToast]);
 
   // Resize canvas on panel change
   useEffect(() => {
@@ -296,10 +630,18 @@ export function useDrawStudio() {
       const saved = panelData[activePanel];
       if (saved && ctx) {
         const img = new Image();
-        img.onload = () => ctx.drawImage(img, 0, 0);
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0);
+          historyRef.current = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+          setCanUndo(false);
+          setCanRedo(false);
+        };
         img.src = saved;
+      } else if (ctx) {
+        historyRef.current = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+        setCanUndo(false);
+        setCanRedo(false);
       }
-      historyRef.current = [];
       futureRef.current = [];
     });
     if (canvas.parentElement) ro.observe(canvas.parentElement);
@@ -315,10 +657,50 @@ export function useDrawStudio() {
       const canvas = canvasRef.current;
       const ctx = getCtx();
       if (!canvas || !ctx) return;
-      isDrawing.current = true;
+
       const rect = canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+
+      // 1. Công cụ đổ màu (Fill / Paint Bucket)
+      if (tool === "fill") {
+        snapshot();
+        floodFill(ctx, Math.floor(px), Math.floor(py), hexToRgba(color));
+        if (activePanel) {
+          const dataUrl = canvas.toDataURL();
+          setPanelData((d) => {
+            const next = { ...d, [activePanel]: dataUrl };
+            syncToStorage(next, page);
+            return next;
+          });
+        }
+        return;
+      }
+
+      // 2. Công cụ hình học (Shape)
+      if (tool === "shape") {
+        isDrawing.current = true;
+        startPosRef.current = { x: px, y: py };
+        previewSnapshotRef.current = ctx.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+        return;
+      }
+
+      // 3. Công cụ chèn chữ / lời thoại (Text)
+      if (tool === "text") {
+        setTextInputPos({ x: px, y: py });
+        setShowTextInput(true);
+        return;
+      }
+
+      // 4. Các công cụ nét vẽ tự do (Pen, Brush, Eraser)
+      isDrawing.current = true;
       ctx.beginPath();
-      ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+      ctx.moveTo(px, py);
       if (tool === "eraser") {
         ctx.globalCompositeOperation = "destination-out";
         ctx.strokeStyle = "rgba(0,0,0,1)";
@@ -337,7 +719,7 @@ export function useDrawStudio() {
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
     },
-    [activePanel, getCtx, tool, color, size],
+    [activePanel, getCtx, tool, color, size, snapshot, syncToStorage, page],
   );
 
   const move = useCallback(
@@ -347,15 +729,66 @@ export function useDrawStudio() {
       const canvas = canvasRef.current;
       if (!canvas || !ctx) return;
       const rect = canvas.getBoundingClientRect();
-      ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+      const curX = e.clientX - rect.left;
+      const curY = e.clientY - rect.top;
+
+      // Xử lý preview kéo thả hình học (Rubber-band preview)
+      if (tool === "shape" && startPosRef.current && previewSnapshotRef.current) {
+        ctx.putImageData(previewSnapshotRef.current, 0, 0);
+        const sx = startPosRef.current.x;
+        const sy = startPosRef.current.y;
+        ctx.globalCompositeOperation = "source-over";
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = size;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        if (shapeType === "rect") {
+          const rx = Math.min(sx, curX);
+          const ry = Math.min(sy, curY);
+          const rw = Math.abs(curX - sx);
+          const rh = Math.abs(curY - sy);
+          if (shapeFill) ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeRect(rx, ry, rw, rh);
+        } else if (shapeType === "circle") {
+          const rx = Math.min(sx, curX);
+          const ry = Math.min(sy, curY);
+          const rw = Math.abs(curX - sx);
+          const rh = Math.abs(curY - sy);
+          ctx.beginPath();
+          ctx.ellipse(
+            rx + rw / 2,
+            ry + rh / 2,
+            Math.max(1, rw / 2),
+            Math.max(1, rh / 2),
+            0,
+            0,
+            Math.PI * 2,
+          );
+          if (shapeFill) ctx.fill();
+          ctx.stroke();
+        } else if (shapeType === "line") {
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(curX, curY);
+          ctx.stroke();
+        }
+        return;
+      }
+
+      // Xử lý nét vẽ tự do
+      ctx.lineTo(curX, curY);
       ctx.stroke();
     },
-    [getCtx],
+    [getCtx, tool, color, size, shapeType, shapeFill],
   );
 
   const up = useCallback(() => {
     if (!isDrawing.current) return;
     isDrawing.current = false;
+    startPosRef.current = null;
+    previewSnapshotRef.current = null;
     const ctx = getCtx();
     if (ctx) {
       ctx.globalAlpha = 1;
@@ -690,6 +1123,9 @@ export function useDrawStudio() {
     // Pages
     page,
     setPage,
+    pages,
+    setPages,
+    addPage,
     layout,
     setLayout,
     activePanel,
@@ -699,6 +1135,22 @@ export function useDrawStudio() {
     setRightTab,
     layers,
     setLayers,
+    // Tool extensions
+    shapeType,
+    setShapeType,
+    shapeFill,
+    setShapeFill,
+    showTextInput,
+    setShowTextInput,
+    textInputPos,
+    insertText,
+    cancelText,
+    canUndo,
+    canRedo,
+    isSaved,
+    saveDraft,
+    exportCurrentPanel,
+    exportFullPage,
     // AI
     sceneType,
     setSceneType,

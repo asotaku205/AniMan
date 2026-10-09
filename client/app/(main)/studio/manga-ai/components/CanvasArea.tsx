@@ -60,6 +60,11 @@ type Props = {
   setSelectedComp: (v: string | null) => void;
   activeGuides: GuideId[];
   aiConsentEligible: boolean;
+  // Text tool inline placement
+  showTextInput?: boolean;
+  textInputPos?: { x: number; y: number } | null;
+  insertText?: (text: string) => void;
+  cancelText?: () => void;
   // Analysis & Review
   analyzing: boolean;
   analysisResult?: { score: number; items: string[] } | null;
@@ -110,6 +115,10 @@ export function CanvasArea({
   setSelectedComp,
   activeGuides,
   aiConsentEligible,
+  showTextInput,
+  textInputPos,
+  insertText,
+  cancelText,
   analyzing,
   analysisResult,
   analysisError,
@@ -266,6 +275,59 @@ export function CanvasArea({
               onPointerUp={up}
               onPointerLeave={up}
             />
+
+            {/* Inline floating text input dialog */}
+            {showTextInput && textInputPos && (
+              <div
+                className="absolute z-40 bg-[#0d0817]/95 border border-pink-500/40 rounded-xl p-2.5 shadow-2xl backdrop-blur-md flex flex-col gap-2"
+                style={{
+                  left: Math.max(10, Math.min(textInputPos.x, (canvasRef.current?.width ?? 400) - 240)),
+                  top: Math.max(10, Math.min(textInputPos.y, (canvasRef.current?.height ?? 300) - 90)),
+                  width: 230,
+                }}
+              >
+                <div className="flex items-center justify-between text-[10px] text-white/60">
+                  <span className="font-semibold text-pink-400">Chèn lời thoại / chữ</span>
+                  <button
+                    onClick={cancelText}
+                    className="text-white/40 hover:text-white transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Nhập nội dung thoại..."
+                  defaultValue=""
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      insertText?.(e.currentTarget.value);
+                    } else if (e.key === "Escape") {
+                      cancelText?.();
+                    }
+                  }}
+                  className="w-full bg-black/50 border border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-pink-500 transition-colors"
+                />
+                <div className="flex justify-end gap-1.5">
+                  <button
+                    onClick={cancelText}
+                    className="px-2 py-0.5 rounded text-[10px] text-white/50 hover:text-white transition-colors"
+                  >
+                    Hủy (Esc)
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      const input = e.currentTarget.parentElement?.previousElementSibling as HTMLInputElement;
+                      if (input) insertText?.(input.value);
+                    }}
+                    className="px-3 py-1 rounded-lg bg-pink-500 hover:bg-pink-600 text-white text-[10px] font-semibold transition-colors"
+                  >
+                    Chèn (Enter)
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Dynamic AI Ghost Stroke Overlay (SVG mờ do AI phân tích bức vẽ sinh ra) */}
             {aiConsentEligible && ghostStrokes && ghostStrokes.length > 0 && (
