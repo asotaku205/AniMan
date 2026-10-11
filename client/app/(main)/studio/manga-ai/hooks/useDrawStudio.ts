@@ -6,6 +6,7 @@ import {
   COMP_SUGGESTIONS,
   LAYOUTS,
   PAGE_COMPLETIONS,
+  createUserLayer,
   type DrawTool,
   type GuideId,
   type LayoutDef,
@@ -249,11 +250,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   // Right panel
   const [rightTab, setRightTab] = useState<"ai" | "layout" | "layers">("ai");
-  const [layers, setLayers] = useState<LayerItem[]>([
-    { id: "l1", name: "Sketch (Phác thảo)", visible: true, locked: false, opacity: 100 },
-    { id: "l2", name: "Ink (Đi nét)", visible: true, locked: false, opacity: 100 },
-    { id: "l3", name: "Tone (Đổ bóng)", visible: true, locked: false, opacity: 100 },
-    { id: "l4", name: "Text (Thoại)", visible: true, locked: false, opacity: 100 },
+  const [layers, setLayers] = useState<LayerItem[]>(() => [
+    createUserLayer("Sketch (Phác thảo)", { id: "l1" }),
+    createUserLayer("Ink (Đi nét)", { id: "l2" }),
+    createUserLayer("Tone (Đổ bóng)", { id: "l3" }),
+    createUserLayer("Text (Thoại)", { id: "l4" }),
   ]);
   const [activeLayerId, setActiveLayerId] = useState<string>("l1");
 
@@ -310,24 +311,9 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   >(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
 
+  /** BR-A12: chỉ giữ nhận xét (finding), KHÔNG tính điểm số chủ quan */
   const analysisResult = reviewResult
-    ? {
-        score: Math.max(
-          50,
-          100 -
-            reviewResult.findings.reduce(
-              (acc, f) =>
-                acc +
-                (f.severity === "high"
-                  ? 15
-                  : f.severity === "medium"
-                    ? 8
-                    : 4),
-              0,
-            ),
-        ),
-        items: reviewResult.findings.map((f) => f.issue),
-      }
+    ? { items: reviewResult.findings.map((f) => f.issue) }
     : null;
 
   // Processing & toast
@@ -373,20 +359,19 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     );
   }, []);
 
+  /** Mirror `layers` để `addLayer` lấy được số lượng hiện tại mà không cần updater hàm */
+  const layersRef = useRef<LayerItem[]>(layers);
+  useEffect(() => {
+    layersRef.current = layers;
+  }, [layers]);
+
   const addLayer = useCallback(
     (name?: string) => {
-      const newId = `l${Date.now()}`;
-      setLayers((prev) => [
-        {
-          id: newId,
-          name: name || `Layer ${prev.length + 1}`,
-          visible: true,
-          locked: false,
-          opacity: 100,
-        },
-        ...prev,
-      ]);
-      setActiveLayerId(newId);
+      const layer = createUserLayer(
+        name?.trim() || `Layer ${layersRef.current.length + 1}`,
+      );
+      setLayers((prev) => [layer, ...prev]);
+      setActiveLayerId(layer.id);
       showToast("Đã tạo layer mới!");
     },
     [showToast],

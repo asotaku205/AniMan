@@ -15,7 +15,128 @@ export interface CompSuggestion { id: string; name: string; desc: string; guides
 export interface PageCompletion { id: string; name: string; flow: string; hints: string[]; compIds: string[] }
 export interface PoseItem { id: string; label: string; category: PoseCategory }
 
-export interface LayerItem { id: string; name: string; visible: boolean; locked: boolean; opacity?: number }
+/** Loại layer: do người dùng vẽ hay do AI tạo (BR-L01) */
+export type LayerKind = "user" | "ai";
+/** Chế độ trộn layer — map thẳng với CanvasRenderingContext2D.globalCompositeOperation */
+export type LayerBlend =
+  | "normal"
+  | "multiply"
+  | "screen"
+  | "overlay"
+  | "darken"
+  | "lighten";
+
+/**
+ * Layer v2 (Spec 02 §2.1).
+ * Mọi nơi khởi tạo layer phải dùng `createUserLayer` / `createAiLayer`
+ * để không bỏ sót `kind`, `blend`, `createdAt`.
+ */
+export interface LayerItem {
+  id: string;
+  name: string;
+  kind: LayerKind;
+  visible: boolean;
+  locked: boolean;
+  /** 0..100, mặc định 100 */
+  opacity: number;
+  /** mặc định "normal" */
+  blend: LayerBlend;
+  createdAt: number;
+  /** true nếu layer do AI tạo — chỉ đọc, không đổi tên, không ghi pixel */
+  readOnly?: boolean;
+}
+
+/** Dạng layer trước v2 — chỉ dùng để đọc dữ liệu đã lưu cũ (Schema v1). */
+export interface LegacyLayerItem {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  opacity?: number;
+}
+
+let userLayerSeq = 0;
+
+/** Tạo layer người dùng với mọi trường v2 được điền đủ. */
+export function createUserLayer(
+  name: string,
+  overrides: Partial<LayerItem> = {},
+): LayerItem {
+  userLayerSeq += 1;
+  return {
+    id: overrides.id ?? `l${Date.now().toString(36)}-${userLayerSeq}`,
+    name,
+    visible: true,
+    locked: false,
+    opacity: 100,
+    blend: "normal",
+    createdAt: Date.now(),
+    ...overrides,
+    // Factory người dùng: không cho override sang kind AI.
+    kind: "user",
+  };
+}
+
+/**
+ * Tạo layer AI (vector/ảo): luôn `readOnly`, mặc định ẩn chip ghi pixel.
+ * AI không bao giờ ghi thẳng vào layer người dùng (bất biến AI-DRAWING-OPERATIONS §1.1).
+ */
+export function createAiLayer(
+  name = "AI (Gợi ý)",
+  overrides: Partial<LayerItem> = {},
+): LayerItem {
+  return {
+    id: overrides.id ?? `ai-${Date.now().toString(36)}`,
+    name,
+    visible: true,
+    opacity: 100,
+    blend: "normal",
+    createdAt: Date.now(),
+    ...overrides,
+    // Bất biến: layer AI luôn là kind "ai", readOnly và bị khóa — không cho override.
+    kind: "ai",
+    readOnly: true,
+    locked: true,
+  };
+}
+
+/**
+ * Chuẩn hoá 1 layer đọc từ IndexedDB/JSON về dạng v2.
+ * Dữ liệu Schema v1 thiếu `kind`/`blend`/`createdAt` → tự suy ra.
+ */
+export function normalizeLayer(raw: unknown): LayerItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || typeof r.name !== "string") return null;
+  if (r.kind === "ai") {
+    return createAiLayer(r.name, {
+      id: r.id,
+      visible: r.visible !== false,
+      opacity: typeof r.opacity === "number" ? r.opacity : 100,
+      blend: (r.blend as LayerBlend) ?? "normal",
+      createdAt: typeof r.createdAt === "number" ? r.createdAt : Date.now(),
+    });
+  }
+  return {
+    id: r.id,
+    name: r.name,
+    kind: "user",
+    visible: r.visible !== false,
+    locked: r.locked === true,
+    opacity: typeof r.opacity === "number" ? r.opacity : 100,
+    blend: (r.blend as LayerBlend) ?? "normal",
+    createdAt: typeof r.createdAt === "number" ? r.createdAt : Date.now(),
+    readOnly: r.readOnly === true ? true : undefined,
+  };
+}
+
+/** Đọc mảng layer cũ (hoặc không hợp lệ) về mảng v2 đã chuẩn hoá. */
+export function normalizeLayers(raw: unknown): LayerItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(normalizeLayer)
+    .filter((l): l is LayerItem => l !== null);
+}
 
 // ─── Layout Definitions ────────────────────────────────────────────────────────
 

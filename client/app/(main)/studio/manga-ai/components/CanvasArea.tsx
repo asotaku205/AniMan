@@ -67,7 +67,7 @@ type Props = {
   cancelText?: () => void;
   // Analysis & Review
   analyzing: boolean;
-  analysisResult?: { score: number; items: string[] } | null;
+  analysisResult?: { items: string[] } | null;
   analysisError?: string | null;
   reviewResult?: AiDrawingReviewResponse | null;
   selectedFindingIndex?: number | null;
