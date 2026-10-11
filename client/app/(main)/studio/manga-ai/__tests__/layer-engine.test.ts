@@ -66,9 +66,10 @@ describe("buildCompositePlan (AC-L1.1–L1.4)", () => {
     ["b", fakeCanvas("b")],
     ["c", fakeCanvas("c")],
   ]);
+  const get = (id: string) => sources.get(id);
 
   it("vẽ từ dưới đáy lên: index 0 vẽ sau cùng (nằm trên tất cả)", () => {
-    const plan = buildCompositePlan([A, B, C], sources);
+    const plan = buildCompositePlan([A, B, C], get);
     expect(plan.map((op) => op.layerId)).toEqual(["c", "b", "a"]);
     expect(plan.map((op) => op.order)).toEqual([0, 1, 2]);
   });
@@ -76,7 +77,7 @@ describe("buildCompositePlan (AC-L1.1–L1.4)", () => {
   it("bỏ layer ẩn (visible=false) khỏi lần render", () => {
     const plan = buildCompositePlan(
       [A, { ...B, visible: false }, C],
-      sources,
+      get,
     );
     expect(plan.map((op) => op.layerId)).toEqual(["c", "a"]);
   });
@@ -84,17 +85,17 @@ describe("buildCompositePlan (AC-L1.1–L1.4)", () => {
   it("mỗi layer có alpha đúng theo opacity của nó", () => {
     const plan = buildCompositePlan(
       [{ ...A, opacity: 40 }, B, { ...C, opacity: 100 }],
-      sources,
+      get,
     );
     const byId = Object.fromEntries(plan.map((op) => [op.layerId, op.alpha]));
     expect(byId).toEqual({ a: 0.4, b: 1, c: 1 });
   });
 
   it("layer không có bitmap (chưa vẽ) bị bỏ qua", () => {
-    const plan = buildCompositePlan([A, B, C], sources);
+    const plan = buildCompositePlan([A, B, C], get);
     const onlyA = buildCompositePlan(
       [A, B, C],
-      new Map([["a", sources.get("a")!]]),
+      (id) => (id === "a" ? sources.get("a") : undefined),
     );
     expect(plan).toHaveLength(3);
     // chỉ layer "a" có bitmap → b, c bị bỏ qua
@@ -103,7 +104,7 @@ describe("buildCompositePlan (AC-L1.1–L1.4)", () => {
 
   it("layer kind:'ai' không tham gia composite (RC-5 — layer ảo)", () => {
     const ai = createAiLayer("AI test");
-    const plan = buildCompositePlan([A, ai, C], sources);
+    const plan = buildCompositePlan([A, ai, C], get);
     expect(plan.map((op) => op.layerId)).toEqual(["c", "a"]);
     expect(plan.some((op) => op.layerId === ai.id)).toBe(false);
   });
@@ -112,7 +113,7 @@ describe("buildCompositePlan (AC-L1.1–L1.4)", () => {
     const ai = createAiLayer();
     const plan = buildCompositePlan(
       [A, { ...B, visible: false }, ai, C],
-      sources,
+      get,
     );
     expect(plan.map((op) => op.layerId)).toEqual(["c", "a"]);
   });
@@ -120,7 +121,7 @@ describe("buildCompositePlan (AC-L1.1–L1.4)", () => {
   it("blend của từng layer được giữ nguyên trong plan", () => {
     const plan = buildCompositePlan(
       [{ ...A, blend: "multiply" }, B, { ...C, blend: "screen" }],
-      sources,
+      get,
     );
     expect(plan.map((op) => op.blend)).toEqual([
       "screen",

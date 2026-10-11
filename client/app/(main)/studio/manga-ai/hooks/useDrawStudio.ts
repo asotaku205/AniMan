@@ -557,11 +557,19 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const renderComposite = useCallback(() => {
     const display = canvasRef.current;
     if (!display || !activePanel) return;
-    compositeTo(display, buildCompositePlan(layers, layerCanvasesRef.current), {
-      background: "#ffffff",
-      width: display.width,
-      height: display.height,
-    });
+    // Bitmap được lưu theo key `panelId::layerId` → truyền hàm tra theo panel
+    compositeTo(
+      display,
+      buildCompositePlan(
+        layers,
+        (layerId) => layerCanvasesRef.current.get(`${activePanel}::${layerId}`),
+      ),
+      {
+        background: "#ffffff",
+        width: display.width,
+        height: display.height,
+      },
+    );
   }, [layers, activePanel]);
 
   /**

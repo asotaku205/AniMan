@@ -14,7 +14,14 @@
 
 import type { LayerBlend, LayerItem } from "../data";
 
-export type LayerSourceMap = Map<string, HTMLCanvasElement>;
+/**
+ * Hàm tra bitmap của một layer. `useDrawStudio` giữ bitmap theo key
+ * `panelId::layerId` nên truyền hàm đóng theo panel vào đây — tránh được
+ * lỗi trộn key giữa các panel.
+ */
+export type LayerSourceLookup = (
+  layerId: string,
+) => HTMLCanvasElement | null | undefined;
 
 /** Một bước vẽ trong lần composite — đã sắp thứ tự từ dưới đáy lên. */
 export interface CompositeOp {
@@ -76,14 +83,14 @@ export function layerCanvasSize(
  */
 export function buildCompositePlan(
   layers: readonly LayerItem[],
-  sources: LayerSourceMap,
+  getSource: LayerSourceLookup,
 ): CompositeOp[] {
   const ops: CompositeOp[] = [];
   for (let i = layers.length - 1; i >= 0; i--) {
     const layer = layers[i];
     if (!layer.visible) continue;
     if (layer.kind === "ai") continue;
-    const canvas = sources.get(layer.id);
+    const canvas = getSource(layer.id);
     if (!canvas) continue;
     ops.push({
       layerId: layer.id,
