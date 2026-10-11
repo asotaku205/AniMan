@@ -1,10 +1,19 @@
 import type { MangaProject, MangaProjectPage } from "../hooks/useMangaProjects";
-import type { LayerItem } from "../data";
+import type { LayerItem, PanelLayerStack, PanelStacks } from "../data";
+import { createUserLayer, normalizeLayers } from "../data";
 
 const DB_NAME = "animan_manga_studio_db";
+/**
+ * Phiên bản object store của IndexedDB — cấu trúc store không đổi nên giữ 1.
+ * Bản ghi tự mang trường `schemaVersion` và được migration lúc **đọc**
+ * (spec 02 §3.1–§3.2), không cần nâng version DB.
+ */
 const DB_VERSION = 1;
 const STORE_PROJECTS = "projects";
 const STORE_PAGE_DRAWINGS = "page_drawings";
+
+/** Schema hiện tại của bản ghi trang vẽ (spec 02 §3.1). */
+export const PAGE_DRAWING_SCHEMA_VERSION = 2;
 
 // Helper tạo key trang vẽ: tách biệt tuyệt đối theo projectId và pageNumber
 export function makePageKey(projectId: string, pageNumber: number): string {
@@ -13,10 +22,15 @@ export function makePageKey(projectId: string, pageNumber: number): string {
 
 export interface StoredPageDrawing {
   id: string; // `${projectId}_p${pageNumber}`
+  /** Vắng mặt (hoặc < 2) = bản ghi Schema v1. */
+  schemaVersion?: number;
   projectId: string;
   pageNumber: number;
   layoutId?: string;
-  panels: Record<string, string>; // panelId -> dataUrl base64
+  /** v2: ngăn xếp layer theo khung (spec 02 §2.2). */
+  stacks?: PanelStacks;
+  /** v1: panelId -> composite — vẫn ghi kèm để đọc ngược được (§3.2). */
+  panels?: Record<string, string>;
   layers?: LayerItem[];
   activeLayerId?: string;
   updatedAt: number;
@@ -181,6 +195,82 @@ export async function deleteProjectFromDB(projectId: string): Promise<void> {
 // ─── Page Drawing Operations (IndexedDB) ─────────────────────────────────────
 
 /**
+ * Đọc bản ghi **Schema v1** (panel phẳng) → ngăn xếp theo khung — spec 02 §3.2:
+ * - mỗi `panelId` trong `panels` thành một stack riêng;
+ * - bản ghi có `layers` meta → dùng meta đó (chuẩn hoá v2), pixel của panel giao
+ *   cho layer người dùng **đầu tiên**;
+ * - không có → một layer mặc định `Sketch (Phác thảo)`.
+ *
+ * Hàm thuần (không đụng IndexedDB) — test được ở môi trường node.
+ */
+export function migrateStoredPageToStacks(record: {
+  panels?: Record<string, string>;
+  layers?: unknown;
+  activeLayerId?: string;
+}): PanelStacks {
+  const stacks: PanelStacks = {};
+  const meta = normalizeLayers(record.layers);
+
+  for (const [panelId, dataUrl] of Object.entries(record.panels ?? {})) {
+    // Clone để mỗi panel có mảng/đối tượng layer RIÊNG (không dùng chung tham chiếu)
+    const layers =
+      meta.length > 0
+        ? meta.map((l) => ({ ...l }))
+        : [createUserLayer("Sketch (Phác thảo)")];
+
+    const pixels: Record<string, string> = {};
+    const pixelTarget = layers.find((l) => l.kind === "user");
+    if (dataUrl && pixelTarget) pixels[pixelTarget.id] = dataUrl;
+
+    const activeExists = layers.some((l) => l.id === record.activeLayerId);
+    stacks[panelId] = {
+      panelId,
+      layers,
+      activeLayerId: activeExists ? record.activeLayerId! : (layers[0]?.id ?? ""),
+      pixels,
+    };
+  }
+  return stacks;
+}
+
+/**
+ * Chuẩn hoá `stacks` đọc từ IndexedDB (bản ghi v2): bỏ entry hỏng,
+ * sửa `activeLayerId` trỏ sai, loại pixel mồ côi (layerId không còn tồn tại).
+ */
+export function normalizePanelStacks(raw: unknown): PanelStacks {
+  if (!raw || typeof raw !== "object") return {};
+  const out: PanelStacks = {};
+  for (const [panelId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue;
+    const s = value as Partial<PanelLayerStack>;
+    const layers = normalizeLayers(s.layers);
+    if (layers.length === 0) continue;
+
+    const activeLayerId = layers.some((l) => l.id === s.activeLayerId)
+      ? (s.activeLayerId as string)
+      : layers[0].id;
+
+    const pixels: Record<string, string> = {};
+    if (s.pixels && typeof s.pixels === "object") {
+      for (const [id, url] of Object.entries(s.pixels)) {
+        if (layers.some((l) => l.id === id) && typeof url === "string") {
+          pixels[id] = url;
+        }
+      }
+    }
+
+    out[panelId] = {
+      panelId,
+      layers,
+      activeLayerId,
+      pixels,
+      ...(s.aiOverlay && Array.isArray(s.aiOverlay.strokes) ? { aiOverlay: s.aiOverlay } : {}),
+    };
+  }
+  return out;
+}
+
+/**
  * Tải nét vẽ và layer của đúng trang trong đúng dự án
  */
 export async function getPageDrawingRecordFromDB(
@@ -222,9 +312,32 @@ export async function getPageDrawingFromDB(
 }
 
 /**
- * Lưu nét vẽ và layer của đúng trang trong đúng dự án vào IndexedDB
+ * Tải **ngăn xếp theo khung** (Schema v2) của trang — spec 02 §3.3.
+ * Bản ghi v1 được migration tự động lúc đọc; `legacyPanels` trả về composite
+ * v1 (nếu có) để các nơi chưa chuyển code vẫn đọc được.
  */
-export async function savePageDrawingToDB(
+export async function getPageStacksFromDB(
+  projectId: string,
+  pageNumber: number,
+): Promise<{
+  stacks: PanelStacks;
+  legacyPanels: Record<string, string> | null;
+}> {
+  const record = await getPageDrawingRecordFromDB(projectId, pageNumber);
+  if (!record) return { stacks: {}, legacyPanels: null };
+  const stacks =
+    record.schemaVersion === PAGE_DRAWING_SCHEMA_VERSION && record.stacks
+      ? normalizePanelStacks(record.stacks)
+      : migrateStoredPageToStacks(record);
+  return { stacks, legacyPanels: record.panels ?? null };
+}
+
+/**
+ * Lưu nét vẽ và layer của đúng trang trong đúng dự án vào IndexedDB
+ * — **Schema v1** (composite phẳng). Chỉ còn dùng cho đường dẫn cũ
+ * (`useMangaProjects`/`saveDraft`) tới khi hook chuyển sang `stacks` (Phase 2).
+ */
+export async function savePageDrawingV1ToDB(
   projectId: string,
   pageNumber: number,
   panels: Record<string, string>,
@@ -244,6 +357,45 @@ export async function savePageDrawingToDB(
       panels,
       layers,
       activeLayerId,
+      updatedAt: Date.now(),
+    };
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_PAGE_DRAWINGS, "readwrite");
+      const store = tx.objectStore(STORE_PAGE_DRAWINGS);
+      const req = store.put(data);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    // fallback
+  }
+}
+
+/**
+ * Lưu **ngăn xếp layer theo khung** (Schema v2) — spec 02 §3.3.
+ * Luôn ghi `schemaVersion: 2` + `stacks`; đồng thời ghi `panels` (composite)
+ * để dữ liệu cũ đọc ngược được (§3.2).
+ */
+export async function savePageDrawingToDB(
+  projectId: string,
+  pageNumber: number,
+  stacks: PanelStacks,
+  layoutId?: string,
+  panels?: Record<string, string>,
+): Promise<void> {
+  if (!projectId || !pageNumber) return;
+  try {
+    const db = await openDB();
+    const key = makePageKey(projectId, pageNumber);
+    const data: StoredPageDrawing = {
+      id: key,
+      schemaVersion: PAGE_DRAWING_SCHEMA_VERSION,
+      projectId,
+      pageNumber,
+      layoutId,
+      stacks,
+      panels,
       updatedAt: Date.now(),
     };
 

@@ -1,5 +1,7 @@
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
+import type { AiStrokePath } from "@/lib/ai-drawing-api";
+
 export type StudioMode   = "projects" | "draw" | "storyboard" | "publish";
 export type SceneType    = "auto" | "action" | "dialogue" | "landscape" | "closeup" | "wide";
 export type RightTab     = "ai" | "layout" | "layers";
@@ -136,6 +138,42 @@ export function normalizeLayers(raw: unknown): LayerItem[] {
   return raw
     .map(normalizeLayer)
     .filter((l): l is LayerItem => l !== null);
+}
+
+/**
+ * Ngăn xếp layer của **MỘT khung** (spec 02 §2.2) — mỗi panel có bộ layer riêng.
+ * `layers` index 0 = lớp trên cùng (đầu danh sách UI).
+ */
+export interface PanelLayerStack {
+  panelId: string;
+  layers: LayerItem[];
+  activeLayerId: string;
+  /**
+   * Bitmap đã nén của từng layer **người dùng**, key = layerId.
+   * Layer `kind:"ai"` không có entry ở đây (layer ảo/vector — RC-5).
+   */
+  pixels: Record<string, string>; // dataURL (image/png)
+  /** Nét AI dạng vector — vẫn còn nguyên sau F5. */
+  aiOverlay?: {
+    strokes: AiStrokePath[];
+    summary?: string;
+    generatedAt: number;
+    model?: string;
+  };
+}
+
+/** Toàn bộ ngăn xếp của một trang: panelId → stack. */
+export type PanelStacks = Record<string, PanelLayerStack>;
+
+/** Bộ layer mặc định khi mở khung chưa từng vẽ (giống khởi tạo của studio). */
+export function createDefaultPanelStack(panelId: string): PanelLayerStack {
+  const layers = [
+    createUserLayer("Sketch (Phác thảo)", { id: "l1" }),
+    createUserLayer("Ink (Đi nét)", { id: "l2" }),
+    createUserLayer("Tone (Đổ bóng)", { id: "l3" }),
+    createUserLayer("Text (Thoại)", { id: "l4" }),
+  ];
+  return { panelId, layers, activeLayerId: layers[0].id, pixels: {} };
 }
 
 // ─── Layout Definitions ────────────────────────────────────────────────────────

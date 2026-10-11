@@ -7,7 +7,7 @@ import {
   getAllProjectsFromDB,
   saveProjectToDB,
   deleteProjectFromDB,
-  savePageDrawingToDB,
+  savePageDrawingV1ToDB,
   cleanupLegacyMockData,
 } from "../lib/mangaStorage";
 
@@ -72,7 +72,7 @@ export function useMangaProjects() {
                   await saveProjectToDB(p);
                   for (const pg of p.pages || []) {
                     if (pg.panels && Object.keys(pg.panels).length > 0) {
-                      await savePageDrawingToDB(p.id, pg.pageNumber, pg.panels, pg.layoutId);
+                      await savePageDrawingV1ToDB(p.id, pg.pageNumber, pg.panels, pg.layoutId);
                     }
                   }
                 }
@@ -196,7 +196,7 @@ export function useMangaProjects() {
       if (!activeProjectId) return;
 
       // 1. Lưu vào IndexedDB bất đồng bộ (tránh giới hạn 5MB của localStorage)
-      savePageDrawingToDB(activeProjectId, pageNumber, panels, layoutId, layers, activeLayerId);
+      savePageDrawingV1ToDB(activeProjectId, pageNumber, panels, layoutId, layers, activeLayerId);
 
       // 2. Đồng bộ vào state React
       setProjects((prevProjects) => {

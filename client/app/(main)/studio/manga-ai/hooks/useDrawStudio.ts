@@ -24,7 +24,7 @@ import {
   type AiStrokePath,
   type AiDrawingToolHint,
 } from "@/lib/ai-drawing-api";
-import { getPageDrawingFromDB, savePageDrawingToDB } from "../lib/mangaStorage";
+import { getPageDrawingFromDB, savePageDrawingV1ToDB } from "../lib/mangaStorage";
 import { buildCompositePlan, compositeTo } from "../lib/layerEngine";
 
 // ─── Derived constants (stable — defined outside hook) ────────────────────────
@@ -485,7 +485,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const syncToStorage = useCallback(
     (data: Record<string, string>, targetPage: number) => {
       if (!projectId) return;
-      savePageDrawingToDB(projectId, targetPage, data, layout.id);
+      savePageDrawingV1ToDB(projectId, targetPage, data, layout.id);
       setIsSaved(true);
       if (onSavePageData) {
         onSavePageData(targetPage, layout.id, data);
@@ -496,7 +496,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   const saveDraft = useCallback(() => {
     if (!projectId) return;
-    savePageDrawingToDB(projectId, page, panelData, layout.id);
+    savePageDrawingV1ToDB(projectId, page, panelData, layout.id);
     setIsSaved(true);
     if (onSavePageData) {
       onSavePageData(page, layout.id, panelData);
