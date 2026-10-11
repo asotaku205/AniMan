@@ -536,10 +536,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         const next = document.createElement("canvas");
         next.width = display.width;
         next.height = display.height;
-        if (layerCanvas) {
-          next
-            .getContext("2d")
-            ?.drawImage(layerCanvas, 0, 0, next.width, next.height);
+        // `willReadFrequently`: ta hay đọc lại pixel (undo/preview shape),
+        // đặt ngay lúc tạo vì option chỉ có hiệu lực ở lần getContext đầu tiên.
+        const nextCtx = next.getContext("2d", { willReadFrequently: true });
+        if (layerCanvas && nextCtx) {
+          nextCtx.drawImage(layerCanvas, 0, 0, next.width, next.height);
         }
         layerCanvas = next;
         layerCanvasesRef.current.set(key, layerCanvas);
@@ -550,11 +551,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   );
 
   /**
-   * Render các layer lên canvas hiển thị rồi lưu bitmap phẳng của panel
-   * (`panelData[panelId]`) — trang xem trước và xuất file dùng bản này.
-   * Nét AI không nằm trong đây (C2: xuất trang không kèm nét AI).
+   * Chỉ render các layer lên canvas hiển thị — dùng khi **đang vẽ** (mỗi lần
+   * di chuột), không encode PNG, không ghi IndexedDB.
    */
-  const compositeNow = useCallback(() => {
+  const renderComposite = useCallback(() => {
     const display = canvasRef.current;
     if (!display || !activePanel) return;
     compositeTo(display, buildCompositePlan(layers, layerCanvasesRef.current), {
@@ -562,13 +562,25 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       width: display.width,
       height: display.height,
     });
+  }, [layers, activePanel]);
+
+  /**
+   * Render + lưu bitmap phẳng của panel (`panelData[panelId]`) — trang xem trước
+   * và xuất file dùng bản này. Nét AI không nằm trong đây (C2: xuất không kèm
+   * nét AI). Gọi khi **kết thúc** một thao tác, không gọi khi đang kéo chuột
+   * (mỗi lần gọi là một lần encode PNG + ghi IndexedDB).
+   */
+  const compositeNow = useCallback(() => {
+    renderComposite();
+    const display = canvasRef.current;
+    if (!display || !activePanel) return;
     const dataUrl = display.toDataURL();
     setPanelData((prev) => {
       const next = { ...prev, [activePanel]: dataUrl };
       setTimeout(() => syncToStorage(next, page), 0);
       return next;
     });
-  }, [layers, activePanel, page, syncToStorage]);
+  }, [renderComposite, activePanel, page, syncToStorage]);
 
   /**
    * Nạp dữ liệu trang mới xong → dọn bitmap layer của trang cũ và (nếu panel
@@ -1058,16 +1070,16 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
           ctx.lineTo(curX, curY);
           ctx.stroke();
         }
-        compositeNow();
+        renderComposite();
         return;
       }
 
       // Xử lý nét vẽ tự do
       ctx.lineTo(curX, curY);
       ctx.stroke();
-      compositeNow();
+      renderComposite();
     },
-    [getCtx, tool, color, size, shapeType, shapeFill, compositeNow],
+    [getCtx, tool, color, size, shapeType, shapeFill, renderComposite],
   );
 
   const up = useCallback(() => {
