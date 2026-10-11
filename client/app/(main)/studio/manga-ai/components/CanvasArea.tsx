@@ -40,7 +40,10 @@ type Props = {
   panelFullscreen: boolean;
   panelAspect: number;
   // Canvas
+  /** Canvas hiển thị (chỉ đọc — RC-2): luôn chứa bản composite các layer */
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  /** Canvas input mờ phủ trên: nhận toàn bộ sự kiện vẽ (RC-2) */
+  inputRef: React.RefObject<HTMLCanvasElement | null>;
   tool: DrawTool;
   down: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   move: (e: React.PointerEvent<HTMLCanvasElement>) => void;
@@ -97,6 +100,7 @@ export function CanvasArea({
   panelFullscreen,
   panelAspect,
   canvasRef,
+  inputRef,
   tool,
   down,
   move,
@@ -257,9 +261,17 @@ export function CanvasArea({
                 : { position: "absolute", inset: 0, borderRadius: "0.75rem" }
             }
           >
-            {/* Drawing canvas */}
+            {/* Canvas hiển thị — CHỈ ĐỌC, không nhận sự kiện (RC-2) */}
             <canvas
               ref={canvasRef}
+              aria-hidden
+              className="absolute inset-0 w-full h-full z-30 pointer-events-none"
+              style={{ touchAction: "none" }}
+            />
+
+            {/* Canvas input mờ phủ trên — nhận toàn bộ sự kiện vẽ (RC-2) */}
+            <canvas
+              ref={inputRef}
               className="absolute inset-0 w-full h-full z-30"
               style={{
                 cursor:

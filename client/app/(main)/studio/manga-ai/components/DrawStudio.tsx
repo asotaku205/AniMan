@@ -124,6 +124,7 @@ export function DrawStudio({
           panelFullscreen={s.panelFullscreen}
           panelAspect={s.panelAspect}
           canvasRef={s.canvasRef}
+          inputRef={s.inputRef}
           tool={s.tool}
           down={s.down}
           move={s.move}

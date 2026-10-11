@@ -25,6 +25,7 @@ import {
   type AiDrawingToolHint,
 } from "@/lib/ai-drawing-api";
 import { getPageDrawingFromDB, savePageDrawingToDB } from "../lib/mangaStorage";
+import { buildCompositePlan, compositeTo } from "../lib/layerEngine";
 
 // ─── Derived constants (stable — defined outside hook) ────────────────────────
 
@@ -201,9 +202,18 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   } = options;
 
   // Canvas refs
+  /** Canvas hiển thị (chỉ đọc — RC-2): luôn giữ bản composite của các layer */
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const historyRef = useRef<ImageData[]>([]);
-  const futureRef = useRef<ImageData[]>([]);
+  /** Canvas input mờ phủ trên cùng: nhận toàn bộ pointer event (RC-2) */
+  const inputRef = useRef<HTMLCanvasElement>(null);
+  /** Bitmap offscreen của từng layer, key = `${panelId}::${layerId}` */
+  const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  /**
+   * Lịch sử undo theo **từng layer** (BR-T08): mỗi entry ghi lại bitmap của
+   * đúng layer sắp bị thay đổi, nên undo không kéo theo layer khác.
+   */
+  const historyRef = useRef<{ layerId: string; data: ImageData }[]>([]);
+  const futureRef = useRef<{ layerId: string; data: ImageData }[]>([]);
   const isDrawing = useRef(false);
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
   const previewSnapshotRef = useRef<ImageData | null>(null);
@@ -364,6 +374,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   useEffect(() => {
     layersRef.current = layers;
   }, [layers]);
+  /** Mirror `panelData` cho effect resize/nạp ảnh (tránh dependency vòng) */
+  const panelDataRef = useRef(panelData);
+  useEffect(() => {
+    panelDataRef.current = panelData;
+  }, [panelData]);
 
   const addLayer = useCallback(
     (name?: string) => {
@@ -391,6 +406,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         showToast("Đã xóa layer!");
         return next;
       });
+      // Giải phóng bitmap của layer vừa xóa (mọi panel)
+      for (const key of [...layerCanvasesRef.current.keys()]) {
+        if (key.endsWith(`::${id}`)) layerCanvasesRef.current.delete(key);
+      }
     },
     [activeLayerId, showToast],
   );
@@ -460,32 +479,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   }, [currentLayoutId]);
 
   // ── Auto-save & Local persistence (IndexedDB tách biệt theo projectId & page) ──
-
-  // Tự động nạp nét vẽ của đúng trang trong đúng dự án (IndexedDB)
-  useEffect(() => {
-    if (!projectId) {
-      setPanelData({});
-      return;
-    }
-    let isCancelled = false;
-    async function loadData() {
-      try {
-        const loaded = await getPageDrawingFromDB(projectId!, page);
-        if (!isCancelled) {
-          setPanelData(loaded || {});
-          setIsSaved(true);
-        }
-      } catch {
-        if (!isCancelled) {
-          setPanelData({});
-        }
-      }
-    }
-    loadData();
-    return () => {
-      isCancelled = true;
-    };
-  }, [projectId, page]);
+  // (Effect nạp dữ liệu trang nằm sau phần canvas helpers — nó gọi
+  //  `resyncLayersWithData`, nên phải được khai báo trước.)
 
   const syncToStorage = useCallback(
     (data: Record<string, string>, targetPage: number) => {
@@ -524,99 +519,224 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   // ── Canvas helpers ────────────────────────────────────────────────────────────
 
-  const getCtx = useCallback(
-    () => canvasRef.current?.getContext("2d") ?? null,
-    [],
+  /** Lấy (tự tạo nếu chưa có) bitmap offscreen của một layer — RC-1.
+   * Tự đổi kích thước kèm canvas hiển thị và **giữ lại nội dung** cũ.
+   */
+  const getLayerCanvas = useCallback(
+    (layerId: string): HTMLCanvasElement | null => {
+      const display = canvasRef.current;
+      if (!display || !layerId) return null;
+      const key = `${activePanel ?? "_"}::${layerId}`;
+      let layerCanvas = layerCanvasesRef.current.get(key);
+      if (
+        !layerCanvas ||
+        layerCanvas.width !== display.width ||
+        layerCanvas.height !== display.height
+      ) {
+        const next = document.createElement("canvas");
+        next.width = display.width;
+        next.height = display.height;
+        if (layerCanvas) {
+          next
+            .getContext("2d")
+            ?.drawImage(layerCanvas, 0, 0, next.width, next.height);
+        }
+        layerCanvas = next;
+        layerCanvasesRef.current.set(key, layerCanvas);
+      }
+      return layerCanvas;
+    },
+    [activePanel],
   );
 
+  /**
+   * Render các layer lên canvas hiển thị rồi lưu bitmap phẳng của panel
+   * (`panelData[panelId]`) — trang xem trước và xuất file dùng bản này.
+   * Nét AI không nằm trong đây (C2: xuất trang không kèm nét AI).
+   */
+  const compositeNow = useCallback(() => {
+    const display = canvasRef.current;
+    if (!display || !activePanel) return;
+    compositeTo(display, buildCompositePlan(layers, layerCanvasesRef.current), {
+      background: "#ffffff",
+      width: display.width,
+      height: display.height,
+    });
+    const dataUrl = display.toDataURL();
+    setPanelData((prev) => {
+      const next = { ...prev, [activePanel]: dataUrl };
+      setTimeout(() => syncToStorage(next, page), 0);
+      return next;
+    });
+  }, [layers, activePanel, page, syncToStorage]);
+
+  /**
+   * Nạp dữ liệu trang mới xong → dọn bitmap layer của trang cũ và (nếu panel
+   * đang mở) ghi bitmap đã lưu vào layer dưới đáy rồi render lại.
+   * Gọi từ callback async của effect nạp dữ liệu — không set state trong effect.
+   */
+  const resyncLayersWithData = useCallback(
+    (data: Record<string, string>) => {
+      layerCanvasesRef.current.clear();
+      historyRef.current = [];
+      futureRef.current = [];
+      if (!activePanel) return;
+      const saved = data[activePanel];
+      const bottomId = layersRef.current[layersRef.current.length - 1]?.id;
+      if (bottomId && saved) {
+        const layerCanvas = getLayerCanvas(bottomId);
+        if (layerCanvas) {
+          const img = new Image();
+          img.onload = () => {
+            layerCanvas
+              .getContext("2d")
+              ?.drawImage(img, 0, 0, layerCanvas.width, layerCanvas.height);
+            compositeNow();
+          };
+          img.src = saved;
+          return;
+        }
+      }
+      // Không có dữ liệu đã lưu cho panel này → xóa trắng canvas hiển thị
+      const display = canvasRef.current;
+      const ctx = display?.getContext("2d");
+      if (display && ctx) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, display.width, display.height);
+      }
+    },
+    [activePanel, getLayerCanvas, compositeNow],
+  );
+
+  // RC-4: đổi bất kỳ thuộc tính nào của layer (ẩn/độ mờ/blend/thứ tự/xóa)
+  // → render lại composite ngay lập tức.
+  // Bỏ qua khi panel chưa từng có bitmap nào (tránh ghi đè dữ liệu chưa nạp).
+  useEffect(() => {
+    if (!activePanel) return;
+    const hasBitmap = layers.some((l) =>
+      layerCanvasesRef.current.has(`${activePanel}::${l.id}`),
+    );
+    if (!hasBitmap) return;
+    compositeNow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layers, activePanel]);
+
+  /** Context của **layer đang chọn** — mọi nét vẽ ghi vào đây, không ghi vào display */
+  const getCtx = useCallback(() => {
+    if (!activePanel || !activeLayerId) return null;
+    return getLayerCanvas(activeLayerId)?.getContext("2d") ?? null;
+  }, [activePanel, activeLayerId, getLayerCanvas]);
+
+  /**
+   * Ghi lại bitmap của layer đang chọn **trước khi thay đổi nó**
+   * (gọi ở đầu mỗi thao tác) → 1 lần Ctrl+Z hoàn nguyên đúng 1 thao tác,
+   * không ảnh hưởng layer khác (BR-T08).
+   */
   const snapshot = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = getCtx();
-    if (!canvas || !ctx) return;
+    const layerCanvas = activeLayerId ? getLayerCanvas(activeLayerId) : null;
+    if (!layerCanvas) return;
+    const ctx = layerCanvas.getContext("2d");
+    if (!ctx) return;
     historyRef.current = [
       ...historyRef.current.slice(-19),
-      ctx.getImageData(0, 0, canvas.width, canvas.height),
+      {
+        layerId: activeLayerId,
+        data: ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height),
+      },
     ];
     futureRef.current = [];
     setCanUndo(true);
     setCanRedo(false);
     setIsSaved(false);
-    if (activePanel) {
-      const dataUrl = canvas.toDataURL();
-      setPanelData((prev) => {
-        const next = { ...prev, [activePanel]: dataUrl };
-        setTimeout(() => syncToStorage(next, page), 0);
-        return next;
-      });
-    }
-  }, [getCtx, activePanel, page, syncToStorage]);
+  }, [activeLayerId, getLayerCanvas]);
 
+  /** Hoàn nguyên 1 bước: trả bitmap về đúng layer mà thao tác đó đã sửa. */
   const undo = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = getCtx();
-    if (!canvas || !ctx || historyRef.current.length === 0) return;
+    const entry = historyRef.current[historyRef.current.length - 1];
+    if (!entry) return;
+    const layerCanvas = getLayerCanvas(entry.layerId);
+    const ctx = layerCanvas?.getContext("2d");
+    if (!layerCanvas || !ctx) return;
     futureRef.current = [
       ...futureRef.current,
-      ctx.getImageData(0, 0, canvas.width, canvas.height),
+      { layerId: entry.layerId, data: ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height) },
     ];
-    const prev = historyRef.current[historyRef.current.length - 1];
     historyRef.current = historyRef.current.slice(0, -1);
-    ctx.putImageData(prev, 0, 0);
+    ctx.putImageData(entry.data, 0, 0);
+    // Chuyển sang layer vừa hoàn nguyên để người dùng thấy ngay kết quả
+    setActiveLayerId(entry.layerId);
+    compositeNow();
     setCanUndo(historyRef.current.length > 0);
     setCanRedo(true);
     setIsSaved(false);
-    if (activePanel) {
-      const dataUrl = canvas.toDataURL();
-      setPanelData((d) => {
-        const next = { ...d, [activePanel]: dataUrl };
-        setTimeout(() => syncToStorage(next, page), 0);
-        return next;
-      });
-    }
-  }, [getCtx, activePanel, page, syncToStorage]);
+  }, [getLayerCanvas, compositeNow]);
 
+  /** Làm lại bước vừa bị undo. */
   const redo = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = getCtx();
-    if (!canvas || !ctx || futureRef.current.length === 0) return;
-    const next = futureRef.current[futureRef.current.length - 1];
-    futureRef.current = futureRef.current.slice(0, -1);
+    const entry = futureRef.current[futureRef.current.length - 1];
+    if (!entry) return;
+    const layerCanvas = getLayerCanvas(entry.layerId);
+    const ctx = layerCanvas?.getContext("2d");
+    if (!layerCanvas || !ctx) return;
     historyRef.current = [
       ...historyRef.current,
-      ctx.getImageData(0, 0, canvas.width, canvas.height),
+      { layerId: entry.layerId, data: ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height) },
     ];
-    ctx.putImageData(next, 0, 0);
-    setCanUndo(true);
+    futureRef.current = futureRef.current.slice(0, -1);
+    ctx.putImageData(entry.data, 0, 0);
+    setActiveLayerId(entry.layerId);
+    compositeNow();
     setCanRedo(futureRef.current.length > 0);
+    setCanUndo(true);
     setIsSaved(false);
-    if (activePanel) {
-      const dataUrl = canvas.toDataURL();
-      setPanelData((d) => {
-        const next = { ...d, [activePanel]: dataUrl };
-        setTimeout(() => syncToStorage(next, page), 0);
-        return next;
-      });
-    }
-  }, [getCtx, activePanel, page, syncToStorage]);
+  }, [getLayerCanvas, compositeNow]);
 
+  /** Xóa **layer đang chọn** (không đụng layer khác) rồi composite lại. */
   const clearCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = getCtx();
-    if (!canvas || !ctx) return;
+    const layerCanvas = activeLayerId ? getLayerCanvas(activeLayerId) : null;
+    const ctx = layerCanvas?.getContext("2d");
+    if (!layerCanvas || !ctx) return;
     snapshot();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (activePanel) {
-      setPanelData((d) => {
-        const next = { ...d, [activePanel]: "" };
-        setTimeout(() => syncToStorage(next, page), 0);
-        return next;
-      });
-    }
+    ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+    compositeNow();
     setReviewResult(null);
     setAnalysisError(null);
     setSelectedFindingIndex(null);
     setShowAnalysis(false);
-  }, [getCtx, snapshot, activePanel, page, syncToStorage]);
+  }, [getLayerCanvas, activeLayerId, snapshot, compositeNow]);
+
+  // Tự động nạp nét vẽ của đúng trang trong đúng dự án (IndexedDB).
+  // Sau khi có dữ liệu → đồng bộ bitmap layer (xem `resyncLayersWithData`).
+  useEffect(() => {
+    if (!projectId) {
+      setPanelData({});
+      layerCanvasesRef.current.clear();
+      historyRef.current = [];
+      futureRef.current = [];
+      return;
+    }
+    let isCancelled = false;
+    async function loadData() {
+      try {
+        const loaded = await getPageDrawingFromDB(projectId!, page);
+        if (isCancelled) return;
+        const data = loaded || {};
+        setPanelData(data);
+        setIsSaved(true);
+        // Dữ liệu trang mới đã có → đồng bộ bitmap layer với dữ liệu này
+        resyncLayersWithData(data);
+      } catch {
+        if (!isCancelled) {
+          setPanelData({});
+        }
+      }
+    }
+    loadData();
+    return () => {
+      isCancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, page]);
 
   // Phím tắt bàn phím (Ctrl+Z, Ctrl+Y, Ctrl+S)
   useEffect(() => {
@@ -656,19 +776,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       ctx.fillStyle = color;
       ctx.textBaseline = "middle";
       ctx.fillText(text, textInputPos.x, textInputPos.y);
-      if (activePanel) {
-        const dataUrl = canvas.toDataURL();
-        setPanelData((d) => {
-          const next = { ...d, [activePanel]: dataUrl };
-          setTimeout(() => syncToStorage(next, page), 0);
-          return next;
-        });
-      }
+      compositeNow();
       setShowTextInput(false);
       setTextInputPos(null);
       showToast("Đã thêm lời thoại!");
     },
-    [getCtx, textInputPos, size, color, activePanel, snapshot, page, syncToStorage, showToast],
+    [getCtx, textInputPos, size, color, snapshot, compositeNow, showToast],
   );
 
   const cancelText = useCallback(() => {
@@ -752,32 +865,53 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     });
   }, [layout, panelData, page, showToast]);
 
-  // Resize canvas on panel change
+  // Đổi kích thước canvas theo panel & nạp bitmap đã lưu vào layer dưới đáy (RC-1)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !activePanel) return;
-    const ro = new ResizeObserver(() => {
+
+    let loadingSaved = false;
+    const applyLayout = () => {
       const rect = canvas.parentElement?.getBoundingClientRect();
-      if (!rect) return;
-      const ctx = canvas.getContext("2d");
+      if (!rect || rect.width < 1) return;
       canvas.width = rect.width;
       canvas.height = rect.height;
-      const saved = panelData[activePanel];
-      if (saved && ctx) {
-        const img = new Image();
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0);
-          historyRef.current = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
-          setCanUndo(false);
-          setCanRedo(false);
-        };
-        img.src = saved;
-      } else if (ctx) {
-        historyRef.current = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
-        setCanUndo(false);
-        setCanRedo(false);
-      }
+
+      // Lịch sử undo gắn theo panel → reset khi đổi panel
+      historyRef.current = [];
       futureRef.current = [];
+      setCanUndo(false);
+      setCanRedo(false);
+
+      // Panel chưa từng mở trong phiên này → nạp bitmap đã lưu
+      // vào layer dưới đáy (Phase 2 sẽ lưu pixel theo từng layer).
+      const bottomId = layersRef.current[layersRef.current.length - 1]?.id;
+      const saved = panelDataRef.current[activePanel];
+      if (bottomId && saved && !layerCanvasesRef.current.has(`${activePanel}::${bottomId}`)) {
+        const layerCanvas = getLayerCanvas(bottomId);
+        if (layerCanvas) {
+          loadingSaved = true;
+          const img = new Image();
+          img.onload = () => {
+            layerCanvas
+              .getContext("2d")
+              ?.drawImage(img, 0, 0, layerCanvas.width, layerCanvas.height);
+            loadingSaved = false;
+            compositeNow();
+          };
+          img.onerror = () => {
+            loadingSaved = false;
+          };
+          img.src = saved;
+          return;
+        }
+      }
+      compositeNow();
+    };
+
+    applyLayout();
+    const ro = new ResizeObserver(() => {
+      if (!loadingSaved) applyLayout();
     });
     if (canvas.parentElement) ro.observe(canvas.parentElement);
     return () => ro.disconnect();
@@ -791,6 +925,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       if (!activePanel) return;
 
       const currentLayer = layers.find((l) => l.id === activeLayerId);
+      if (currentLayer?.kind === "ai" || currentLayer?.readOnly) {
+        showToast(
+          `Layer "${currentLayer?.name}" là layer AI — chỉ đọc, hãy chọn layer khác để vẽ!`,
+        );
+        return;
+      }
       if (currentLayer?.locked) {
         showToast(`Layer "${currentLayer.name}" đang bị khóa, hãy mở khóa để vẽ!`);
         return;
@@ -804,9 +944,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       const ctx = getCtx();
       if (!canvas || !ctx) return;
 
-      const layerAlpha =
-        currentLayer?.opacity !== undefined ? currentLayer.opacity / 100 : 1;
-      ctx.globalAlpha = layerAlpha;
+      // Lưu ý: opacity/blend của layer được áp **lúc composite** (RC-4),
+      // không nướng vào pixel → đổi opacity layer sau đó không mất nét.
 
       const rect = canvas.getBoundingClientRect();
       const px = e.clientX - rect.left;
@@ -816,19 +955,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       if (tool === "fill") {
         snapshot();
         floodFill(ctx, Math.floor(px), Math.floor(py), hexToRgba(color));
-        if (activePanel) {
-          const dataUrl = canvas.toDataURL();
-          setPanelData((d) => {
-            const next = { ...d, [activePanel]: dataUrl };
-            setTimeout(() => syncToStorage(next, page), 0);
-            return next;
-          });
-        }
+        compositeNow();
         return;
       }
 
       // 2. Công cụ hình học (Shape)
       if (tool === "shape") {
+        snapshot();
         isDrawing.current = true;
         startPosRef.current = { x: px, y: py };
         previewSnapshotRef.current = ctx.getImageData(
@@ -848,6 +981,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       }
 
       // 4. Các công cụ nét vẽ tự do (Pen, Brush, Eraser)
+      snapshot();
       isDrawing.current = true;
       ctx.beginPath();
       ctx.moveTo(px, py);
@@ -869,7 +1003,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
     },
-    [activePanel, getCtx, tool, color, size, snapshot, syncToStorage, page, layers, activeLayerId, showToast],
+    [activePanel, getCtx, tool, color, size, snapshot, compositeNow, layers, activeLayerId, showToast],
   );
 
   const move = useCallback(
@@ -924,14 +1058,16 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
           ctx.lineTo(curX, curY);
           ctx.stroke();
         }
+        compositeNow();
         return;
       }
 
       // Xử lý nét vẽ tự do
       ctx.lineTo(curX, curY);
       ctx.stroke();
+      compositeNow();
     },
-    [getCtx, tool, color, size, shapeType, shapeFill],
+    [getCtx, tool, color, size, shapeType, shapeFill, compositeNow],
   );
 
   const up = useCallback(() => {
@@ -945,7 +1081,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       ctx.globalCompositeOperation = "source-over";
       ctx.beginPath();
     }
-    snapshot();
+    compositeNow();
     setStrokeCount((n) => {
       const next = n + 1;
       if (next === 8 && !ghostType && activePanel) {
@@ -958,7 +1094,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       }
       return next;
     });
-  }, [activePanel, getCtx, ghostType, snapshot]);
+  }, [activePanel, getCtx, ghostType, compositeNow]);
 
   // ── AI actions ────────────────────────────────────────────────────────────────
 
@@ -1306,6 +1442,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   return {
     // Canvas ref
     canvasRef,
+    inputRef,
     // Drawing
     tool,
     setTool,
