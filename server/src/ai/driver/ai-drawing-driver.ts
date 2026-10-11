@@ -124,11 +124,17 @@ export class AiDrawingModelRegistry {
 export const GEMINI_DRAWING_MODEL_PROFILE: AiDrawingModelProfile = {
   id: "gemini-drawing-assistant",
   provider: "google-gemini",
-  modelId: "gemini-2.0-flash",
+  modelId: "gemini-flash-latest",
   description:
-    "Candidate vision model for structured composition guidance and drawing review.",
-  version: "1",
-  tasks: [AiDrawingTask.CompositionGuidance, AiDrawingTask.DrawingReview],
+    "Google Gemini Flash (Latest) — vision model for structured composition guidance, stroke guidance, pose guidance and drawing review.",
+  version: "2",
+  tasks: [
+    AiDrawingTask.CompositionGuidance,
+    AiDrawingTask.DrawingReview,
+    AiDrawingTask.StrokeGuidance,
+    AiDrawingTask.CompositionOverlay,
+    AiDrawingTask.PoseGuidance,
+  ],
   capabilities: {
     textInput: true,
     imageInput: true,
@@ -136,8 +142,8 @@ export const GEMINI_DRAWING_MODEL_PROFILE: AiDrawingModelProfile = {
   },
   limits: {
     maxImageBytes: 4 * 1024 * 1024,
-    maxOutputTokens: 2048,
-    timeoutMs: 30_000,
+    maxOutputTokens: 4096,
+    timeoutMs: 45_000,
   },
   enabled: true,
 };

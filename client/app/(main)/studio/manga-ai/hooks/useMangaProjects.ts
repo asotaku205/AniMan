@@ -3,11 +3,22 @@
 import { useState, useEffect, useCallback } from "react";
 import type { LayoutDef } from "../data";
 import { LAYOUTS } from "../data";
+import {
+  getAllProjectsFromDB,
+  saveProjectToDB,
+  deleteProjectFromDB,
+  savePageDrawingToDB,
+  cleanupLegacyMockData,
+} from "../lib/mangaStorage";
+
+import type { LayerItem } from "../data";
 
 export interface MangaProjectPage {
   pageNumber: number;
   layoutId: string;
   panels: Record<string, string>; // panelId -> dataUrl (ảnh nét vẽ)
+  layers?: LayerItem[];
+  activeLayerId?: string;
 }
 
 export interface MangaProject {
@@ -22,83 +33,85 @@ export interface MangaProject {
   pages: MangaProjectPage[];
 }
 
-const STORAGE_KEY = "animan_manga_projects_v1";
 const ACTIVE_PROJECT_KEY = "animan_manga_active_project_id_v1";
-
-const DEFAULT_PROJECTS: MangaProject[] = [
-  {
-    id: "proj-1",
-    title: "Chiến Binh Ánh Sáng",
-    genre: "Action",
-    description: "Hành trình của kiếm sĩ trẻ bảo vệ vương quốc khỏi thế lực bóng tối.",
-    createdAt: Date.now() - 86400000 * 2,
-    updatedAt: Date.now() - 3600000,
-    status: "draft",
-    pages: [
-      { pageNumber: 1, layoutId: "classic-5", panels: {} },
-      { pageNumber: 2, layoutId: "action-4", panels: {} },
-      { pageNumber: 3, layoutId: "splash-3", panels: {} },
-    ],
-  },
-  {
-    id: "proj-2",
-    title: "Ký Ức Mùa Hè",
-    genre: "Romance",
-    description: "Câu chuyện tình yêu tuổi học trò ngọt ngào dưới bóng cây phượng vĩ.",
-    createdAt: Date.now() - 86400000 * 5,
-    updatedAt: Date.now() - 86400000,
-    status: "draft",
-    pages: [
-      { pageNumber: 1, layoutId: "classic-5", panels: {} },
-      { pageNumber: 2, layoutId: "manga-6", panels: {} },
-    ],
-  },
-];
+const LEGACY_STORAGE_KEY = "animan_manga_projects_v1";
 
 export function useMangaProjects() {
   const [projects, setProjects] = useState<MangaProject[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string>("");
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Khởi tạo và nạp dữ liệu từ localStorage
+  // Khởi tạo và nạp dữ liệu từ IndexedDB, dọn dẹp mock data cũ
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      let list: MangaProject[] = [];
-      if (raw) {
-        list = JSON.parse(raw);
-      }
-      if (!list || !Array.isArray(list) || list.length === 0) {
-        list = DEFAULT_PROJECTS;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-      }
-      setProjects(list);
 
-      const savedActiveId = localStorage.getItem(ACTIVE_PROJECT_KEY);
-      if (savedActiveId && list.some((p) => p.id === savedActiveId)) {
-        setActiveProjectId(savedActiveId);
-      } else {
-        setActiveProjectId(list[0]?.id ?? "");
-      }
-    } catch {
-      setProjects(DEFAULT_PROJECTS);
-      setActiveProjectId(DEFAULT_PROJECTS[0].id);
-    } finally {
-      setIsLoaded(true);
-    }
-  }, []);
+    // Dọn dẹp mock data và các key vẽ chung cũ
+    cleanupLegacyMockData();
 
-  // Đồng bộ projects vào localStorage
-  const saveProjects = useCallback((newProjects: MangaProject[]) => {
-    setProjects(newProjects);
-    if (typeof window !== "undefined") {
+    async function loadData() {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newProjects));
+        let list = await getAllProjectsFromDB();
+
+        // Di chuyển (migrate) dữ liệu thật cũ từ localStorage sang IndexedDB nếu có
+        if (!list || list.length === 0) {
+          const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                // Lọc bỏ triệt để mock data
+                const realProjects = parsed.filter(
+                  (p: any) =>
+                    p &&
+                    p.id !== "proj-1" &&
+                    p.id !== "proj-2" &&
+                    p.title !== "Chiến Binh Ánh Sáng" &&
+                    p.title !== "Ký Ức Mùa Hè",
+                );
+                for (const p of realProjects) {
+                  await saveProjectToDB(p);
+                  for (const pg of p.pages || []) {
+                    if (pg.panels && Object.keys(pg.panels).length > 0) {
+                      await savePageDrawingToDB(p.id, pg.pageNumber, pg.panels, pg.layoutId);
+                    }
+                  }
+                }
+                list = realProjects;
+              }
+            } catch {
+              // ignore parse error
+            }
+          }
+        }
+
+        const cleanedList = (list || []).filter(
+          (p) =>
+            p &&
+            p.id !== "proj-1" &&
+            p.id !== "proj-2" &&
+            p.title !== "Chiến Binh Ánh Sáng" &&
+            p.title !== "Ký Ức Mùa Hè",
+        );
+
+        setProjects(cleanedList);
+
+        const savedActiveId = localStorage.getItem(ACTIVE_PROJECT_KEY);
+        if (savedActiveId && cleanedList.some((p) => p.id === savedActiveId)) {
+          setActiveProjectId(savedActiveId);
+        } else if (cleanedList.length > 0) {
+          setActiveProjectId(cleanedList[0].id);
+        } else {
+          setActiveProjectId("");
+        }
       } catch {
-        // storage quota
+        setProjects([]);
+        setActiveProjectId("");
+      } finally {
+        setIsLoaded(true);
       }
     }
+
+    loadData();
   }, []);
 
   // Chọn dự án
@@ -109,7 +122,7 @@ export function useMangaProjects() {
     }
   }, []);
 
-  // Tạo dự án mới
+  // Tạo dự án mới (bắt đầu từ trạng thái sạch, không có mock data)
   const createProject = useCallback(
     (title: string, genre: string, description: string): MangaProject => {
       const newProj: MangaProject = {
@@ -122,46 +135,70 @@ export function useMangaProjects() {
         status: "draft",
         pages: [
           { pageNumber: 1, layoutId: "classic-5", panels: {} },
-          { pageNumber: 2, layoutId: "action-4", panels: {} },
-          { pageNumber: 3, layoutId: "splash-3", panels: {} },
         ],
       };
 
       const updated = [newProj, ...projects];
-      saveProjects(updated);
+      setProjects(updated);
+      saveProjectToDB(newProj);
       selectProject(newProj.id);
       return newProj;
     },
-    [projects, saveProjects, selectProject],
+    [projects, selectProject],
   );
 
   // Cập nhật thông tin dự án
   const updateProject = useCallback(
     (id: string, partial: Partial<MangaProject>) => {
-      const updated = projects.map((p) =>
-        p.id === id ? { ...p, ...partial, updatedAt: Date.now() } : p,
-      );
-      saveProjects(updated);
+      setProjects((prev) => {
+        const updated = prev.map((p) => {
+          if (p.id !== id) return p;
+          const next = { ...p, ...partial, updatedAt: Date.now() };
+          saveProjectToDB(next);
+          return next;
+        });
+        return updated;
+      });
     },
-    [projects, saveProjects],
+    [],
   );
 
-  // Xóa dự án
+  // Xóa dự án (xóa khỏi IndexedDB và xóa tất cả nét vẽ của dự án)
   const deleteProject = useCallback(
     (id: string) => {
       const filtered = projects.filter((p) => p.id !== id);
-      saveProjects(filtered);
-      if (activeProjectId === id && filtered.length > 0) {
-        selectProject(filtered[0].id);
+      setProjects(filtered);
+      deleteProjectFromDB(id);
+
+      if (activeProjectId === id) {
+        if (filtered.length > 0) {
+          selectProject(filtered[0].id);
+        } else {
+          setActiveProjectId("");
+          if (typeof window !== "undefined") {
+            localStorage.removeItem(ACTIVE_PROJECT_KEY);
+          }
+        }
       }
     },
-    [projects, activeProjectId, saveProjects, selectProject],
+    [projects, activeProjectId, selectProject],
   );
 
-  // Lưu nét vẽ của một trang vào dự án hiện tại
+  // Lưu nét vẽ và layer của một trang vào dự án hiện tại (tách biệt theo projectId và pageNumber)
   const savePageData = useCallback(
-    (pageNumber: number, layoutId: string, panels: Record<string, string>) => {
+    (
+      pageNumber: number,
+      layoutId: string,
+      panels: Record<string, string>,
+      layers?: LayerItem[],
+      activeLayerId?: string,
+    ) => {
       if (!activeProjectId) return;
+
+      // 1. Lưu vào IndexedDB bất đồng bộ (tránh giới hạn 5MB của localStorage)
+      savePageDrawingToDB(activeProjectId, pageNumber, panels, layoutId, layers, activeLayerId);
+
+      // 2. Đồng bộ vào state React
       setProjects((prevProjects) => {
         const next = prevProjects.map((p) => {
           if (p.id !== activeProjectId) return p;
@@ -169,20 +206,36 @@ export function useMangaProjects() {
           let newPages: MangaProjectPage[];
           if (pageExists) {
             newPages = p.pages.map((pg) =>
-              pg.pageNumber === pageNumber ? { ...pg, layoutId, panels } : pg,
+              pg.pageNumber === pageNumber
+                ? {
+                    ...pg,
+                    layoutId,
+                    panels,
+                    ...(layers ? { layers } : {}),
+                    ...(activeLayerId ? { activeLayerId } : {}),
+                  }
+                : pg,
             );
           } else {
-            newPages = [...p.pages, { pageNumber, layoutId, panels }].sort(
-              (a, b) => a.pageNumber - b.pageNumber,
-            );
+            newPages = [
+              ...p.pages,
+              {
+                pageNumber,
+                layoutId,
+                panels,
+                ...(layers ? { layers } : {}),
+                ...(activeLayerId ? { activeLayerId } : {}),
+              },
+            ].sort((a, b) => a.pageNumber - b.pageNumber);
           }
-          return { ...p, pages: newPages, updatedAt: Date.now() };
+          const updatedProj: MangaProject = {
+            ...p,
+            pages: newPages,
+            updatedAt: Date.now(),
+          };
+          saveProjectToDB(updatedProj);
+          return updatedProj;
         });
-        if (typeof window !== "undefined") {
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-          } catch {}
-        }
         return next;
       });
     },
@@ -192,9 +245,9 @@ export function useMangaProjects() {
   // Thêm trang mới vào dự án
   const addPageToProject = useCallback(
     (layoutId = "classic-5") => {
-      if (!activeProjectId) return;
+      if (!activeProjectId) return 1;
       const targetProj = projects.find((p) => p.id === activeProjectId);
-      if (!targetProj) return;
+      if (!targetProj) return 1;
 
       const nextNum =
         targetProj.pages.length > 0

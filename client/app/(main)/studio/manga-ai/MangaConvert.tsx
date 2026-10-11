@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { StudioHeader } from "./components/StudioHeader";
 import { DrawStudio } from "./components/DrawStudio";
 import { PublishMode } from "./components/PublishMode";
@@ -19,6 +19,7 @@ export function MangaConverter() {
     projects,
     activeProjectId,
     activeProject,
+    isLoaded,
     selectProject,
     createProject,
     deleteProject,
@@ -27,6 +28,13 @@ export function MangaConverter() {
     removePageFromProject,
     publishProject,
   } = useMangaProjects();
+
+  // Nếu chưa có dự án nào, mở ngay trang Quản lý Dự án
+  useEffect(() => {
+    if (isLoaded && projects.length === 0) {
+      setMode("projects");
+    }
+  }, [isLoaded, projects.length]);
 
   return (
     <div className="flex flex-col h-screen bg-[#0b0612] overflow-hidden">
@@ -71,6 +79,8 @@ export function MangaConverter() {
             activeProject={activeProject}
             targetPage={targetPage}
             onSavePageData={savePageData}
+            onAddPageToProject={() => addPageToProject()}
+            onGoToProjects={() => setMode("projects")}
           />
         )}
 

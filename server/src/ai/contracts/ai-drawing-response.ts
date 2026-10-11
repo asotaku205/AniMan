@@ -596,3 +596,4 @@ export function parseAiDrawingResponse(
     `Unsupported AI drawing task: ${String(expectedTask)}`,
   );
 }
+

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check } from "lucide-react";
+import { Check, BookOpen } from "lucide-react";
 import { LeftToolbar } from "./LeftToolbar";
 import { CanvasTopBar } from "./CanvasTopBar";
 import { CanvasArea } from "./CanvasArea";
@@ -18,29 +18,58 @@ interface Props {
     layoutId: string,
     panels: Record<string, string>,
   ) => void;
+  onAddPageToProject?: () => void;
+  onGoToProjects?: () => void;
 }
 
 export function DrawStudio({
   activeProject,
-  targetPage,
+  targetPage = 1,
   onSavePageData,
+  onAddPageToProject,
+  onGoToProjects,
 }: Props = {}) {
-  const s = useDrawStudio();
+  const currentPageLayoutId =
+    activeProject?.pages.find((p) => p.pageNumber === targetPage)?.layoutId ||
+    "classic-5";
+
+  const stablePageNumbers = useMemo(
+    () => activeProject?.pages?.map((p) => p.pageNumber) ?? [1],
+    [activeProject?.pages],
+  );
+
+  const s = useDrawStudio({
+    projectId: activeProject?.id,
+    initialPage: targetPage,
+    activeProjectPages: stablePageNumbers,
+    currentLayoutId: currentPageLayoutId,
+    onSavePageData,
+    onAddPageToProject,
+  });
+
   const aiConsentEligible = true;
 
-  // Đồng bộ targetPage từ Story Board nếu có
-  useEffect(() => {
-    if (targetPage && targetPage !== s.page) {
-      s.setPage(targetPage);
-    }
-  }, [targetPage, s]);
-
-  // Đồng bộ nét vẽ vào dự án khi panelData thay đổi
-  useEffect(() => {
-    if (onSavePageData && s.panelData) {
-      onSavePageData(s.page, s.layout.id, s.panelData);
-    }
-  }, [s.panelData, s.page, s.layout.id, onSavePageData]);
+  if (!activeProject) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-[#0b0612] p-8 text-center">
+        <div className="w-16 h-16 rounded-3xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-4 shadow-xl">
+          <BookOpen size={28} />
+        </div>
+        <h3 className="text-white font-bold text-base mb-1.5">Chưa chọn dự án Manga</h3>
+        <p className="text-white/50 text-xs max-w-sm mb-6 leading-relaxed">
+          Mỗi bản vẽ được lưu riêng biệt theo từng tác phẩm. Vui lòng chọn hoặc tạo mới một dự án để bắt đầu vẽ.
+        </p>
+        {onGoToProjects && (
+          <button
+            onClick={onGoToProjects}
+            className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white font-semibold text-xs shadow-lg shadow-pink-500/20 transition-all"
+          >
+            Mở Trang Quản lý Dự án
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 overflow-hidden">

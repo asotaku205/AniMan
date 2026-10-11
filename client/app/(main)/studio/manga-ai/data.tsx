@@ -1,7 +1,7 @@
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 export type StudioMode   = "projects" | "draw" | "storyboard" | "publish";
-export type SceneType    = "action" | "dialogue" | "landscape" | "closeup" | "wide";
+export type SceneType    = "auto" | "action" | "dialogue" | "landscape" | "closeup" | "wide";
 export type RightTab     = "ai" | "layout" | "layers";
 export type DrawTool     = "pen" | "brush" | "eraser" | "fill" | "select" | "shape" | "text" | "pan";
 export type GuideId      = "thirds" | "horizon" | "proportions" | "vanishing";
@@ -15,7 +15,7 @@ export interface CompSuggestion { id: string; name: string; desc: string; guides
 export interface PageCompletion { id: string; name: string; flow: string; hints: string[]; compIds: string[] }
 export interface PoseItem { id: string; label: string; category: PoseCategory }
 
-export interface LayerItem { id: string; name: string; visible: boolean; locked: boolean }
+export interface LayerItem { id: string; name: string; visible: boolean; locked: boolean; opacity?: number }
 
 // ─── Layout Definitions ────────────────────────────────────────────────────────
 
@@ -63,6 +63,12 @@ export const LAYOUTS: LayoutDef[] = [
 // ─── Comp Suggestions ──────────────────────────────────────────────────────────
 
 export const COMP_SUGGESTIONS: Record<SceneType, CompSuggestion[]> = {
+  auto: [
+    { id: "aut-c1", name: "AI Tự Cân Bằng", desc: "Quy tắc 1/3 và điểm tụ tự nhiên", guides: ["thirds", "vanishing"] },
+    { id: "aut-c2", name: "Tỷ Lệ Vàng",     desc: "Hài hòa giữa nhân vật và cảnh",   guides: ["proportions"] },
+    { id: "aut-c3", name: "Đường Dẫn Mắt",  desc: "Hướng nhìn mượt mà qua các khung", guides: ["thirds"] },
+    { id: "aut-c4", name: "Khung Trọng Tâm", desc: "Tập trung điểm nhấn thị giác",   guides: ["horizon"] },
+  ],
   action: [
     { id: "act-c1", name: "Đường chéo",   desc: "Năng lượng chuyển động",    guides: ["thirds"] },
     { id: "act-c2", name: "Quy tắc 1/3",  desc: "Cân bằng bố cục",           guides: ["thirds","horizon"] },
@@ -98,6 +104,14 @@ export const COMP_SUGGESTIONS: Record<SceneType, CompSuggestion[]> = {
 // ─── Page Completions ──────────────────────────────────────────────────────────
 
 export const PAGE_COMPLETIONS: Record<SceneType, PageCompletion[]> = {
+  auto: [
+    { id: "aut-1", name: "Kishōtenketsu (4 hồi Manga)", flow: "Khởi (Bối cảnh) → Thừa (Diễn biến) → Chuyển (Bước ngoặt) → Hợp (Kết thúc)",
+      hints: ["Thiết lập không gian & chủ thể", "Diễn biến sự kiện liên tục", "Khoảnh khắc bất ngờ / điểm nhấn", "Dư âm cảm xúc & chuyển cảnh"],
+      compIds: ["aut-c1","aut-c2","aut-c3","aut-c4"] },
+    { id: "aut-2", name: "Mạch truyện xuyên suốt", flow: "Mở đầu → Xung đột → Đỉnh điểm → Dư âm",
+      hints: ["Khung mở đầu rộng", "Cận cảnh nhân vật phản ứng", "Khung hành động chính", "Khung kết thúc trang"],
+      compIds: ["aut-c3","aut-c1","aut-c4","aut-c2"] },
+  ],
   action: [
     { id: "a1", name: "Leo thang căng thẳng", flow: "Thiết lập → Leo thang → Đỉnh điểm → Hậu quả",
       hints: ["Cảnh thiết lập", "Nhân vật tiến lại", "Cú đánh cận cảnh", "Phản ứng sau đòn", "Hậu quả"],
@@ -205,12 +219,15 @@ export const AI_TOOLS = [
 ];
 
 export const SCENE_TYPE_LABEL: Record<SceneType, string> = {
+  auto: "Tự động (AI)",
   action: "Hành động", dialogue: "Đối thoại",
   landscape: "Phong cảnh", closeup: "Cận cảnh", wide: "Tổng thể",
 };
 
 // Contextual drawing tips shown inside the in-panel suggestion widget
 export const PANEL_DRAWING_TIPS: Record<SceneType, string> = {
+  auto:
+    "AI tự động phân tích khung tranh và đưa ra gợi ý bố cục mượt mà nhất theo ý tưởng của bạn.",
   action:
     "Nghiêng người về phía trước tạo lực. Đường chéo = chuyển động. Để trống vùng phía trước hướng di chuyển.",
   dialogue:

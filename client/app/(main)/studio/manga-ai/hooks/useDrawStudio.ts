@@ -23,6 +23,7 @@ import {
   type AiStrokePath,
   type AiDrawingToolHint,
 } from "@/lib/ai-drawing-api";
+import { getPageDrawingFromDB, savePageDrawingToDB } from "../lib/mangaStorage";
 
 // ─── Derived constants (stable — defined outside hook) ────────────────────────
 
@@ -171,11 +172,33 @@ function floodFill(
 
 // ─── Hook return type ──────────────────────────────────────────────────────────
 
+export interface UseDrawStudioOptions {
+  projectId?: string;
+  initialPage?: number;
+  activeProjectPages?: number[];
+  currentLayoutId?: string;
+  onSavePageData?: (
+    pageNumber: number,
+    layoutId: string,
+    panels: Record<string, string>,
+  ) => void;
+  onAddPageToProject?: () => void;
+}
+
 export type DrawStudioState = ReturnType<typeof useDrawStudio>;
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useDrawStudio() {
+export function useDrawStudio(options: UseDrawStudioOptions = {}) {
+  const {
+    projectId,
+    initialPage = 1,
+    activeProjectPages,
+    currentLayoutId,
+    onSavePageData,
+    onAddPageToProject,
+  } = options;
+
   // Canvas refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const historyRef = useRef<ImageData[]>([]);
@@ -209,23 +232,33 @@ export function useDrawStudio() {
   const [isSaved, setIsSaved] = useState(true);
 
   // Pages / panels
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState<number[]>([1, 2, 3]);
-  const [layout, setLayout] = useState<LayoutDef>(LAYOUTS[0]);
+  const [page, setPage] = useState(initialPage);
+  const [pages, setPages] = useState<number[]>(() => {
+    return activeProjectPages && activeProjectPages.length > 0
+      ? activeProjectPages
+      : [1];
+  });
+  const [layout, setLayout] = useState<LayoutDef>(() => {
+    if (currentLayoutId) {
+      return LAYOUTS.find((l) => l.id === currentLayoutId) || LAYOUTS[0];
+    }
+    return LAYOUTS[0];
+  });
   const [activePanel, setActivePanel] = useState<string | null>(null);
   const [panelData, setPanelData] = useState<Record<string, string>>({});
 
   // Right panel
   const [rightTab, setRightTab] = useState<"ai" | "layout" | "layers">("ai");
   const [layers, setLayers] = useState<LayerItem[]>([
-    { id: "l1", name: "Sketch", visible: true, locked: false },
-    { id: "l2", name: "Ink", visible: true, locked: false },
-    { id: "l3", name: "Tone", visible: true, locked: false },
-    { id: "l4", name: "Text", visible: true, locked: false },
+    { id: "l1", name: "Sketch (Phác thảo)", visible: true, locked: false, opacity: 100 },
+    { id: "l2", name: "Ink (Đi nét)", visible: true, locked: false, opacity: 100 },
+    { id: "l3", name: "Tone (Đổ bóng)", visible: true, locked: false, opacity: 100 },
+    { id: "l4", name: "Text (Thoại)", visible: true, locked: false, opacity: 100 },
   ]);
+  const [activeLayerId, setActiveLayerId] = useState<string>("l1");
 
   // AI / scene
-  const [sceneType, setSceneType] = useState<SceneType>("action");
+  const [sceneType, setSceneType] = useState<SceneType>("auto");
   const [activeGuides, setActiveGuides] = useState<GuideId[]>([]);
   const [selectedComp, setSelectedComp] = useState<string | null>(null);
   const [poseCategory, setPoseCategory] = useState<PoseCategory>("stand");
@@ -316,6 +349,87 @@ export function useDrawStudio() {
     setTimeout(() => setToast(null), 2500);
   }, []);
 
+  // ── Layer management ──────────────────────────────────────────────────────────
+
+  const toggleLayerVisibility = useCallback((id: string) => {
+    setLayers((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)),
+    );
+  }, []);
+
+  const toggleLayerLock = useCallback((id: string) => {
+    setLayers((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, locked: !l.locked } : l)),
+    );
+  }, []);
+
+  const setLayerOpacity = useCallback((id: string, opacity: number) => {
+    setLayers((prev) =>
+      prev.map((l) =>
+        l.id === id
+          ? { ...l, opacity: Math.max(0, Math.min(100, Math.round(opacity))) }
+          : l,
+      ),
+    );
+  }, []);
+
+  const addLayer = useCallback(
+    (name?: string) => {
+      const newId = `l${Date.now()}`;
+      setLayers((prev) => [
+        {
+          id: newId,
+          name: name || `Layer ${prev.length + 1}`,
+          visible: true,
+          locked: false,
+          opacity: 100,
+        },
+        ...prev,
+      ]);
+      setActiveLayerId(newId);
+      showToast("Đã tạo layer mới!");
+    },
+    [showToast],
+  );
+
+  const removeLayer = useCallback(
+    (id: string) => {
+      setLayers((prev) => {
+        if (prev.length <= 1) {
+          showToast("Phải giữ lại ít nhất 1 layer!");
+          return prev;
+        }
+        const next = prev.filter((l) => l.id !== id);
+        if (activeLayerId === id && next.length > 0) {
+          setActiveLayerId(next[0].id);
+        }
+        showToast("Đã xóa layer!");
+        return next;
+      });
+    },
+    [activeLayerId, showToast],
+  );
+
+  const reorderLayer = useCallback((id: string, direction: "up" | "down") => {
+    setLayers((prev) => {
+      const idx = prev.findIndex((l) => l.id === id);
+      if (idx === -1) return prev;
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const copy = [...prev];
+      const [moved] = copy.splice(idx, 1);
+      copy.splice(targetIdx, 0, moved);
+      return copy;
+    });
+  }, []);
+
+  const renameLayer = useCallback((id: string, newName: string) => {
+    if (!newName.trim()) return;
+    setLayers((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, name: newName.trim() } : l)),
+    );
+  }, []);
+
 
   // ESC exits fullscreen
   useEffect(() => {
@@ -328,64 +442,100 @@ export function useDrawStudio() {
 
   // ── Canvas helpers ────────────────────────────────────────────────────────────
 
-  // ── Auto-save & Local persistence ──────────────────────────────────────────
+  // ── Đồng bộ trang & bố cục khi thuộc tính project thay đổi ──────────────────
 
-  // Tự động tải tiến độ các khung tranh khi chuyển trang hoặc mount
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem(`animan_manga_page_${page}`);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (typeof parsed === "object" && parsed !== null) {
-          setPanelData(parsed);
-        }
-      } else {
-        setPanelData({});
-      }
-    } catch {
-      // ignore
+    if (initialPage) {
+      setPage((prev) => (prev !== initialPage ? initialPage : prev));
     }
-  }, [page]);
+  }, [initialPage]);
+
+  useEffect(() => {
+    if (activeProjectPages && activeProjectPages.length > 0) {
+      setPages((prev) => {
+        if (
+          prev.length === activeProjectPages.length &&
+          prev.every((p, i) => p === activeProjectPages[i])
+        ) {
+          return prev;
+        }
+        return activeProjectPages;
+      });
+    }
+  }, [activeProjectPages]);
+
+  useEffect(() => {
+    if (currentLayoutId) {
+      setLayout((prev) => {
+        if (prev.id === currentLayoutId) return prev;
+        const match = LAYOUTS.find((l) => l.id === currentLayoutId);
+        return match || prev;
+      });
+    }
+  }, [currentLayoutId]);
+
+  // ── Auto-save & Local persistence (IndexedDB tách biệt theo projectId & page) ──
+
+  // Tự động nạp nét vẽ của đúng trang trong đúng dự án (IndexedDB)
+  useEffect(() => {
+    if (!projectId) {
+      setPanelData({});
+      return;
+    }
+    let isCancelled = false;
+    async function loadData() {
+      try {
+        const loaded = await getPageDrawingFromDB(projectId!, page);
+        if (!isCancelled) {
+          setPanelData(loaded || {});
+          setIsSaved(true);
+        }
+      } catch {
+        if (!isCancelled) {
+          setPanelData({});
+        }
+      }
+    }
+    loadData();
+    return () => {
+      isCancelled = true;
+    };
+  }, [projectId, page]);
 
   const syncToStorage = useCallback(
     (data: Record<string, string>, targetPage: number) => {
-      if (typeof window === "undefined") return;
-      try {
-        localStorage.setItem(
-          `animan_manga_page_${targetPage}`,
-          JSON.stringify(data),
-        );
-        setIsSaved(true);
-      } catch {
-        // storage quota exceeded or private mode
+      if (!projectId) return;
+      savePageDrawingToDB(projectId, targetPage, data, layout.id);
+      setIsSaved(true);
+      if (onSavePageData) {
+        onSavePageData(targetPage, layout.id, data);
       }
     },
-    [],
+    [projectId, layout.id, onSavePageData],
   );
 
   const saveDraft = useCallback(() => {
-    if (typeof window === "undefined") return;
-    try {
-      localStorage.setItem(
-        `animan_manga_page_${page}`,
-        JSON.stringify(panelData),
-      );
-      setIsSaved(true);
-      showToast("Đã lưu tiến độ tranh thành công!");
-    } catch {
-      showToast("Lỗi khi lưu tranh vào bộ nhớ.");
+    if (!projectId) return;
+    savePageDrawingToDB(projectId, page, panelData, layout.id);
+    setIsSaved(true);
+    if (onSavePageData) {
+      onSavePageData(page, layout.id, panelData);
     }
-  }, [page, panelData, showToast]);
+    showToast("Đã lưu tiến độ tranh vào IndexedDB!");
+  }, [projectId, page, panelData, layout.id, onSavePageData, showToast]);
 
   const addPage = useCallback(() => {
-    setPages((prev) => {
-      const next = prev.length > 0 ? Math.max(...prev) + 1 : 1;
-      setPage(next);
-      showToast(`Đã thêm Trang ${next}`);
-      return [...prev, next];
-    });
-  }, [showToast]);
+    if (onAddPageToProject) {
+      onAddPageToProject();
+    } else {
+      setPages((prev) => {
+        const next = prev.length > 0 ? Math.max(...prev) + 1 : 1;
+        setPage(next);
+        showToast(`Đã thêm Trang ${next}`);
+        return [...prev, next];
+      });
+    }
+  }, [onAddPageToProject, showToast]);
 
   // ── Canvas helpers ────────────────────────────────────────────────────────────
 
@@ -410,7 +560,7 @@ export function useDrawStudio() {
       const dataUrl = canvas.toDataURL();
       setPanelData((prev) => {
         const next = { ...prev, [activePanel]: dataUrl };
-        syncToStorage(next, page);
+        setTimeout(() => syncToStorage(next, page), 0);
         return next;
       });
     }
@@ -434,7 +584,7 @@ export function useDrawStudio() {
       const dataUrl = canvas.toDataURL();
       setPanelData((d) => {
         const next = { ...d, [activePanel]: dataUrl };
-        syncToStorage(next, page);
+        setTimeout(() => syncToStorage(next, page), 0);
         return next;
       });
     }
@@ -458,7 +608,7 @@ export function useDrawStudio() {
       const dataUrl = canvas.toDataURL();
       setPanelData((d) => {
         const next = { ...d, [activePanel]: dataUrl };
-        syncToStorage(next, page);
+        setTimeout(() => syncToStorage(next, page), 0);
         return next;
       });
     }
@@ -473,7 +623,7 @@ export function useDrawStudio() {
     if (activePanel) {
       setPanelData((d) => {
         const next = { ...d, [activePanel]: "" };
-        syncToStorage(next, page);
+        setTimeout(() => syncToStorage(next, page), 0);
         return next;
       });
     }
@@ -525,7 +675,7 @@ export function useDrawStudio() {
         const dataUrl = canvas.toDataURL();
         setPanelData((d) => {
           const next = { ...d, [activePanel]: dataUrl };
-          syncToStorage(next, page);
+          setTimeout(() => syncToStorage(next, page), 0);
           return next;
         });
       }
@@ -654,9 +804,24 @@ export function useDrawStudio() {
   const down = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!activePanel) return;
+
+      const currentLayer = layers.find((l) => l.id === activeLayerId);
+      if (currentLayer?.locked) {
+        showToast(`Layer "${currentLayer.name}" đang bị khóa, hãy mở khóa để vẽ!`);
+        return;
+      }
+      if (currentLayer && !currentLayer.visible) {
+        showToast(`Layer "${currentLayer.name}" đang bị ẩn!`);
+        return;
+      }
+
       const canvas = canvasRef.current;
       const ctx = getCtx();
       if (!canvas || !ctx) return;
+
+      const layerAlpha =
+        currentLayer?.opacity !== undefined ? currentLayer.opacity / 100 : 1;
+      ctx.globalAlpha = layerAlpha;
 
       const rect = canvas.getBoundingClientRect();
       const px = e.clientX - rect.left;
@@ -670,7 +835,7 @@ export function useDrawStudio() {
           const dataUrl = canvas.toDataURL();
           setPanelData((d) => {
             const next = { ...d, [activePanel]: dataUrl };
-            syncToStorage(next, page);
+            setTimeout(() => syncToStorage(next, page), 0);
             return next;
           });
         }
@@ -719,7 +884,7 @@ export function useDrawStudio() {
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
     },
-    [activePanel, getCtx, tool, color, size, snapshot, syncToStorage, page],
+    [activePanel, getCtx, tool, color, size, snapshot, syncToStorage, page, layers, activeLayerId, showToast],
   );
 
   const move = useCallback(
@@ -818,11 +983,54 @@ export function useDrawStudio() {
     setAppliedCompletion(null);
     if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
     completionTimerRef.current = setTimeout(() => {
-      setCompletions(PAGE_COMPLETIONS[sceneType]);
+      const totalPages = pages.length || 1;
+      const currentPageNum = page || 1;
+      const isStart = currentPageNum === 1;
+      const isClimax = currentPageNum > 1 && currentPageNum < totalPages;
+
+      const dynamicCompletions: PageCompletion[] = [
+        {
+          id: `dyn-kisho-${currentPageNum}`,
+          name: isStart
+            ? `Trang ${currentPageNum}/${totalPages} — Khởi (Thiết lập bối cảnh)`
+            : isClimax
+              ? `Trang ${currentPageNum}/${totalPages} — Thừa/Chuyển (Cao trào & Xung đột)`
+              : `Trang ${currentPageNum}/${totalPages} — Hợp (Giải quyết & Chuyển tiếp)`,
+          flow: isStart
+            ? "Đại cảnh rộng → Giới thiệu nhân vật → Sự kiện khơi mào → Đẩy nhanh nhịp"
+            : isClimax
+              ? "Căng thẳng dồn dập → Va chạm bất ngờ → Đòn đánh cao trào → Dư chấn"
+              : "Hậu quả đòn đánh → Biểu cảm lắng đọng → Hé lộ manh mối mới → Chuyển cảnh",
+          hints: isStart
+            ? [
+                "Đại cảnh thiết lập không gian",
+                "Nhân vật xuất hiện",
+                "Cận cảnh phản ứng",
+                "Khoảnh khắc kích hoạt câu chuyện",
+              ]
+            : isClimax
+              ? [
+                  "Xung đột bắt đầu",
+                  "Góc nhìn kịch tính",
+                  "Khung điểm nhấn bùng nổ",
+                  "Phản ứng sau cao trào",
+                ]
+              : [
+                  "Khung toàn cảnh dư âm",
+                  "Cận cảnh nhân vật suy ngẫm",
+                  "Gợi mở bí ẩn tiếp theo",
+                  "Khung kết chuyển sang trang sau",
+                ],
+          compIds: ["aut-c1", "aut-c3", "aut-c2", "aut-c4"],
+        },
+        ...PAGE_COMPLETIONS[sceneType],
+      ];
+
+      setCompletions(dynamicCompletions);
       setCompletionLoading(false);
       setCompletionReady(true);
-    }, 2000);
-  }, [sceneType]);
+    }, 1200);
+  }, [sceneType, page, pages.length]);
 
   const applyCompletion = useCallback(
     (c: PageCompletion) => {
@@ -860,8 +1068,8 @@ export function useDrawStudio() {
       return;
     }
 
-    if (strokeCount === 0) {
-      showToast("Vui lòng vẽ nét phác thảo trên khung trước khi phân tích.");
+    if (strokeCount === 0 && !userDrawingPrompt.trim()) {
+      showToast("Vẽ nét phác thảo hoặc nhập ý tưởng muốn vẽ trước khi phân tích.");
       return;
     }
 
@@ -887,7 +1095,7 @@ export function useDrawStudio() {
       const result = await requestAiDrawingReview(
         authenticatedFetch,
         snapshotPayload,
-        undefined,
+        userDrawingPrompt.trim() || undefined,
         abortController.signal,
       );
       if (abortController.signal.aborted) return;
@@ -903,7 +1111,7 @@ export function useDrawStudio() {
         setAnalyzing(false);
       }
     }
-  }, [activePanel, authenticatedFetch, strokeCount, showToast]);
+  }, [activePanel, authenticatedFetch, strokeCount, userDrawingPrompt, showToast]);
 
   const runTool = useCallback(
     async (toolId: string) => {
@@ -1159,6 +1367,16 @@ export function useDrawStudio() {
     setSelectedComp,
     poseCategory,
     setPoseCategory,
+    // Layers
+    activeLayerId,
+    setActiveLayerId,
+    toggleLayerVisibility,
+    toggleLayerLock,
+    setLayerOpacity,
+    addLayer,
+    removeLayer,
+    reorderLayer,
+    renameLayer,
     // Collapsibles
     showCompSection,
     setShowCompSection,

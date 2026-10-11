@@ -29,26 +29,63 @@ interface Props {
   setGhostOpacity: (v: number) => void;
 }
 
+/**
+ * Chuyển mảng điểm {x,y} sang đường cong mượt Bézier (Catmull-Rom to Cubic Bezier)
+ * giúp nét AI mềm mại như nét vẽ manga chuyên nghiệp thay vì các đoạn thẳng gãy khúc.
+ */
+function pointsToSmoothSvgPath(
+  points: readonly { readonly x: number; readonly y: number }[],
+  w: number,
+  h: number,
+): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x * w} ${points[0].y * h}`;
+  if (points.length === 2) {
+    return `M ${points[0].x * w} ${points[0].y * h} L ${points[1].x * w} ${points[1].y * h}`;
+  }
+
+  const pts = points.map((p) => ({ x: p.x * w, y: p.y * h }));
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = i > 0 ? pts[i - 1] : pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = i < pts.length - 2 ? pts[i + 2] : p2;
+
+    // Catmull-Rom spline control points với tension = 0.5
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+
+  return d;
+}
+
 function renderStroke(stroke: AiStrokePath, idx: number, w: number, h: number, globalAlpha: number): React.ReactNode {
-  const color = PRINCIPLE_COLORS[stroke.style] ?? "#a855f7";
-  const opacity = stroke.opacity * globalAlpha;
-  // strokeWidth normalized → pixel: dùng chiều nhỏ hơn làm reference
-  const pixelWidth = stroke.strokeWidth * Math.min(w, h);
+  const baseColor = PRINCIPLE_COLORS[stroke.style] ?? "#38bdf8";
+  // Tăng độ tương phản thị giác: AI gợi ý có opacity rõ nét hơn kèm hệ số alpha
+  const effectiveAlpha = Math.min(0.95, Math.max(0.2, (stroke.opacity * 2.5) * (globalAlpha * 1.5)));
+  // strokeWidth normalized → pixel: dùng chiều nhỏ hơn làm reference, tối thiểu 1.5px
+  const pixelWidth = Math.max(1.5, stroke.strokeWidth * Math.min(w, h) * 1.4);
   const dashArray = stroke.dashed ? `${pixelWidth * 4},${pixelWidth * 2}` : undefined;
 
   const commonProps = {
-    stroke: color,
+    stroke: baseColor,
     strokeWidth: pixelWidth,
     fill: "none",
-    opacity,
+    opacity: effectiveAlpha,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
     strokeDasharray: dashArray,
+    style: { filter: "drop-shadow(0 0 1.5px rgba(56,189,248,0.4))" },
   };
 
   if (stroke.kind === "path" && stroke.points && stroke.points.length > 0) {
-    const pts = stroke.points.map((p) => `${p.x * w},${p.y * h}`);
-    const d = `M ${pts[0]} ${pts.slice(1).map((p) => `L ${p}`).join(" ")}`;
+    const d = pointsToSmoothSvgPath(stroke.points, w, h);
     return <path key={idx} d={d} {...commonProps} />;
   }
 
@@ -85,7 +122,7 @@ function renderStroke(stroke: AiStrokePath, idx: number, w: number, h: number, g
         y={r.y * h}
         width={r.width * w}
         height={r.height * h}
-        rx={pixelWidth}
+        rx={pixelWidth * 1.5}
         {...commonProps}
       />
     );

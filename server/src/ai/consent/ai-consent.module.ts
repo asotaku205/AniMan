@@ -17,12 +17,19 @@ import { AiDrawingConsentService } from "./ai-drawing-consent.service.js";
     TypeOrmModule.forFeature([User]),
     AiDrawingModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        profile: GEMINI_DRAWING_MODEL_PROFILE,
-        provider: createGeminiDrawingProvider(
-          config.getOrThrow<string>("GEMINI_API_KEY"),
-        ),
-      }),
+      useFactory: (config: ConfigService) => {
+        const configuredModel = config.get<string>("GEMINI_MODEL_ID");
+        const profile = configuredModel
+          ? { ...GEMINI_DRAWING_MODEL_PROFILE, modelId: configuredModel }
+          : GEMINI_DRAWING_MODEL_PROFILE;
+
+        return {
+          profile,
+          provider: createGeminiDrawingProvider(
+            config.getOrThrow<string>("GEMINI_API_KEY"),
+          ),
+        };
+      },
     }),
   ],
   controllers: [AiDrawingConsentController, AiDrawingController],
