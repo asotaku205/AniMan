@@ -30,9 +30,18 @@ import {
 import { getPageStacksFromDB, savePageDrawingToDB } from "../lib/mangaStorage";
 import {
   buildCompositePlan,
+  blendToComposite,
   compositeTo,
   getPanelBackingSize,
+  layerAlpha,
 } from "../lib/layerEngine";
+import {
+  canRemoveLayerInList,
+  duplicateLayerInList,
+  mergeDownInList,
+  moveLayerInList,
+  moveLayerToIndex,
+} from "../lib/layerOps";
 
 // ─── Derived constants (stable — defined outside hook) ────────────────────────
 
@@ -468,11 +477,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
       const prev = layersRef.current;
-      if (prev.length <= 1) {
-        showToast("Phải giữ lại ít nhất 1 layer!");
+      if (!canRemoveLayerInList(prev, id)) {
+        showToast("Phải giữ lại ít nhất 1 layer để vẽ!");
         return;
       }
-      if (!prev.some((l) => l.id === id)) return;
       const next = prev.filter((l) => l.id !== id);
       updateActiveLayers(() => next);
       if (activeLayerId === id && next[0]) {
@@ -489,16 +497,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   const reorderLayer = useCallback(
     (id: string, direction: "up" | "down") => {
-      updateActiveLayers((prev) => {
-        const idx = prev.findIndex((l) => l.id === id);
-        if (idx === -1) return prev;
-        const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-        if (targetIdx < 0 || targetIdx >= prev.length) return prev;
-        const copy = [...prev];
-        const [moved] = copy.splice(idx, 1);
-        copy.splice(targetIdx, 0, moved);
-        return copy;
-      });
+      updateActiveLayers((prev) => moveLayerInList(prev, id, direction));
     },
     [updateActiveLayers],
   );
@@ -511,6 +510,106 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       );
     },
     [updateActiveLayers],
+  );
+
+  /** Kéo-thả layer tới index đích (index 0 = trên cùng). */
+  const moveLayerTo = useCallback(
+    (id: string, toIndex: number) => {
+      updateActiveLayers((prev) => moveLayerToIndex(prev, id, toIndex));
+    },
+    [updateActiveLayers],
+  );
+
+  /**
+   * Nhân bản một layer người dùng: clone meta đứng ngay trên bản gốc +
+   * copy bitmap. Render/lưu do RC-4 effect đảm nhiệm sau khi `layers` đổi.
+   */
+  const duplicateLayer = useCallback(
+    (id: string) => {
+      const pid = activePanelRef.current;
+      if (!pid) {
+        showToast("Hãy mở một khung trước để quản lý layer!");
+        return;
+      }
+      const target = layersRef.current.find((l) => l.id === id);
+      if (!target || target.kind === "ai") return;
+      const clone = createUserLayer(`${target.name} (bản sao)`, {
+        visible: target.visible,
+        locked: false,
+        opacity: target.opacity,
+        blend: target.blend,
+      });
+      // Copy bitmap (nếu layer gốc chưa có nét vẽ thì bỏ qua — bitmap tạo lười)
+      const src = layerCanvasesRef.current.get(`${pid}::${id}`);
+      if (src) {
+        const dst = document.createElement("canvas");
+        dst.width = src.width;
+        dst.height = src.height;
+        dst.getContext("2d")?.drawImage(src, 0, 0);
+        layerCanvasesRef.current.set(`${pid}::${clone.id}`, dst);
+      }
+      updateActiveLayers((prev) => duplicateLayerInList(prev, id, clone));
+      setActiveLayerId(clone.id);
+      showToast("Đã nhân bản layer!");
+    },
+    [updateActiveLayers, setActiveLayerId, showToast],
+  );
+
+  /**
+   * Gộp một layer vào layer ngay dưới nó: vẽ bitmap gốc lên bitmap đích
+   * (tôn trọng opacity/blend lúc hiển thị) rồi loại gốc khỏi danh sách.
+   */
+  const mergeLayerDown = useCallback(
+    (id: string) => {
+      const pid = activePanelRef.current;
+      if (!pid) {
+        showToast("Hãy mở một khung trước để quản lý layer!");
+        return;
+      }
+      const merged = mergeDownInList(layersRef.current, id);
+      if (!merged) {
+        showToast("Không gộp được: cần một layer thường nằm bên dưới!");
+        return;
+      }
+      const source = layersRef.current.find((l) => l.id === id);
+      const srcCanvas = layerCanvasesRef.current.get(`${pid}::${id}`);
+      const dstCanvas = layerCanvasesRef.current.get(
+        `${pid}::${merged.targetId}`,
+      );
+      if (source && srcCanvas && dstCanvas) {
+        const dstCtx = dstCanvas.getContext("2d");
+        if (dstCtx) {
+          dstCtx.save();
+          dstCtx.globalAlpha = layerAlpha(source.opacity);
+          dstCtx.globalCompositeOperation = blendToComposite(source.blend);
+          dstCtx.drawImage(srcCanvas, 0, 0);
+          dstCtx.restore();
+        }
+      }
+      layerCanvasesRef.current.delete(`${pid}::${id}`);
+      updateActiveLayers(() => merged.layers);
+      if (activeLayerId === id) {
+        setActiveLayerId(merged.targetId);
+      }
+      showToast("Đã gộp layer xuống dưới!");
+    },
+    [activeLayerId, updateActiveLayers, setActiveLayerId, showToast],
+  );
+
+  /** DataURL bitmap của một layer (thumbnail tab Layers) — null nếu chưa vẽ. */
+  const getLayerThumbnail = useCallback(
+    (layerId: string): string | null => {
+      const pid = activePanelRef.current;
+      if (!pid) return null;
+      const canvas = layerCanvasesRef.current.get(`${pid}::${layerId}`);
+      if (!canvas) return null;
+      try {
+        return canvas.toDataURL("image/png");
+      } catch {
+        return null;
+      }
+    },
+    [],
   );
 
 
@@ -1726,6 +1825,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     removeLayer,
     reorderLayer,
     renameLayer,
+    moveLayerTo,
+    duplicateLayer,
+    mergeLayerDown,
+    getLayerThumbnail,
     // Collapsibles
     showCompSection,
     setShowCompSection,

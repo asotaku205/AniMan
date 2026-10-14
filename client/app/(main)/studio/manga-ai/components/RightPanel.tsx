@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Bot,
   Check,
   ChevronDown,
   ChevronUp,
+  Combine,
+  Copy,
   Edit2,
   Eye,
   EyeOff,
@@ -20,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { AiTab } from "./AiTab";
+import { canRemoveLayerInList } from "../lib/layerOps";
 import {
   LAYOUTS,
   type LayerItem,
@@ -36,6 +39,17 @@ export function RightPanel({ s }: Props) {
   /** Layer đang đổi tên inline (dblclick vào tên) + giá trị đang soạn */
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  /** Layer đang kéo-thả để sắp xếp */
+  const [dragId, setDragId] = useState<string | null>(null);
+
+  const userLayers = s.layers.filter((l) => l.kind !== "ai");
+  const aiLayers = s.layers.filter((l) => l.kind === "ai");
+  /** Thumbnail 40×40 từng layer — làm mới khi layers/panel/composite đổi */
+  const thumbs = useMemo(() => {
+    const thumbById: Record<string, string | null> = {};
+    for (const l of s.layers) thumbById[l.id] = s.getLayerThumbnail(l.id);
+    return thumbById;
+  }, [s.layers, s.panelData, s.activePanel, s.getLayerThumbnail]);
 
   return (
     <div className="w-[340px] bg-[#120a1f] border-l border-white/5 flex flex-col flex-shrink-0">
@@ -199,178 +213,330 @@ export function RightPanel({ s }: Props) {
             ))}
           </div>
 
-          {/* Layer List */}
-          <div className="space-y-1.5">
-            <AnimatePresence>
-              {s.layers.map((layer, li) => {
-                const isActive = s.activeLayerId === layer.id;
-                const opacity = layer.opacity ?? 100;
-                return (
-                  <motion.div
-                    key={layer.id}
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, x: 8 }}
-                    onClick={() => s.setActiveLayerId(layer.id)}
-                    className={`p-2.5 rounded-xl border cursor-pointer transition-all space-y-1.5 ${
-                      isActive
-                        ? "bg-purple-950/30 border-pink-500/50 shadow-md ring-1 ring-pink-500/30"
-                        : "bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.04]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      {/* Active radio indicator */}
-                      <div
-                        className={`w-2.5 h-2.5 rounded-full border transition-all ${
-                          isActive
-                            ? "border-pink-400 bg-pink-500 ring-2 ring-pink-500/20"
-                            : "border-white/20 bg-transparent"
-                        }`}
-                        title={isActive ? "Layer đang vẽ" : "Nhấn để chọn layer này"}
-                      />
-
-                      {/* Visibility button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          s.toggleLayerVisibility(layer.id);
-                        }}
-                        className={`p-1 rounded-lg transition-colors ${
-                          layer.visible
-                            ? "text-white/60 hover:text-white"
-                            : "text-white/20 hover:text-white/40"
-                        }`}
-                        title={layer.visible ? "Ẩn layer" : "Hiện layer"}
-                      >
-                        {layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}
-                      </button>
-
-                      {/* Layer name — dblclick để đổi tên inline */}
-                      {editingLayerId === layer.id ? (
-                        <input
-                          autoFocus
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onBlur={() => {
-                            s.renameLayer(layer.id, editingName);
-                            setEditingLayerId(null);
+          {/* Layer List — nhóm Lớp của tôi / Lớp AI */}
+          {(
+            [
+              { title: "Lớp của tôi", items: userLayers, isAi: false },
+              { title: "Lớp AI", items: aiLayers, isAi: true },
+            ] as const
+          )
+            .filter((g) => g.items.length > 0)
+            .map((group) => (
+              <div key={group.title} className="space-y-1.5">
+                <div className="flex items-center gap-1.5 pt-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-white/40">
+                    {group.title}
+                  </span>
+                  <span className="text-[9px] font-mono text-white/25">
+                    {group.items.length}
+                  </span>
+                  {group.isAi && (
+                    <span
+                      className="px-1.5 py-px rounded-md bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[9px] font-bold"
+                      title="Layer AI chỉ đọc — không vẽ, không đổi tên, không nhân bản/gộp"
+                    >
+                      AI
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <AnimatePresence>
+                    {group.items.map((layer) => {
+                      const isActive = s.activeLayerId === layer.id;
+                      const opacity = layer.opacity ?? 100;
+                      const li = s.layers.findIndex((l) => l.id === layer.id);
+                      const thumb = thumbs[layer.id];
+                      return (
+                        <motion.div
+                          key={layer.id}
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: 8 }}
+                          draggable={!group.isAi}
+                          onDragStart={(e) => {
+                            const dragEvent =
+                              e as unknown as React.DragEvent<HTMLDivElement>;
+                            dragEvent.dataTransfer.effectAllowed = "move";
+                            dragEvent.dataTransfer.setData("text/plain", layer.id);
+                            setDragId(layer.id);
                           }}
-                          onKeyDown={(e) => {
+                          onDragEnd={() => setDragId(null)}
+                          onDragOver={(e) => {
+                            if (!group.isAi) e.preventDefault();
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
-                            if (e.key === "Enter") {
-                              (e.target as HTMLInputElement).blur();
-                            } else if (e.key === "Escape") {
-                              setEditingLayerId(null);
+                            const dragEvent =
+                              e as unknown as React.DragEvent<HTMLDivElement>;
+                            const src =
+                              dragId ??
+                              dragEvent.dataTransfer.getData("text/plain");
+                            setDragId(null);
+                            if (src && src !== layer.id) {
+                              s.moveLayerTo(src, li);
                             }
                           }}
-                          className={`flex-1 min-w-0 bg-transparent border-b border-pink-500/60 text-xs px-0.5 outline-none ${
-                            isActive ? "text-white font-bold" : "text-white/60"
-                          }`}
-                        />
-                      ) : (
-                        <span
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            setEditingName(layer.name);
-                            setEditingLayerId(layer.id);
+                          onClick={() => {
+                            if (!group.isAi) s.setActiveLayerId(layer.id);
                           }}
-                          title="Double-click để đổi tên layer"
-                          className={`flex-1 text-xs font-medium truncate cursor-text ${
-                            isActive ? "text-white font-bold" : "text-white/60"
+                          className={`p-2.5 rounded-xl border transition-all space-y-1.5 ${
+                            group.isAi ? "" : "cursor-pointer"
+                          } ${
+                            dragId === layer.id ? "opacity-40" : ""
+                          } ${
+                            isActive
+                              ? "bg-purple-950/30 border-pink-500/50 shadow-md ring-1 ring-pink-500/30"
+                              : "bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.04]"
                           }`}
                         >
-                          {layer.name}
-                        </span>
-                      )}
+                          <div className="flex items-center gap-2">
+                            {/* Thumbnail 40×40 */}
+                            {group.isAi ? (
+                              <div
+                                className="w-10 h-10 rounded-lg bg-purple-500/15 border border-purple-500/30 flex items-center justify-center flex-shrink-0"
+                                title="Layer AI (vector/ảo — không có pixel)"
+                              >
+                                <Bot size={16} className="text-purple-300" />
+                              </div>
+                            ) : thumb ? (
+                              <img
+                                src={thumb}
+                                alt=""
+                                draggable={false}
+                                className="w-10 h-10 rounded-lg object-cover border border-white/10 bg-white flex-shrink-0"
+                              />
+                            ) : (
+                              <div
+                                className="w-10 h-10 rounded-lg border border-dashed border-white/15 bg-white/[0.02] flex-shrink-0"
+                                title="Layer trống — chưa có nét vẽ"
+                              />
+                            )}
 
-                      {/* Lock button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          s.toggleLayerLock(layer.id);
-                        }}
-                        className={`p-1 rounded-lg transition-colors ${
-                          layer.locked
-                            ? "text-amber-400"
-                            : "text-white/30 hover:text-white/60"
-                        }`}
-                        title={layer.locked ? "Mở khóa layer" : "Khóa layer"}
-                      >
-                        {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
-                      </button>
+                            {/* Active radio indicator */}
+                            <div
+                              className={`w-2.5 h-2.5 rounded-full border transition-all flex-shrink-0 ${
+                                isActive
+                                  ? "border-pink-400 bg-pink-500 ring-2 ring-pink-500/20"
+                                  : "border-white/20 bg-transparent"
+                              }`}
+                              title={
+                                isActive ? "Layer đang vẽ" : "Nhấn để chọn layer này"
+                              }
+                            />
 
-                      {/* Reorder up/down */}
-                      <div className="flex flex-col gap-0.5">
-                        <button
-                          disabled={li === 0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            s.reorderLayer(layer.id, "up");
-                          }}
-                          className="text-white/20 hover:text-white disabled:opacity-10 transition-colors"
-                          title="Di chuyển lên trên"
-                        >
-                          <ChevronUp size={10} />
-                        </button>
-                        <button
-                          disabled={li === s.layers.length - 1}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            s.reorderLayer(layer.id, "down");
-                          }}
-                          className="text-white/20 hover:text-white disabled:opacity-10 transition-colors"
-                          title="Di chuyển xuống dưới"
-                        >
-                          <ChevronDown size={10} />
-                        </button>
-                      </div>
+                            {/* Visibility button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                s.toggleLayerVisibility(layer.id);
+                              }}
+                              className={`p-1 rounded-lg transition-colors ${
+                                layer.visible
+                                  ? "text-white/60 hover:text-white"
+                                  : "text-white/20 hover:text-white/40"
+                              }`}
+                              title={layer.visible ? "Ẩn layer" : "Hiện layer"}
+                            >
+                              {layer.visible ? (
+                                <Eye size={13} />
+                              ) : (
+                                <EyeOff size={13} />
+                              )}
+                            </button>
 
-                      {/* Delete layer button */}
-                      {s.layers.length > 1 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            s.removeLayer(layer.id);
-                          }}
-                          className="p-1 rounded-lg text-white/20 hover:text-rose-400 transition-colors"
-                          title="Xóa layer"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                    </div>
+                            {/* Layer name — dblclick để đổi tên inline (layer AI chỉ đọc) */}
+                            {editingLayerId === layer.id ? (
+                              <input
+                                autoFocus
+                                value={editingName}
+                                onChange={(e) => setEditingName(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                onBlur={() => {
+                                  s.renameLayer(layer.id, editingName);
+                                  setEditingLayerId(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation();
+                                  if (e.key === "Enter") {
+                                    (e.target as HTMLInputElement).blur();
+                                  } else if (e.key === "Escape") {
+                                    setEditingLayerId(null);
+                                  }
+                                }}
+                                className={`flex-1 min-w-0 bg-transparent border-b border-pink-500/60 text-xs px-0.5 outline-none ${
+                                  isActive
+                                    ? "text-white font-bold"
+                                    : "text-white/60"
+                                }`}
+                              />
+                            ) : (
+                              <span
+                                onDoubleClick={(e) => {
+                                  if (group.isAi) return;
+                                  e.stopPropagation();
+                                  setEditingName(layer.name);
+                                  setEditingLayerId(layer.id);
+                                }}
+                                title={
+                                  group.isAi
+                                    ? "Layer AI chỉ đọc — không đổi tên"
+                                    : "Double-click để đổi tên layer"
+                                }
+                                className={`flex-1 text-xs font-medium truncate ${
+                                  group.isAi
+                                    ? "cursor-default"
+                                    : "cursor-text"
+                                } ${
+                                  isActive
+                                    ? "text-white font-bold"
+                                    : "text-white/60"
+                                }`}
+                              >
+                                {layer.name}
+                              </span>
+                            )}
 
-                    {/* Opacity slider for active layer */}
-                    {isActive && (
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center gap-2 pt-1.5 border-t border-white/5"
-                      >
-                        <Sliders size={10} className="text-pink-400 flex-shrink-0" />
-                        <span className="text-[9px] text-white/40 flex-shrink-0">
-                          Độ mờ:
-                        </span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          value={opacity}
-                          onChange={(e) =>
-                            s.setLayerOpacity(layer.id, Number(e.target.value))
-                          }
-                          className="flex-1 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                        />
-                        <span className="text-[9px] font-mono text-white/60 w-6 text-right">
-                          {opacity}%
-                        </span>
-                      </div>
-                    )}
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
+                            {/* Lock button (layer AI vốn đã khóa — ẩn) */}
+                            {!group.isAi && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  s.toggleLayerLock(layer.id);
+                                }}
+                                className={`p-1 rounded-lg transition-colors ${
+                                  layer.locked
+                                    ? "text-amber-400"
+                                    : "text-white/30 hover:text-white/60"
+                                }`}
+                                title={
+                                  layer.locked ? "Mở khóa layer" : "Khóa layer"
+                                }
+                              >
+                                {layer.locked ? (
+                                  <Lock size={12} />
+                                ) : (
+                                  <Unlock size={12} />
+                                )}
+                              </button>
+                            )}
+
+                            {/* Reorder up/down (thứ tự AI cố định — ẩn) */}
+                            {!group.isAi && (
+                              <div className="flex flex-col gap-0.5">
+                                <button
+                                  disabled={li <= 0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    s.reorderLayer(layer.id, "up");
+                                  }}
+                                  className="text-white/20 hover:text-white disabled:opacity-10 transition-colors"
+                                  title="Di chuyển lên trên"
+                                >
+                                  <ChevronUp size={10} />
+                                </button>
+                                <button
+                                  disabled={
+                                    li < 0 ||
+                                    li >= s.layers.length - 1 ||
+                                    s.layers[li + 1]?.kind === "ai"
+                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    s.reorderLayer(layer.id, "down");
+                                  }}
+                                  className="text-white/20 hover:text-white disabled:opacity-10 transition-colors"
+                                  title="Di chuyển xuống dưới"
+                                >
+                                  <ChevronDown size={10} />
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Duplicate + merge (chỉ layer người dùng) */}
+                            {!group.isAi && (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    s.duplicateLayer(layer.id);
+                                  }}
+                                  className="p-1 rounded-lg text-white/20 hover:text-white transition-colors"
+                                  title="Nhân bản layer"
+                                >
+                                  <Copy size={12} />
+                                </button>
+                                <button
+                                  disabled={
+                                    li >= s.layers.length - 1 ||
+                                    s.layers[li + 1]?.kind === "ai"
+                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    s.mergeLayerDown(layer.id);
+                                  }}
+                                  className="p-1 rounded-lg text-white/20 hover:text-white disabled:opacity-10 transition-colors"
+                                  title="Gộp xuống layer bên dưới"
+                                >
+                                  <Combine size={12} />
+                                </button>
+                              </>
+                            )}
+
+                            {/* Delete layer button — luôn giữ ≥1 layer vẽ được */}
+                            {!group.isAi &&
+                              canRemoveLayerInList(s.layers, layer.id) && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    s.removeLayer(layer.id);
+                                  }}
+                                  className="p-1 rounded-lg text-white/20 hover:text-rose-400 transition-colors"
+                                  title="Xóa layer"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                          </div>
+
+                          {/* Opacity slider cho MỌI layer người dùng (task 2.3) */}
+                          {!group.isAi && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex items-center gap-2 pt-1.5 border-t border-white/5"
+                            >
+                              <Sliders
+                                size={10}
+                                className="text-pink-400 flex-shrink-0"
+                              />
+                              <span className="text-[9px] text-white/40 flex-shrink-0">
+                                Độ mờ:
+                              </span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                value={opacity}
+                                onChange={(e) =>
+                                  s.setLayerOpacity(
+                                    layer.id,
+                                    Number(e.target.value),
+                                  )
+                                }
+                                className="flex-1 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                              />
+                              <span className="text-[9px] font-mono text-white/60 w-6 text-right">
+                                {opacity}%
+                              </span>
+                            </div>
+                          )}
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+              </div>
+            ))}
 
           {/* Quick tips */}
           <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-200 text-[10px] leading-relaxed">
