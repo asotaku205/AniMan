@@ -9,6 +9,7 @@ import { CanvasArea } from "./CanvasArea";
 import { RightPanel } from "./RightPanel";
 import { useDrawStudio } from "../hooks/useDrawStudio";
 import type { MangaProject } from "../hooks/useMangaProjects";
+import type { PanelStacks } from "../data";
 
 interface Props {
   activeProject?: MangaProject | null;
@@ -17,6 +18,7 @@ interface Props {
     pageNumber: number,
     layoutId: string,
     panels: Record<string, string>,
+    stacks: PanelStacks,
   ) => void;
   onAddPageToProject?: () => void;
   onGoToProjects?: () => void;

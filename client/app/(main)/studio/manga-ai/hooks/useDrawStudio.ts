@@ -1,17 +1,20 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AI_TOOLS,
   COMP_SUGGESTIONS,
   LAYOUTS,
   PAGE_COMPLETIONS,
   createUserLayer,
+  createDefaultPanelStack,
   type DrawTool,
   type GuideId,
   type LayoutDef,
   type LayerItem,
   type PageCompletion,
+  type PanelLayerStack,
+  type PanelStacks,
   type PoseCategory,
   type SceneType,
 } from "../data";
@@ -24,10 +27,13 @@ import {
   type AiStrokePath,
   type AiDrawingToolHint,
 } from "@/lib/ai-drawing-api";
-import { getPageDrawingFromDB, savePageDrawingV1ToDB } from "../lib/mangaStorage";
+import { getPageStacksFromDB, savePageDrawingToDB } from "../lib/mangaStorage";
 import { buildCompositePlan, compositeTo } from "../lib/layerEngine";
 
 // ─── Derived constants (stable — defined outside hook) ────────────────────────
+
+/** Debounce ghi IndexedDB sau mỗi thao tác — gộp các lần ghi liên tiếp (AC-L4.4). */
+const SAVE_DEBOUNCE_MS = 800;
 
 export const TOOL_NAMES: Record<DrawTool, string> = {
   pen: "Bút vẽ",
@@ -183,6 +189,7 @@ export interface UseDrawStudioOptions {
     pageNumber: number,
     layoutId: string,
     panels: Record<string, string>,
+    stacks: PanelStacks,
   ) => void;
   onAddPageToProject?: () => void;
 }
@@ -260,13 +267,53 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   // Right panel
   const [rightTab, setRightTab] = useState<"ai" | "layout" | "layers">("ai");
-  const [layers, setLayers] = useState<LayerItem[]>(() => [
-    createUserLayer("Sketch (Phác thảo)", { id: "l1" }),
-    createUserLayer("Ink (Đi nét)", { id: "l2" }),
-    createUserLayer("Tone (Đổ bóng)", { id: "l3" }),
-    createUserLayer("Text (Thoại)", { id: "l4" }),
-  ]);
-  const [activeLayerId, setActiveLayerId] = useState<string>("l1");
+  /**
+   * Ngăn xếp layer theo **khung** — spec 02 §2.2: mỗi panel có bộ layer riêng.
+   * `layers` / `activeLayerId` bên dưới là dẫn xuất của khung đang mở,
+   * mọi thao tác layer đi qua `updateActiveLayers` / `setActiveLayerId`.
+   */
+  const [stacks, setStacks] = useState<PanelStacks>({});
+  /** Bộ layer mặc định hiển thị khi chưa mở khung nào */
+  const defaultLayers = useMemo(
+    () => [
+      createUserLayer("Sketch (Phác thảo)", { id: "l1" }),
+      createUserLayer("Ink (Đi nét)", { id: "l2" }),
+      createUserLayer("Tone (Đổ bóng)", { id: "l3" }),
+      createUserLayer("Text (Thoại)", { id: "l4" }),
+    ],
+    [],
+  );
+  const activeStack = activePanel ? stacks[activePanel] ?? null : null;
+  const layers = activeStack?.layers ?? defaultLayers;
+  const activeLayerId = activeStack?.activeLayerId ?? defaultLayers[0].id;
+  /** Mirror `activePanel` để callback đọc giá trị hiện tại không cần đưa vào deps */
+  const activePanelRef = useRef<string | null>(activePanel);
+  useEffect(() => {
+    activePanelRef.current = activePanel;
+  }, [activePanel]);
+  /** Chọn layer cho khung đang mở (spec 02 §7) */
+  const setActiveLayerId = useCallback((id: string) => {
+    setStacks((prev) => {
+      const pid = activePanelRef.current;
+      const stack = pid ? prev[pid] : undefined;
+      if (!pid || !stack || stack.activeLayerId === id) return prev;
+      return { ...prev, [pid]: { ...stack, activeLayerId: id } };
+    });
+  }, []);
+  /** Sửa mảng layer của khung đang mở — mọi thao tác layer đi qua đây */
+  const updateActiveLayers = useCallback(
+    (updater: (prev: LayerItem[]) => LayerItem[]) => {
+      setStacks((prev) => {
+        const pid = activePanelRef.current;
+        const stack = pid ? prev[pid] : undefined;
+        if (!pid || !stack) return prev;
+        const nextLayers = updater(stack.layers);
+        if (nextLayers === stack.layers) return prev;
+        return { ...prev, [pid]: { ...stack, layers: nextLayers } };
+      });
+    },
+    [],
+  );
 
   // AI / scene
   const [sceneType, setSceneType] = useState<SceneType>("auto");
@@ -347,33 +394,47 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   // ── Layer management ──────────────────────────────────────────────────────────
 
-  const toggleLayerVisibility = useCallback((id: string) => {
-    setLayers((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)),
-    );
-  }, []);
+  const toggleLayerVisibility = useCallback(
+    (id: string) => {
+      updateActiveLayers((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)),
+      );
+    },
+    [updateActiveLayers],
+  );
 
-  const toggleLayerLock = useCallback((id: string) => {
-    setLayers((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, locked: !l.locked } : l)),
-    );
-  }, []);
+  const toggleLayerLock = useCallback(
+    (id: string) => {
+      updateActiveLayers((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, locked: !l.locked } : l)),
+      );
+    },
+    [updateActiveLayers],
+  );
 
-  const setLayerOpacity = useCallback((id: string, opacity: number) => {
-    setLayers((prev) =>
-      prev.map((l) =>
-        l.id === id
-          ? { ...l, opacity: Math.max(0, Math.min(100, Math.round(opacity))) }
-          : l,
-      ),
-    );
-  }, []);
+  const setLayerOpacity = useCallback(
+    (id: string, opacity: number) => {
+      updateActiveLayers((prev) =>
+        prev.map((l) =>
+          l.id === id
+            ? { ...l, opacity: Math.max(0, Math.min(100, Math.round(opacity))) }
+            : l,
+        ),
+      );
+    },
+    [updateActiveLayers],
+  );
 
   /** Mirror `layers` để `addLayer` lấy được số lượng hiện tại mà không cần updater hàm */
   const layersRef = useRef<LayerItem[]>(layers);
   useEffect(() => {
     layersRef.current = layers;
   }, [layers]);
+  /** Mirror `stacks` cho đường lưu/nạp (callback đọc giá trị hiện tại) */
+  const stacksRef = useRef<PanelStacks>(stacks);
+  useEffect(() => {
+    stacksRef.current = stacks;
+  }, [stacks]);
   /** Mirror `panelData` cho effect resize/nạp ảnh (tránh dependency vòng) */
   const panelDataRef = useRef(panelData);
   useEffect(() => {
@@ -382,57 +443,71 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   const addLayer = useCallback(
     (name?: string) => {
+      if (!activePanelRef.current) {
+        showToast("Hãy mở một khung trước để thêm layer cho khung đó!");
+        return;
+      }
       const layer = createUserLayer(
         name?.trim() || `Layer ${layersRef.current.length + 1}`,
       );
-      setLayers((prev) => [layer, ...prev]);
+      updateActiveLayers((prev) => [layer, ...prev]);
       setActiveLayerId(layer.id);
       showToast("Đã tạo layer mới!");
     },
-    [showToast],
+    [showToast, updateActiveLayers, setActiveLayerId],
   );
 
   const removeLayer = useCallback(
     (id: string) => {
-      setLayers((prev) => {
-        if (prev.length <= 1) {
-          showToast("Phải giữ lại ít nhất 1 layer!");
-          return prev;
-        }
-        const next = prev.filter((l) => l.id !== id);
-        if (activeLayerId === id && next.length > 0) {
-          setActiveLayerId(next[0].id);
-        }
-        showToast("Đã xóa layer!");
-        return next;
-      });
+      if (!activePanelRef.current) {
+        showToast("Hãy mở một khung trước để quản lý layer!");
+        return;
+      }
+      const prev = layersRef.current;
+      if (prev.length <= 1) {
+        showToast("Phải giữ lại ít nhất 1 layer!");
+        return;
+      }
+      if (!prev.some((l) => l.id === id)) return;
+      const next = prev.filter((l) => l.id !== id);
+      updateActiveLayers(() => next);
+      if (activeLayerId === id && next[0]) {
+        setActiveLayerId(next[0].id);
+      }
       // Giải phóng bitmap của layer vừa xóa (mọi panel)
       for (const key of [...layerCanvasesRef.current.keys()]) {
         if (key.endsWith(`::${id}`)) layerCanvasesRef.current.delete(key);
       }
+      showToast("Đã xóa layer!");
     },
-    [activeLayerId, showToast],
+    [activeLayerId, updateActiveLayers, setActiveLayerId, showToast],
   );
 
-  const reorderLayer = useCallback((id: string, direction: "up" | "down") => {
-    setLayers((prev) => {
-      const idx = prev.findIndex((l) => l.id === id);
-      if (idx === -1) return prev;
-      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
-      const copy = [...prev];
-      const [moved] = copy.splice(idx, 1);
-      copy.splice(targetIdx, 0, moved);
-      return copy;
-    });
-  }, []);
+  const reorderLayer = useCallback(
+    (id: string, direction: "up" | "down") => {
+      updateActiveLayers((prev) => {
+        const idx = prev.findIndex((l) => l.id === id);
+        if (idx === -1) return prev;
+        const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+        const copy = [...prev];
+        const [moved] = copy.splice(idx, 1);
+        copy.splice(targetIdx, 0, moved);
+        return copy;
+      });
+    },
+    [updateActiveLayers],
+  );
 
-  const renameLayer = useCallback((id: string, newName: string) => {
-    if (!newName.trim()) return;
-    setLayers((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, name: newName.trim() } : l)),
-    );
-  }, []);
+  const renameLayer = useCallback(
+    (id: string, newName: string) => {
+      if (!newName.trim()) return;
+      updateActiveLayers((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, name: newName.trim() } : l)),
+      );
+    },
+    [updateActiveLayers],
+  );
 
 
   // ESC exits fullscreen
@@ -482,27 +557,93 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   // (Effect nạp dữ liệu trang nằm sau phần canvas helpers — nó gọi
   //  `resyncLayersWithData`, nên phải được khai báo trước.)
 
-  const syncToStorage = useCallback(
+  const saveTimerRef = useRef<number | null>(null);
+  const pendingSaveRef = useRef<{
+    data: Record<string, string>;
+    targetPage: number;
+  } | null>(null);
+
+  /**
+   * Gộp pixel để lưu (spec 02 §3.2): bitmap layer trong phiên (nếu có) ghi đè
+   * dataURL đã lưu; pixel của layer đã xóa bị loại bỏ; layer AI không có pixel.
+   */
+  const encodeStacksPixels = useCallback((source: PanelStacks): PanelStacks => {
+    const out: PanelStacks = {};
+    for (const [pid, stack] of Object.entries(source)) {
+      const pixels: Record<string, string> = {};
+      for (const [lid, url] of Object.entries(stack.pixels)) {
+        if (stack.layers.some((l) => l.id === lid)) pixels[lid] = url;
+      }
+      for (const layer of stack.layers) {
+        if (layer.kind === "ai") continue;
+        const canvas = layerCanvasesRef.current.get(`${pid}::${layer.id}`);
+        if (canvas) pixels[layer.id] = canvas.toDataURL("image/png");
+      }
+      out[pid] = { ...stack, pixels };
+    }
+    return out;
+  }, []);
+
+  /** Ghi ngay: `stacks` đã mã hoá pixel + composite `panels` (đọc ngược v1). */
+  const commitSave = useCallback(
     (data: Record<string, string>, targetPage: number) => {
       if (!projectId) return;
-      savePageDrawingV1ToDB(projectId, targetPage, data, layout.id);
+      const stacksToSave = encodeStacksPixels(stacksRef.current);
+      savePageDrawingToDB(projectId, targetPage, stacksToSave, layout.id, data);
       setIsSaved(true);
       if (onSavePageData) {
-        onSavePageData(targetPage, layout.id, data);
+        onSavePageData(targetPage, layout.id, data, stacksToSave);
       }
     },
-    [projectId, layout.id, onSavePageData],
+    [projectId, layout.id, onSavePageData, encodeStacksPixels],
   );
+
+  /** Debounce 800ms: lên lịch ghi và đánh dấu "Chưa lưu" (AC-L4.4). */
+  const scheduleSave = useCallback(
+    (data: Record<string, string>, targetPage: number) => {
+      if (!projectId) return;
+      pendingSaveRef.current = { data, targetPage };
+      setIsSaved(false);
+      if (saveTimerRef.current !== null)
+        window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = window.setTimeout(() => {
+        saveTimerRef.current = null;
+        const pending = pendingSaveRef.current;
+        pendingSaveRef.current = null;
+        if (pending) commitSave(pending.data, pending.targetPage);
+      }, SAVE_DEBOUNCE_MS);
+    },
+    [projectId, commitSave],
+  );
+
+  /** Ghi ngay mọi lần lưu đang hoãn (Ctrl+S, đổi trang, unmount). */
+  const flushPendingSave = useCallback(() => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    if (pending) commitSave(pending.data, pending.targetPage);
+  }, [commitSave]);
 
   const saveDraft = useCallback(() => {
     if (!projectId) return;
-    savePageDrawingV1ToDB(projectId, page, panelData, layout.id);
-    setIsSaved(true);
-    if (onSavePageData) {
-      onSavePageData(page, layout.id, panelData);
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
     }
+    pendingSaveRef.current = null;
+    commitSave(panelDataRef.current, page);
     showToast("Đã lưu tiến độ tranh vào IndexedDB!");
-  }, [projectId, page, panelData, layout.id, onSavePageData, showToast]);
+  }, [projectId, page, commitSave, showToast]);
+
+  /** Flush khi unmount — đọc qua ref để không phụ thuộc identity callback */
+  const flushRef = useRef(flushPendingSave);
+  useEffect(() => {
+    flushRef.current = flushPendingSave;
+  }, [flushPendingSave]);
+  useEffect(() => () => flushRef.current(), []);
 
   const addPage = useCallback(() => {
     if (onAddPageToProject) {
@@ -585,39 +726,66 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     const dataUrl = display.toDataURL();
     setPanelData((prev) => {
       const next = { ...prev, [activePanel]: dataUrl };
-      setTimeout(() => syncToStorage(next, page), 0);
+      scheduleSave(next, page);
       return next;
     });
-  }, [renderComposite, activePanel, page, syncToStorage]);
+  }, [renderComposite, activePanel, page, scheduleSave]);
 
   /**
-   * Nạp dữ liệu trang mới xong → dọn bitmap layer của trang cũ và (nếu panel
-   * đang mở) ghi bitmap đã lưu vào layer dưới đáy rồi render lại.
-   * Gọi từ callback async của effect nạp dữ liệu — không set state trong effect.
+   * Nạp `pixels` (dataURL từng layer) của một stack vào bitmap layer — chỉ gọi
+   * khi `stack.panelId` chính là khung đang mở. Layer đã có bitmap trong phiên
+   * thì bỏ qua (không ghi đè nét mới vẽ).
+   * @returns true nếu có ít nhất 1 layer đang được nạp (async).
+   */
+  const seedStackPixels = useCallback(
+    (stack: PanelLayerStack): boolean => {
+      if (!activePanelRef.current || stack.panelId !== activePanelRef.current)
+        return false;
+      let seeded = false;
+      for (const [layerId, dataUrl] of Object.entries(stack.pixels)) {
+        if (!dataUrl) continue;
+        if (layerCanvasesRef.current.has(`${stack.panelId}::${layerId}`))
+          continue;
+        if (!getLayerCanvas(layerId)) continue;
+        seeded = true;
+        const key = `${stack.panelId}::${layerId}`;
+        const img = new Image();
+        img.onload = () => {
+          // Lấy lại canvas hiện tại theo key — canvas có thể đã được tạo lại do resize
+          const current = layerCanvasesRef.current.get(key);
+          if (!current) return;
+          current
+            .getContext("2d")
+            ?.drawImage(img, 0, 0, current.width, current.height);
+          compositeNow();
+        };
+        img.src = dataUrl;
+      }
+      return seeded;
+    },
+    [getLayerCanvas, compositeNow],
+  );
+
+  /**
+   * Nạp dữ liệu trang mới xong → dọn bitmap layer của trang cũ, đồng bộ ngăn
+   * xếp theo khung từ DB và (nếu khung đang mở) nạp pixel từng layer rồi
+   * render lại. Gọi từ callback async của effect nạp dữ liệu.
    */
   const resyncLayersWithData = useCallback(
-    (data: Record<string, string>) => {
+    (loadedStacks: PanelStacks) => {
       layerCanvasesRef.current.clear();
       historyRef.current = [];
       futureRef.current = [];
-      if (!activePanel) return;
-      const saved = data[activePanel];
-      const bottomId = layersRef.current[layersRef.current.length - 1]?.id;
-      if (bottomId && saved) {
-        const layerCanvas = getLayerCanvas(bottomId);
-        if (layerCanvas) {
-          const img = new Image();
-          img.onload = () => {
-            layerCanvas
-              .getContext("2d")
-              ?.drawImage(img, 0, 0, layerCanvas.width, layerCanvas.height);
-            compositeNow();
-          };
-          img.src = saved;
-          return;
-        }
-      }
-      // Không có dữ liệu đã lưu cho panel này → xóa trắng canvas hiển thị
+      const pid = activePanelRef.current;
+      setStacks((prev) => {
+        // DB không có stack cho khung đang mở (vừa tạo trong phiên) → giữ meta
+        // của nó, bỏ pixel cũ để không trộn dữ liệu trang khác.
+        if (!pid || !prev[pid] || loadedStacks[pid]) return loadedStacks;
+        return { ...loadedStacks, [pid]: { ...prev[pid], pixels: {} } };
+      });
+      const stack = pid ? loadedStacks[pid] : undefined;
+      if (stack && seedStackPixels(stack)) return;
+      // Khung này chưa có pixel nào đã lưu → xóa trắng canvas hiển thị
       const display = canvasRef.current;
       const ctx = display?.getContext("2d");
       if (display && ctx) {
@@ -625,7 +793,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         ctx.fillRect(0, 0, display.width, display.height);
       }
     },
-    [activePanel, getLayerCanvas, compositeNow],
+    [seedStackPixels],
   );
 
   // RC-4: đổi bất kỳ thuộc tính nào của layer (ẩn/độ mờ/blend/thứ tự/xóa)
@@ -730,6 +898,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   useEffect(() => {
     if (!projectId) {
       setPanelData({});
+      setStacks({});
       layerCanvasesRef.current.clear();
       historyRef.current = [];
       futureRef.current = [];
@@ -738,22 +907,28 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     let isCancelled = false;
     async function loadData() {
       try {
-        const loaded = await getPageDrawingFromDB(projectId!, page);
+        const { stacks: loadedStacks, legacyPanels } = await getPageStacksFromDB(
+          projectId!,
+          page,
+        );
         if (isCancelled) return;
-        const data = loaded || {};
+        const data = legacyPanels || {};
         setPanelData(data);
         setIsSaved(true);
-        // Dữ liệu trang mới đã có → đồng bộ bitmap layer với dữ liệu này
-        resyncLayersWithData(data);
+        // Dữ liệu trang mới đã có → đồng bộ ngăn xếp + bitmap layer
+        resyncLayersWithData(loadedStacks);
       } catch {
         if (!isCancelled) {
           setPanelData({});
+          resyncLayersWithData({});
         }
       }
     }
     loadData();
     return () => {
       isCancelled = true;
+      // Trang cũ còn thay đổi chưa ghi → ghi ngay trước khi đổi trang
+      flushPendingSave();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, page]);
@@ -885,12 +1060,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     });
   }, [layout, panelData, page, showToast]);
 
-  // Đổi kích thước canvas theo panel & nạp bitmap đã lưu vào layer dưới đáy (RC-1)
+  // Đổi kích thước canvas theo khung & nạp pixel từng layer đã lưu (RC-1, spec 02 §2.2)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !activePanel) return;
 
-    let loadingSaved = false;
     const applyLayout = () => {
       const rect = canvas.parentElement?.getBoundingClientRect();
       if (!rect || rect.width < 1) return;
@@ -903,35 +1077,16 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       setCanUndo(false);
       setCanRedo(false);
 
-      // Panel chưa từng mở trong phiên này → nạp bitmap đã lưu
-      // vào layer dưới đáy (Phase 2 sẽ lưu pixel theo từng layer).
-      const bottomId = layersRef.current[layersRef.current.length - 1]?.id;
-      const saved = panelDataRef.current[activePanel];
-      if (bottomId && saved && !layerCanvasesRef.current.has(`${activePanel}::${bottomId}`)) {
-        const layerCanvas = getLayerCanvas(bottomId);
-        if (layerCanvas) {
-          loadingSaved = true;
-          const img = new Image();
-          img.onload = () => {
-            layerCanvas
-              .getContext("2d")
-              ?.drawImage(img, 0, 0, layerCanvas.width, layerCanvas.height);
-            loadingSaved = false;
-            compositeNow();
-          };
-          img.onerror = () => {
-            loadingSaved = false;
-          };
-          img.src = saved;
-          return;
-        }
-      }
+      // Khung chưa từng mở trong phiên này → nạp pixel từng layer đã lưu
+      // (Phase 1 trước đây chỉ nạp 1 bitmap phẳng vào layer dưới đáy).
+      const stack = stacksRef.current[activePanel];
+      if (stack) seedStackPixels(stack);
       compositeNow();
     };
 
     applyLayout();
     const ro = new ResizeObserver(() => {
-      if (!loadingSaved) applyLayout();
+      applyLayout();
     });
     if (canvas.parentElement) ro.observe(canvas.parentElement);
     return () => ro.disconnect();
@@ -1397,6 +1552,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         ghostAbortRef.current.abort();
         ghostAbortRef.current = null;
       }
+      // Khung chưa có ngăn xếp (lần đầu mở trong phiên) → tạo bộ layer mặc định
+      setStacks((prev) =>
+        prev[panelId]
+          ? prev
+          : { ...prev, [panelId]: createDefaultPanelStack(panelId) },
+      );
       setActivePanel(panelId);
       setShowPanelSuggestions(false);
       setShowSuggestBtn(true);
@@ -1483,8 +1644,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     // Right panel
     rightTab,
     setRightTab,
+    // Ngăn xếp layer theo khung (spec 02 §2.2, §7)
+    stacks,
+    activeStack,
     layers,
-    setLayers,
     // Tool extensions
     shapeType,
     setShapeType,

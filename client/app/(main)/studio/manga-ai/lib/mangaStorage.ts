@@ -301,17 +301,6 @@ export async function getPageDrawingRecordFromDB(
 }
 
 /**
- * Tải nét vẽ của đúng trang trong đúng dự án (tương thích ngược)
- */
-export async function getPageDrawingFromDB(
-  projectId: string,
-  pageNumber: number,
-): Promise<Record<string, string>> {
-  const record = await getPageDrawingRecordFromDB(projectId, pageNumber);
-  return record?.panels || {};
-}
-
-/**
  * Tải **ngăn xếp theo khung** (Schema v2) của trang — spec 02 §3.3.
  * Bản ghi v1 được migration tự động lúc đọc; `legacyPanels` trả về composite
  * v1 (nếu có) để các nơi chưa chuyển code vẫn đọc được.
@@ -330,46 +319,6 @@ export async function getPageStacksFromDB(
       ? normalizePanelStacks(record.stacks)
       : migrateStoredPageToStacks(record);
   return { stacks, legacyPanels: record.panels ?? null };
-}
-
-/**
- * Lưu nét vẽ và layer của đúng trang trong đúng dự án vào IndexedDB
- * — **Schema v1** (composite phẳng). Chỉ còn dùng cho đường dẫn cũ
- * (`useMangaProjects`/`saveDraft`) tới khi hook chuyển sang `stacks` (Phase 2).
- */
-export async function savePageDrawingV1ToDB(
-  projectId: string,
-  pageNumber: number,
-  panels: Record<string, string>,
-  layoutId?: string,
-  layers?: LayerItem[],
-  activeLayerId?: string,
-): Promise<void> {
-  if (!projectId || !pageNumber) return;
-  try {
-    const db = await openDB();
-    const key = makePageKey(projectId, pageNumber);
-    const data: StoredPageDrawing = {
-      id: key,
-      projectId,
-      pageNumber,
-      layoutId,
-      panels,
-      layers,
-      activeLayerId,
-      updatedAt: Date.now(),
-    };
-
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_PAGE_DRAWINGS, "readwrite");
-      const store = tx.objectStore(STORE_PAGE_DRAWINGS);
-      const req = store.put(data);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  } catch {
-    // fallback
-  }
 }
 
 /**

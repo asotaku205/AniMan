@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { LayoutDef } from "../data";
+import type { LayoutDef, PanelStacks } from "../data";
 import { LAYOUTS } from "../data";
 import {
   getAllProjectsFromDB,
   saveProjectToDB,
   deleteProjectFromDB,
-  savePageDrawingV1ToDB,
+  savePageDrawingToDB,
+  migrateStoredPageToStacks,
   cleanupLegacyMockData,
 } from "../lib/mangaStorage";
 
@@ -72,7 +73,14 @@ export function useMangaProjects() {
                   await saveProjectToDB(p);
                   for (const pg of p.pages || []) {
                     if (pg.panels && Object.keys(pg.panels).length > 0) {
-                      await savePageDrawingV1ToDB(p.id, pg.pageNumber, pg.panels, pg.layoutId);
+                      // Nâng cấp thẳng lên Schema v2 khi di chuyển từ localStorage
+                      await savePageDrawingToDB(
+                        p.id,
+                        pg.pageNumber,
+                        migrateStoredPageToStacks(pg),
+                        pg.layoutId,
+                        pg.panels,
+                      );
                     }
                   }
                 }
@@ -184,21 +192,20 @@ export function useMangaProjects() {
     [projects, activeProjectId, selectProject],
   );
 
-  // Lưu nét vẽ và layer của một trang vào dự án hiện tại (tách biệt theo projectId và pageNumber)
+  // Lưu nét vẽ của một trang (Schema v2 — ngăn xếp layer theo khung)
   const savePageData = useCallback(
     (
       pageNumber: number,
       layoutId: string,
       panels: Record<string, string>,
-      layers?: LayerItem[],
-      activeLayerId?: string,
+      stacks: PanelStacks,
     ) => {
       if (!activeProjectId) return;
 
-      // 1. Lưu vào IndexedDB bất đồng bộ (tránh giới hạn 5MB của localStorage)
-      savePageDrawingV1ToDB(activeProjectId, pageNumber, panels, layoutId, layers, activeLayerId);
+      // 1. Lưu vào IndexedDB bất đồng bộ (Schema v2 — spec 02 §3.3)
+      savePageDrawingToDB(activeProjectId, pageNumber, stacks, layoutId, panels);
 
-      // 2. Đồng bộ vào state React
+      // 2. Đồng bộ vào state React (state giữ composite để xem trang ngoài studio)
       setProjects((prevProjects) => {
         const next = prevProjects.map((p) => {
           if (p.id !== activeProjectId) return p;
@@ -206,27 +213,12 @@ export function useMangaProjects() {
           let newPages: MangaProjectPage[];
           if (pageExists) {
             newPages = p.pages.map((pg) =>
-              pg.pageNumber === pageNumber
-                ? {
-                    ...pg,
-                    layoutId,
-                    panels,
-                    ...(layers ? { layers } : {}),
-                    ...(activeLayerId ? { activeLayerId } : {}),
-                  }
-                : pg,
+              pg.pageNumber === pageNumber ? { ...pg, layoutId, panels } : pg,
             );
           } else {
-            newPages = [
-              ...p.pages,
-              {
-                pageNumber,
-                layoutId,
-                panels,
-                ...(layers ? { layers } : {}),
-                ...(activeLayerId ? { activeLayerId } : {}),
-              },
-            ].sort((a, b) => a.pageNumber - b.pageNumber);
+            newPages = [...p.pages, { pageNumber, layoutId, panels }].sort(
+              (a, b) => a.pageNumber - b.pageNumber,
+            );
           }
           const updatedProj: MangaProject = {
             ...p,

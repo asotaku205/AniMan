@@ -97,7 +97,7 @@ export function CanvasTopBar({
                 }`}
               >
                 {isSaved ? <Check size={12} /> : <Save size={12} />}
-                <span>{isSaved ? "Đã lưu" : "Lưu"}</span>
+                <span>{isSaved ? "Đã lưu" : "Chưa lưu"}</span>
               </button>
             )}
 
