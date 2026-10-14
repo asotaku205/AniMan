@@ -28,7 +28,11 @@ import {
   type AiDrawingToolHint,
 } from "@/lib/ai-drawing-api";
 import { getPageStacksFromDB, savePageDrawingToDB } from "../lib/mangaStorage";
-import { buildCompositePlan, compositeTo } from "../lib/layerEngine";
+import {
+  buildCompositePlan,
+  compositeTo,
+  getPanelBackingSize,
+} from "../lib/layerEngine";
 
 // ─── Derived constants (stable — defined outside hook) ────────────────────────
 
@@ -661,7 +665,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   // ── Canvas helpers ────────────────────────────────────────────────────────────
 
   /** Lấy (tự tạo nếu chưa có) bitmap offscreen của một layer — RC-1.
-   * Tự đổi kích thước kèm canvas hiển thị và **giữ lại nội dung** cũ.
+   * Backing bám theo canvas hiển thị (đã cố định theo khung); chỉ đổi kích
+   * thước khi đổi bố cục và **giữ lại nội dung** cũ (co giãn 1 lần, mượt cao).
    */
   const getLayerCanvas = useCallback(
     (layerId: string): HTMLCanvasElement | null => {
@@ -681,6 +686,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         // đặt ngay lúc tạo vì option chỉ có hiệu lực ở lần getContext đầu tiên.
         const nextCtx = next.getContext("2d", { willReadFrequently: true });
         if (layerCanvas && nextCtx) {
+          nextCtx.imageSmoothingEnabled = true;
+          nextCtx.imageSmoothingQuality = "high";
           nextCtx.drawImage(layerCanvas, 0, 0, next.width, next.height);
         }
         layerCanvas = next;
@@ -754,9 +761,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
           // Lấy lại canvas hiện tại theo key — canvas có thể đã được tạo lại do resize
           const current = layerCanvasesRef.current.get(key);
           if (!current) return;
-          current
-            .getContext("2d")
-            ?.drawImage(img, 0, 0, current.width, current.height);
+          const c2d = current.getContext("2d");
+          if (!c2d) return;
+          // Ảnh cũ khác cỡ → co giãn MỘT LẦN về backing cố định (RC-1) với
+          // làm mượt chất lượng cao; các lần mở sau vẽ 1:1, không mờ thêm.
+          c2d.imageSmoothingEnabled = true;
+          c2d.imageSmoothingQuality = "high";
+          c2d.drawImage(img, 0, 0, current.width, current.height);
           compositeNow();
         };
         img.src = dataUrl;
@@ -970,7 +981,14 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       ctx.font = `${Math.max(14, size * 3.5)}px "Comic Sans MS", "Arial", sans-serif`;
       ctx.fillStyle = color;
       ctx.textBaseline = "middle";
-      ctx.fillText(text, textInputPos.x, textInputPos.y);
+      // textInputPos là CSS px màn hình → đổi sang toạ độ artwork (RC-1)
+      const rect = canvas.getBoundingClientRect();
+      const coordScale = rect.width > 0 ? canvas.width / rect.width : 1;
+      ctx.fillText(
+        text,
+        textInputPos.x * coordScale,
+        textInputPos.y * coordScale,
+      );
       compositeNow();
       setShowTextInput(false);
       setTextInputPos(null);
@@ -1068,8 +1086,26 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     const applyLayout = () => {
       const rect = canvas.parentElement?.getBoundingClientRect();
       if (!rect || rect.width < 1) return;
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+
+      // RC-1: backing CỐ ĐỊNH theo kích thước khung — không bám theo cửa sổ.
+      // Đổi cỡ cửa sổ / fullscreen chỉ đổi CSS hiển thị, pixel dữ liệu không
+      // bị co giãn thêm (chữa "ảnh mờ" do resample nhiều lần).
+      const backing = getPanelBackingSize(layout, activePanel);
+      if (canvas.width !== backing.w) canvas.width = backing.w;
+      if (canvas.height !== backing.h) canvas.height = backing.h;
+
+      // CSS fit theo khung hiển thị; letterbox khi tỉ lệ lệch (fullscreen).
+      const fitScale = Math.min(rect.width / backing.w, rect.height / backing.h);
+      let cssW = Math.round(backing.w * fitScale);
+      let cssH = Math.round(backing.h * fitScale);
+      if (Math.abs(cssW - rect.width) < 2 && Math.abs(cssH - rect.height) < 2) {
+        cssW = Math.round(rect.width);
+        cssH = Math.round(rect.height);
+      }
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      canvas.style.left = `${Math.round((rect.width - cssW) / 2)}px`;
+      canvas.style.top = `${Math.round((rect.height - cssH) / 2)}px`;
 
       // Lịch sử undo gắn theo panel → reset khi đổi panel
       historyRef.current = [];
@@ -1078,7 +1114,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       setCanRedo(false);
 
       // Khung chưa từng mở trong phiên này → nạp pixel từng layer đã lưu
-      // (Phase 1 trước đây chỉ nạp 1 bitmap phẳng vào layer dưới đáy).
+      // (chỉ nạp layer chưa có bitmap; ảnh cũ được co 1 lần về backing).
       const stack = stacksRef.current[activePanel];
       if (stack) seedStackPixels(stack);
       compositeNow();
@@ -1091,7 +1127,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     if (canvas.parentElement) ro.observe(canvas.parentElement);
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePanel]);
+  }, [activePanel, layout.id]);
 
   // ── Drawing event handlers ────────────────────────────────────────────────────
 
@@ -1123,8 +1159,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       // không nướng vào pixel → đổi opacity layer sau đó không mất nét.
 
       const rect = canvas.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
+      // Tọa độ artwork (pixel backing) — backing CỐ ĐỊNH theo khung (RC-1)
+      // nên có thể khác px màn hình; tỉ lệ = backing / khung CSS hiển thị.
+      const coordScale = canvas.width / rect.width;
+      const px = (e.clientX - rect.left) * coordScale;
+      const py = (e.clientY - rect.top) * coordScale;
 
       // 1. Công cụ đổ màu (Fill / Paint Bucket)
       if (tool === "fill") {
@@ -1142,15 +1181,19 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         previewSnapshotRef.current = ctx.getImageData(
           0,
           0,
-          canvas.width,
-          canvas.height,
+          ctx.canvas.width,
+          ctx.canvas.height,
         );
         return;
       }
 
       // 3. Công cụ chèn chữ / lời thoại (Text)
       if (tool === "text") {
-        setTextInputPos({ x: px, y: py });
+        // Ô nhập là CSS px màn hình — sẽ đổi sang toạ độ artwork lúc chèn chữ
+        setTextInputPos({
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        });
         setShowTextInput(true);
         return;
       }
@@ -1188,8 +1231,9 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       const canvas = canvasRef.current;
       if (!canvas || !ctx) return;
       const rect = canvas.getBoundingClientRect();
-      const curX = e.clientX - rect.left;
-      const curY = e.clientY - rect.top;
+      const coordScale = canvas.width / rect.width;
+      const curX = (e.clientX - rect.left) * coordScale;
+      const curY = (e.clientY - rect.top) * coordScale;
 
       // Xử lý preview kéo thả hình học (Rubber-band preview)
       if (tool === "shape" && startPosRef.current && previewSnapshotRef.current) {

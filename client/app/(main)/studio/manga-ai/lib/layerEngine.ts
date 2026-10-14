@@ -74,6 +74,45 @@ export function layerCanvasSize(
   };
 }
 
+/** Trang xuất chuẩn — không gian logical của mọi bố cục (trùng exportFullPage). */
+export const PAGE_LOGICAL_SIZE = { w: 1200, h: 1600 } as const;
+
+/**
+ * RC-1 (bản ổn định): hệ số backing **cố định** ×2 thay cho `devicePixelRatio`
+ * thật. Dùng dpr thật sẽ khiến canvas đổi độ phân giải khi kéo sang màn hình
+ * khác → pixel artwork lại bị co giãn (đúng "bệnh ảnh mờ" cần chữa). ×2 gần
+ * bằng dpr phổ biến và **giống nhau trên mọi máy** nên dữ liệu vĩnh viễn
+ * không phải resample giữa các phiên.
+ */
+export const RC_BACKING_SCALE = 2;
+
+/**
+ * Kích thước backing (pixel) **cố định** của một khung — suy từ % kích thước
+ * khung trên trang logical. Không phụ thuộc kích thước cửa sổ (RC-1):
+ * đổi cỡ cửa sổ / fullscreen chỉ đổi CSS hiển thị, không đổi pixel dữ liệu.
+ */
+export function getPanelBackingSize(
+  layout: { panels: readonly { id: string; w: number; h: number }[] },
+  panelId: string,
+): { w: number; h: number } {
+  const fallback = {
+    w: PAGE_LOGICAL_SIZE.w,
+    h: PAGE_LOGICAL_SIZE.h,
+  };
+  const p = layout.panels.find((pp) => pp.id === panelId) ?? layout.panels[0];
+  if (!p) return fallback;
+  return {
+    w: Math.max(
+      32,
+      Math.round((PAGE_LOGICAL_SIZE.w * p.w * RC_BACKING_SCALE) / 100),
+    ),
+    h: Math.max(
+      32,
+      Math.round((PAGE_LOGICAL_SIZE.h * p.h * RC_BACKING_SCALE) / 100),
+    ),
+  };
+}
+
 /**
  * Lập kế hoạch render: lọc layer không hiển thị / không có bitmap / là layer AI,
  * rồi sắp thứ tự từ dưới đáy lên.

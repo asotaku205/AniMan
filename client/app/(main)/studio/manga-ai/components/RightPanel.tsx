@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Bot,
@@ -33,6 +33,10 @@ type Props = {
 };
 
 export function RightPanel({ s }: Props) {
+  /** Layer đang đổi tên inline (dblclick vào tên) + giá trị đang soạn */
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+
   return (
     <div className="w-[340px] bg-[#120a1f] border-l border-white/5 flex flex-col flex-shrink-0">
       {/* Tab bar */}
@@ -241,14 +245,44 @@ export function RightPanel({ s }: Props) {
                         {layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}
                       </button>
 
-                      {/* Layer name */}
-                      <span
-                        className={`flex-1 text-xs font-medium truncate ${
-                          isActive ? "text-white font-bold" : "text-white/60"
-                        }`}
-                      >
-                        {layer.name}
-                      </span>
+                      {/* Layer name — dblclick để đổi tên inline */}
+                      {editingLayerId === layer.id ? (
+                        <input
+                          autoFocus
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onBlur={() => {
+                            s.renameLayer(layer.id, editingName);
+                            setEditingLayerId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === "Enter") {
+                              (e.target as HTMLInputElement).blur();
+                            } else if (e.key === "Escape") {
+                              setEditingLayerId(null);
+                            }
+                          }}
+                          className={`flex-1 min-w-0 bg-transparent border-b border-pink-500/60 text-xs px-0.5 outline-none ${
+                            isActive ? "text-white font-bold" : "text-white/60"
+                          }`}
+                        />
+                      ) : (
+                        <span
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setEditingName(layer.name);
+                            setEditingLayerId(layer.id);
+                          }}
+                          title="Double-click để đổi tên layer"
+                          className={`flex-1 text-xs font-medium truncate cursor-text ${
+                            isActive ? "text-white font-bold" : "text-white/60"
+                          }`}
+                        >
+                          {layer.name}
+                        </span>
+                      )}
 
                       {/* Lock button */}
                       <button

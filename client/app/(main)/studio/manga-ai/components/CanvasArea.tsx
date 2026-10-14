@@ -293,8 +293,8 @@ export function CanvasArea({
               <div
                 className="absolute z-40 bg-[#0d0817]/95 border border-pink-500/40 rounded-xl p-2.5 shadow-2xl backdrop-blur-md flex flex-col gap-2"
                 style={{
-                  left: Math.max(10, Math.min(textInputPos.x, (canvasRef.current?.width ?? 400) - 240)),
-                  top: Math.max(10, Math.min(textInputPos.y, (canvasRef.current?.height ?? 300) - 90)),
+                  left: Math.max(10, Math.min(textInputPos.x, (canvasRef.current?.clientWidth ?? 400) - 240)),
+                  top: Math.max(10, Math.min(textInputPos.y, (canvasRef.current?.clientHeight ?? 300) - 90)),
                   width: 230,
                 }}
               >

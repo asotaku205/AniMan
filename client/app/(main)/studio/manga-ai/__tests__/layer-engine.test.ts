@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   blendToComposite,
   buildCompositePlan,
+  getPanelBackingSize,
   layerAlpha,
   layerCanvasSize,
+  PAGE_LOGICAL_SIZE,
+  RC_BACKING_SCALE,
 } from "../lib/layerEngine";
 import { createUserLayer, createAiLayer, type LayerItem } from "../data";
 
@@ -128,5 +131,40 @@ describe("buildCompositePlan (AC-L1.1–L1.4)", () => {
       "source-over",
       "multiply",
     ]);
+  });
+});
+
+describe("getPanelBackingSize (RC-1 — backing cố định theo khung)", () => {
+  const layout = {
+    panels: [
+      { id: "p1", w: 50, h: 25 },
+      { id: "p2", w: 100, h: 50 },
+    ],
+  };
+
+  it("suy ra từ % khung × trang logical × hệ số cố định", () => {
+    // 50% × 1200 × 2 = 1200; 25% × 1600 × 2 = 800
+    expect(getPanelBackingSize(layout, "p1")).toEqual({ w: 1200, h: 800 });
+    // 100% × 1200 × 2 = 2400; 50% × 1600 × 2 = 1600
+    expect(getPanelBackingSize(layout, "p2")).toEqual({ w: 2400, h: 1600 });
+  });
+
+  it("hằng số: trang logical 1200×1600 và hệ số ×2 cố định", () => {
+    expect(PAGE_LOGICAL_SIZE).toEqual({ w: 1200, h: 1600 });
+    expect(RC_BACKING_SCALE).toBe(2);
+  });
+
+  it("panelId không tồn tại → rơi về panel đầu; không có panel → trang logical", () => {
+    expect(getPanelBackingSize(layout, "xx")).toEqual({ w: 1200, h: 800 });
+    expect(getPanelBackingSize({ panels: [] }, "p1")).toEqual({
+      w: PAGE_LOGICAL_SIZE.w,
+      h: PAGE_LOGICAL_SIZE.h,
+    });
+  });
+
+  it("khung rất nhỏ → nền tối thiểu 32px", () => {
+    expect(
+      getPanelBackingSize({ panels: [{ id: "p", w: 1, h: 1 }] }, "p"),
+    ).toEqual({ w: 32, h: 32 });
   });
 });
