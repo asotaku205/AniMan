@@ -60,6 +60,7 @@ import {
   type SelectionTransform,
   type SelectMode,
 } from "../lib/selection";
+import { blitSelectionMask } from "../lib/selectionBlit";
 import { dabAlpha, hardnessBlurRadius, smoothPoint } from "../lib/stroke";
 import {
   adjustSize,
@@ -1263,10 +1264,9 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       if (!fctx) return false;
       const path = buildSelectionPath(sel, w, h);
       const rule = selectionFillRule(sel);
-      fctx.fillStyle = "#ffffff";
-      fctx.fill(path, rule);
-      fctx.globalCompositeOperation = "destination-in";
-      fctx.drawImage(ctx.canvas, 0, 0);
+      // Vẽ nguồn trước rồi mới đóng mặt nạ: `destination-in` giữ **màu đích**
+      // (xem `lib/selectionBlit.ts`), đảo thứ tự là nét vẽ thành bóng trắng.
+      blitSelectionMask(fctx, ctx.canvas, path, rule);
 
       snapshot();
       ctx.save();
@@ -1428,10 +1428,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     clip.height = h;
     const cctx = clip.getContext("2d");
     if (!cctx) return;
-    cctx.fillStyle = "#ffffff";
-    cctx.fill(buildSelectionPath(sel, w, h), selectionFillRule(sel));
-    cctx.globalCompositeOperation = "destination-in";
-    cctx.drawImage(ctx.canvas, 0, 0);
+    blitSelectionMask(
+      cctx,
+      ctx.canvas,
+      buildSelectionPath(sel, w, h),
+      selectionFillRule(sel),
+    );
     clipboardRef.current = { canvas: clip, selection: sel };
     showToast("Đã sao chép vùng chọn — Ctrl+V để dán.");
   }, [getCtx, showToast]);
