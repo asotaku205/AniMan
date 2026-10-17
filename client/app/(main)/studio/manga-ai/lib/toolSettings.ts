@@ -120,6 +120,14 @@ export const DEFAULT_SETTINGS: Record<DrawTool, ToolSettings> = {
     smoothing: 0,
     eraserMode: "clear",
   },
+  eyedropper: {
+    size: 3,
+    opacity: 100,
+    flow: 100,
+    hardness: 100,
+    smoothing: 0,
+    eraserMode: "clear",
+  },
 };
 
 /** Kẹp size về 1–200 và làm tròn; giá trị không hợp lệ → `SIZE_MIN`. */

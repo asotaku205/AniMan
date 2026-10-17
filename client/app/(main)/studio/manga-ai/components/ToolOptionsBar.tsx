@@ -1,10 +1,23 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
+import {
+  FlipHorizontal,
+  FlipVertical,
+  Lasso,
+  RotateCcw,
+  RotateCw,
+  Square,
+  Trash2,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import type { DrawTool } from "../data";
 import { dabAlpha, hardnessBlurRadius, smoothStroke } from "../lib/stroke";
 import type { ToolSettings } from "../lib/toolSettings";
 import { SIZE_PRESETS } from "../lib/toolSettings";
+import { ROTATE_STEP, SCALE_STEP, type SelectMode } from "../lib/selection";
 
 type Props = {
   tool: DrawTool;
@@ -12,6 +25,16 @@ type Props = {
   onSettingsChange: (patch: Partial<ToolSettings>) => void;
   color: string;
   disabled: boolean;
+  /** Đang có vùng chọn hay không (3C) — quyết định nút biến đổi có sáng không. */
+  selectionActive: boolean;
+  selectMode: SelectMode;
+  onSelectModeChange: (mode: SelectMode) => void;
+  onRotateSelection: (direction: 1 | -1) => void;
+  onFlipSelection: (axis: "h" | "v") => void;
+  onScaleSelection: (factor: number) => void;
+  onInvertSelection: () => void;
+  onDeleteSelection: () => void;
+  onClearSelection: () => void;
 };
 
 const PREVIEW_W = 168;
@@ -56,10 +79,42 @@ function Slider({
   );
 }
 
+/** Nút biểu tượng nhỏ cho nhóm điều khiển vùng chọn (AC-T3.1, AC-T3.4). */
+function IconButton({
+  onClick,
+  title,
+  active,
+  dim,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  active?: boolean;
+  dim?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-disabled={dim ? true : undefined}
+      className={`px-1.5 py-1 rounded-md flex items-center justify-center transition-colors ${
+        active
+          ? "bg-pink-500/30 text-pink-300 ring-1 ring-pink-500/40"
+          : dim
+            ? "text-white/25 hover:text-white/40"
+            : "text-white/60 hover:text-white hover:bg-white/10"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 /**
  * Thanh thuộc tính động theo công cụ (AC-T2.1…AC-T2.6).
  * Nằm ngang ngay dưới thanh trên cùng; mọi thay đổi cập nhật **preview nét**
- * ngay lập tức (AC-T2.2).
+ * ngay lập tức (AC-T2.2). Công cụ Chọn có nhóm điều khiển vùng chọn riêng (3C).
  */
 export function ToolOptionsBar({
   tool,
@@ -67,6 +122,15 @@ export function ToolOptionsBar({
   onSettingsChange,
   color,
   disabled,
+  selectionActive,
+  selectMode,
+  onSelectModeChange,
+  onRotateSelection,
+  onFlipSelection,
+  onScaleSelection,
+  onInvertSelection,
+  onDeleteSelection,
+  onClearSelection,
 }: Props) {
   const previewRef = useRef<HTMLCanvasElement>(null);
 
@@ -140,9 +204,17 @@ export function ToolOptionsBar({
     ctx.filter = "none";
   }, [tool, settings, color]);
 
-  const showSize = tool !== "fill" && tool !== "select" && tool !== "pan";
-  const showOpacity = tool !== "fill" && tool !== "select" && tool !== "pan";
+  const showSize =
+    tool !== "fill" &&
+    tool !== "select" &&
+    tool !== "pan" &&
+    tool !== "eyedropper";
+  const showOpacity =
+    tool !== "fill" && tool !== "select" && tool !== "pan" && tool !== "eyedropper";
   const showSmoothing = tool === "pen" || tool === "brush" || tool === "eraser";
+  // Preview nét chỉ có nghĩa với công cụ vẽ nét (bút/cọ/tẩy)
+  const showPreview = showSmoothing;
+  const isSelectionTool = tool === "select";
 
   return (
     <div
@@ -151,22 +223,133 @@ export function ToolOptionsBar({
       }`}
     >
       {/* Preview nét mẫu */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-[9px] uppercase tracking-wider text-white/30 font-semibold">
-          Nét mẫu
-        </span>
-        <canvas
-          ref={previewRef}
-          style={{
-            width: PREVIEW_W,
-            height: PREVIEW_H,
-            background: "#ffffff",
-          }}
-          className="rounded-lg border border-white/15 shadow-inner"
-        />
-      </div>
+      {showPreview && (
+        <>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-[9px] uppercase tracking-wider text-white/30 font-semibold">
+              Nét mẫu
+            </span>
+            <canvas
+              ref={previewRef}
+              style={{
+                width: PREVIEW_W,
+                height: PREVIEW_H,
+                background: "#ffffff",
+              }}
+              className="rounded-lg border border-white/15 shadow-inner"
+            />
+          </div>
 
-      <div className="w-px h-7 bg-white/10 flex-shrink-0" />
+          <div className="w-px h-7 bg-white/10 flex-shrink-0" />
+        </>
+      )}
+
+      {/* ── Vùng chọn (3C — BR-T05, AC-T3.1–T3.4) ─────────────────────────────── */}
+      {isSelectionTool && (
+        <>
+          {/* Kiểu khoanh vùng */}
+          <div className="flex items-center gap-0.5 bg-white/5 p-0.5 rounded-lg flex-shrink-0">
+            <IconButton
+              onClick={() => onSelectModeChange("rect")}
+              title="Khoanh vùng chữ nhật"
+              active={selectMode === "rect"}
+            >
+              <Square size={13} />
+            </IconButton>
+            <IconButton
+              onClick={() => onSelectModeChange("lasso")}
+              title="Khoanh vùng tự do (lasso)"
+              active={selectMode === "lasso"}
+            >
+              <Lasso size={13} />
+            </IconButton>
+          </div>
+
+          {/* Biến đổi vùng chọn kèm pixel bên trong (AC-T3.1) */}
+          <div
+            className="flex items-center gap-0.5 bg-white/5 p-0.5 rounded-lg flex-shrink-0"
+            title="Biến đổi vùng chọn cùng nội dung bên trong"
+          >
+            <IconButton
+              onClick={() => onRotateSelection(-1)}
+              title={`Xoay trái ${ROTATE_STEP}°`}
+              dim={!selectionActive}
+            >
+              <RotateCcw size={13} />
+            </IconButton>
+            <IconButton
+              onClick={() => onRotateSelection(1)}
+              title={`Xoay phải ${ROTATE_STEP}°`}
+              dim={!selectionActive}
+            >
+              <RotateCw size={13} />
+            </IconButton>
+            <IconButton
+              onClick={() => onFlipSelection("h")}
+              title="Lật ngang"
+              dim={!selectionActive}
+            >
+              <FlipHorizontal size={13} />
+            </IconButton>
+            <IconButton
+              onClick={() => onFlipSelection("v")}
+              title="Lật dọc"
+              dim={!selectionActive}
+            >
+              <FlipVertical size={13} />
+            </IconButton>
+            <IconButton
+              onClick={() => onScaleSelection(SCALE_STEP)}
+              title="Phóng to có tỉ lệ"
+              dim={!selectionActive}
+            >
+              <ZoomIn size={13} />
+            </IconButton>
+            <IconButton
+              onClick={() => onScaleSelection(1 / SCALE_STEP)}
+              title="Thu nhỏ có tỉ lệ"
+              dim={!selectionActive}
+            >
+              <ZoomOut size={13} />
+            </IconButton>
+          </div>
+
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={onInvertSelection}
+              title="Đảo vùng chọn (Ctrl+Shift+I)"
+              aria-disabled={!selectionActive}
+              className={`px-2 py-1 rounded-md text-[10px] transition-colors ${
+                selectionActive
+                  ? "bg-white/5 text-white/60 hover:text-white hover:bg-white/10"
+                  : "text-white/25 hover:text-white/40"
+              }`}
+            >
+              Đảo
+            </button>
+            <IconButton
+              onClick={onDeleteSelection}
+              title="Xóa nội dung trong vùng chọn (Delete)"
+              dim={!selectionActive}
+            >
+              <Trash2 size={13} />
+            </IconButton>
+            <IconButton
+              onClick={onClearSelection}
+              title="Bỏ chọn (Esc)"
+              dim={!selectionActive}
+            >
+              <X size={13} />
+            </IconButton>
+          </div>
+
+          <span className="text-[10px] text-white/35 flex-shrink-0">
+            {selectionActive
+              ? "Kéo bên trong vùng chọn để dời; Delete xóa; Ctrl+C/Ctrl+V sao chép–dán"
+              : "Kéo để khoanh vùng chọn; Esc bỏ chọn"}
+          </span>
+        </>
+      )}
 
       {/* Kích thước + preset (AC-T2.5) */}
       {showSize && (
@@ -278,12 +461,12 @@ export function ToolOptionsBar({
         </div>
       )}
 
-      {!showSize && (
+      {!showSize && !isSelectionTool && (
         <span className="text-[10px] text-white/35 flex-shrink-0">
           {tool === "fill"
-            ? "Thùng sơn: đổ màu đang chọn vào vùng kín"
-            : tool === "select"
-              ? "Vùng chọn: kéo để chọn (làm ở bước 3C)"
+            ? "Thùng sơn: đổ màu đang chọn vào vùng kín (tôn trọng vùng chọn)"
+            : tool === "eyedropper"
+              ? "Bút lấy màu: bấm vào tranh để lấy màu từ ảnh tổng hợp"
               : "Kéo để di chuyển khung nhìn — cuộn để phóng to"}
         </span>
       )}

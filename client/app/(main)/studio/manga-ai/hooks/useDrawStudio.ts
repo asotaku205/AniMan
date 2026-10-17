@@ -28,6 +28,7 @@ import {
   type AiDrawingToolHint,
 } from "@/lib/ai-drawing-api";
 import { getPageStacksFromDB, savePageDrawingToDB } from "../lib/mangaStorage";
+import { FLOOD_TOLERANCE, floodFillPixels, maskFromAlpha } from "../lib/floodFill";
 import {
   buildCompositePlan,
   blendToComposite,
@@ -43,6 +44,22 @@ import {
   moveLayerInList,
   moveLayerToIndex,
 } from "../lib/layerOps";
+import {
+  appendLassoPoint,
+  IDENTITY_TRANSFORM,
+  invertSelection as toggleSelectionInvert,
+  isSelectionUsable,
+  pointInSelection,
+  ROTATE_STEP,
+  rectSelection,
+  scaleTransform,
+  selectionCenter,
+  transformSelection,
+  translateSelection,
+  type Selection,
+  type SelectionTransform,
+  type SelectMode,
+} from "../lib/selection";
 import { dabAlpha, hardnessBlurRadius, smoothPoint } from "../lib/stroke";
 import {
   adjustSize,
@@ -67,6 +84,9 @@ import {
 /** Debounce ghi IndexedDB sau mỗi thao tác — gộp các lần ghi liên tiếp (AC-L4.4). */
 const SAVE_DEBOUNCE_MS = 800;
 
+/** Lệch mỗi lần dán vùng chọn, px artwork — để thấy ngay là đã dán (AC-T3.3). */
+const PASTE_OFFSET = 12;
+
 export const TOOL_NAMES: Record<DrawTool, string> = {
   pen: "Bút vẽ",
   brush: "Cọ",
@@ -76,6 +96,7 @@ export const TOOL_NAMES: Record<DrawTool, string> = {
   shape: "Hình",
   text: "Chữ",
   pan: "Di chuyển",
+  eyedropper: "Bút lấy màu",
 };
 
 export const GUIDE_CONFIG = [
@@ -131,83 +152,24 @@ function hexToRgba(hex: string): [number, number, number, number] {
   return [(num >> 16) & 255, (num >> 8) & 255, num & 255, 255];
 }
 
-/** Thuật toán Flood Fill (BFS) đổ màu liên tục trên canvas */
-function floodFill(
-  ctx: CanvasRenderingContext2D,
-  startX: number,
-  startY: number,
-  fillRgba: [number, number, number, number],
-  tolerance = 36,
-) {
-  const width = ctx.canvas.width;
-  const height = ctx.canvas.height;
-  if (startX < 0 || startX >= width || startY < 0 || startY >= height) return;
+/**
+ * Đường bao vùng chọn thành `Path2D`. Vùng đã đảo → thêm cả khung vào cùng path;
+ * chỗ gọi phải tô/stroke bằng luật `evenodd` để ra phần **ngoài** đa giác.
+ */
+function buildSelectionPath(sel: Selection, w: number, h: number): Path2D {
+  const path = new Path2D();
+  const pts = sel.points;
+  if (pts.length === 0) return path;
+  path.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i += 1) path.lineTo(pts[i].x, pts[i].y);
+  path.closePath();
+  if (sel.inverted) path.rect(0, 0, w, h);
+  return path;
+}
 
-  const imgData = ctx.getImageData(0, 0, width, height);
-  const data = imgData.data;
-
-  const startIdx = (startY * width + startX) * 4;
-  const startR = data[startIdx];
-  const startG = data[startIdx + 1];
-  const startB = data[startIdx + 2];
-  const startA = data[startIdx + 3];
-
-  // Nếu điểm click đã trùng màu đổ thì bỏ qua
-  if (
-    Math.abs(startR - fillRgba[0]) < 6 &&
-    Math.abs(startG - fillRgba[1]) < 6 &&
-    Math.abs(startB - fillRgba[2]) < 6 &&
-    Math.abs(startA - fillRgba[3]) < 6
-  ) {
-    return;
-  }
-
-  function matchesStart(idx: number): boolean {
-    const dr = Math.abs(data[idx] - startR);
-    const dg = Math.abs(data[idx + 1] - startG);
-    const db = Math.abs(data[idx + 2] - startB);
-    const da = Math.abs(data[idx + 3] - startA);
-    return dr <= tolerance && dg <= tolerance && db <= tolerance && da <= tolerance;
-  }
-
-  const visited = new Uint8Array(width * height);
-  const queue: number[] = [startX + startY * width];
-  visited[startX + startY * width] = 1;
-
-  while (queue.length > 0) {
-    const pos = queue.pop()!;
-    const px = pos % width;
-    const py = Math.floor(pos / width);
-    const idx = (py * width + px) * 4;
-
-    data[idx] = fillRgba[0];
-    data[idx + 1] = fillRgba[1];
-    data[idx + 2] = fillRgba[2];
-    data[idx + 3] = fillRgba[3];
-
-    // 4 hướng lân cận
-    const neighbors = [
-      [px + 1, py],
-      [px - 1, py],
-      [px, py + 1],
-      [px, py - 1],
-    ];
-
-    for (const [nx, ny] of neighbors) {
-      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-        const npos = nx + ny * width;
-        if (!visited[npos]) {
-          visited[npos] = 1;
-          const nidx = (ny * width + nx) * 4;
-          if (matchesStart(nidx)) {
-            queue.push(npos);
-          }
-        }
-      }
-    }
-  }
-
-  ctx.putImageData(imgData, 0, 0);
+/** Luật tô/stroke tương ứng với một vùng chọn. */
+function selectionFillRule(sel: Selection): CanvasFillRule {
+  return sel.inverted ? "evenodd" : "nonzero";
 }
 
 // ─── Hook return type ──────────────────────────────────────────────────────────
@@ -266,6 +228,38 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const strokeBaseImageRef = useRef<ImageData | null>(null);
   /** Điểm cuối đã làm mượt của nét đang vẽ (BR-T03). */
   const strokeLastPointRef = useRef<{ x: number; y: number } | null>(null);
+
+  // ── Vùng chọn (3C) ──────────────────────────────────────────────────────────
+  /** Canvas lớp phủ vẽ "marching ants" — tách khỏi canvas hiển thị để kiến không
+   *  lọt vào ảnh xuất/AI snapshot và không phải composite lại mỗi khung hình. */
+  const selectionOverlayRef = useRef<HTMLCanvasElement>(null);
+  /** Bản sao vùng chọn cho handler con trỏ (state chỉ để render UI). */
+  const selectionRef = useRef<Selection | null>(null);
+  /** Vùng chọn đang kéo (chỉ để vẽ kiến, chưa phải vùng chọn thật). */
+  const selectionDraftRef = useRef<Selection | null>(null);
+  /** Điểm bắt đầu khoanh vùng chọn mới. */
+  const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
+  /** Đang kéo để **dời** vùng chọn đã có (AC-T3.1). */
+  const floatStartRef = useRef<{ x: number; y: number } | null>(null);
+  /** Đã cắt pixel khỏi layer chưa — bấm mà không kéo thì không đụng pixel. */
+  const floatCutRef = useRef(false);
+  /** Pixel "đang bay" của vùng chọn khi dời/biến đổi. */
+  const floatCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  /** Layer sau khi khoét vùng chọn — mỗi lần di chuột vẽ lại từ nền này. */
+  const floatBaseRef = useRef<ImageData | null>(null);
+  /** Vùng chọn gốc của lần biến đổi → điểm neo không trôi khi xoay nhiều lần. */
+  const floatBaseSelectionRef = useRef<Selection | null>(null);
+  /** Phép biến đổi đang áp cho vùng chọn đang bay. */
+  const transformRef = useRef<SelectionTransform>(IDENTITY_TRANSFORM);
+  /** Clipboard nội bộ cho Ctrl+C / Ctrl+V trong cùng khung (AC-T3.3). */
+  const clipboardRef = useRef<{
+    canvas: HTMLCanvasElement;
+    selection: Selection;
+  } | null>(null);
+  /** Pha lệch của đường kiến (chạy để thấy nó "bò"). */
+  const antsOffsetRef = useRef(0);
+  /** DPR đang dùng cho lớp phủ (đổi khi cửa sổ đổi màn hình). */
+  const overlayDprRef = useRef(1);
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -355,6 +349,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   // Shape tool config
   const [shapeType, setShapeType] = useState<"rect" | "circle" | "line">("rect");
   const [shapeFill, setShapeFill] = useState(false);
+
+  // Vùng chọn (3C — BR-T05)
+  /** Kiểu khoanh vùng của công cụ `select`: chữ nhật hay tự do (lasso). */
+  const [selectMode, setSelectMode] = useState<SelectMode>("rect");
+  /** Vùng chọn đang có; `null` = không chọn gì. Đổi state để UI biết mà bật nút. */
+  const [selection, setSelection] = useState<Selection | null>(null);
 
   // Text tool inline placement
   const [showTextInput, setShowTextInput] = useState(false);
@@ -1105,6 +1105,25 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   }, []);
 
   /**
+   * Đẩy một bitmap **trước khi sửa** vào lịch sử undo (giữ 20 bước, BR-T08).
+   * Tách riêng để chỗ gọi đã có sẵn `ImageData` (vd. đổ màu) khỏi đọc lại canvas.
+   */
+  const pushHistory = useCallback(
+    (data: ImageData) => {
+      if (!activeLayerId) return;
+      historyRef.current = [
+        ...historyRef.current.slice(-19),
+        { layerId: activeLayerId, data },
+      ];
+      futureRef.current = [];
+      setCanUndo(true);
+      setCanRedo(false);
+      setIsSaved(false);
+    },
+    [activeLayerId],
+  );
+
+  /**
    * Ghi lại bitmap của layer đang chọn **trước khi thay đổi nó**
    * (gọi ở đầu mỗi thao tác) → 1 lần Ctrl+Z hoàn nguyên đúng 1 thao tác,
    * không ảnh hưởng layer khác (BR-T08).
@@ -1114,18 +1133,490 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     if (!layerCanvas) return;
     const ctx = layerCanvas.getContext("2d");
     if (!ctx) return;
-    historyRef.current = [
-      ...historyRef.current.slice(-19),
-      {
-        layerId: activeLayerId,
-        data: ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height),
-      },
-    ];
-    futureRef.current = [];
-    setCanUndo(true);
-    setCanRedo(false);
-    setIsSaved(false);
-  }, [activeLayerId, getLayerCanvas]);
+    pushHistory(
+      ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height),
+    );
+  }, [activeLayerId, getLayerCanvas, pushHistory]);
+
+  // ── Vùng chọn: khoanh / dời / biến đổi / xoá / copy-paste (3C) ───────────────
+
+  /**
+   * Lý do **không được sửa** layer đang chọn (layer AI chỉ đọc / bị khoá / đang
+   * ẩn). `null` = sửa được. Dùng chung mọi thao tác để toast luôn nêu lý do
+   * (AC-T3.5) thay vì thất bại im lặng.
+   */
+  const activeLayerBlockReason = useCallback((): string | null => {
+    const layer = layers.find((l) => l.id === activeLayerId);
+    if (!layer) return null;
+    if (layer.kind === "ai" || layer.readOnly) {
+      return `Layer "${layer.name}" là layer AI — chỉ đọc, hãy chọn layer khác để vẽ!`;
+    }
+    if (layer.locked) {
+      return `Layer "${layer.name}" đang bị khóa, hãy mở khóa để vẽ!`;
+    }
+    if (!layer.visible) return `Layer "${layer.name}" đang bị ẩn!`;
+    return null;
+  }, [layers, activeLayerId]);
+
+  /** Chốt vùng chọn (bỏ luôn nếu quá nhỏ — AC-T3.5). */
+  const commitSelection = useCallback((sel: Selection | null) => {
+    const next = isSelectionUsable(sel) ? sel : null;
+    selectionRef.current = next;
+    setSelection(next);
+  }, []);
+
+  /** Bỏ chọn (Esc, hoặc kéo một vùng quá nhỏ — AC-T3.4). */
+  const clearSelection = useCallback(() => {
+    selectionDraftRef.current = null;
+    selectionStartRef.current = null;
+    commitSelection(null);
+  }, [commitSelection]);
+
+  /**
+   * Vẽ "marching ants" lên **lớp phủ riêng** (không phải canvas hiển thị) → ảnh
+   * xuất và ảnh gửi AI không dính đường kiến, và mỗi khung hình chỉ phải stroke
+   * một đường thay vì composite lại cả chồng layer.
+   */
+  const drawSelectionOverlay = useCallback(() => {
+    const overlay = selectionOverlayRef.current;
+    if (!overlay) return;
+    const ctx = overlay.getContext("2d");
+    if (!ctx) return;
+    const dpr = overlayDprRef.current || 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    const sel = selectionDraftRef.current ?? selectionRef.current;
+    const scale = viewportRef.current.scale;
+    if (!sel || sel.points.length < 3 || !(scale > 0)) return;
+
+    const { artW, artH } = frameRef.current;
+    const path = buildSelectionPath(sel, artW, artH);
+    // Toạ độ artwork → pixel lớp phủ (lớp phủ dùng cùng khung nhìn với canvas hiển thị)
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    // Nền trắng đặc + nét đen đứt quãng → thấy được trên cả vùng trắng lẫn vùng đen
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.lineWidth = 3 / scale;
+    ctx.stroke(path);
+    ctx.strokeStyle = "#111111";
+    ctx.lineWidth = 1.6 / scale;
+    ctx.setLineDash([6 / scale, 5 / scale]);
+    ctx.lineDashOffset = -antsOffsetRef.current / scale;
+    ctx.stroke(path);
+    ctx.setLineDash([]);
+  }, []);
+
+  // Kiến bò: chỉ chạy khi đang có vùng chọn, dịch pha ~16 lần/giây cho đỡ tốn
+  useEffect(() => {
+    drawSelectionOverlay();
+    if (!selection) return;
+    let raf = 0;
+    let last = 0;
+    const tick = (t: number) => {
+      if (t - last > 60) {
+        last = t;
+        antsOffsetRef.current = (antsOffsetRef.current + 1) % 11;
+        drawSelectionOverlay();
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [selection, drawSelectionOverlay]);
+
+  /** Mặt nạ vùng chọn (1 = trong vùng chọn) cho thùng sơn (BR-T10). */
+  const buildSelectionMask = useCallback(
+    (w: number, h: number): Uint8Array | null => {
+      const sel = selectionRef.current;
+      if (!sel || !isSelectionUsable(sel)) return null;
+      const maskCanvas = document.createElement("canvas");
+      maskCanvas.width = w;
+      maskCanvas.height = h;
+      const mctx = maskCanvas.getContext("2d", { willReadFrequently: true });
+      if (!mctx) return null;
+      mctx.fillStyle = "#ffffff";
+      mctx.fill(buildSelectionPath(sel, w, h), selectionFillRule(sel));
+      return maskFromAlpha(mctx.getImageData(0, 0, w, h).data, w * h);
+    },
+    [],
+  );
+
+  /**
+   * Nhấc pixel trong vùng chọn khỏi layer vào bộ đệm "đang bay" (AC-T3.1):
+   * 1) chép phần layer nằm trong vùng chọn, 2) **khoét** vùng đó khỏi layer (nên
+   * dời là dời thật, không nhân bản), 3) giữ bitmap sau khi khoét làm nền để mỗi
+   * lần di chuột vẽ lại sạch (viền không nhoè dần).
+   */
+  const beginFloat = useCallback(
+    (sel: Selection): boolean => {
+      const ctx = getCtx();
+      if (!ctx) return false;
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      const float = document.createElement("canvas");
+      float.width = w;
+      float.height = h;
+      const fctx = float.getContext("2d");
+      if (!fctx) return false;
+      const path = buildSelectionPath(sel, w, h);
+      const rule = selectionFillRule(sel);
+      fctx.fillStyle = "#ffffff";
+      fctx.fill(path, rule);
+      fctx.globalCompositeOperation = "destination-in";
+      fctx.drawImage(ctx.canvas, 0, 0);
+
+      snapshot();
+      ctx.save();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+      ctx.filter = "none";
+      ctx.clip(path, rule);
+      ctx.clearRect(0, 0, w, h);
+      ctx.restore();
+
+      floatCanvasRef.current = float;
+      floatBaseRef.current = ctx.getImageData(0, 0, w, h);
+      floatBaseSelectionRef.current = sel;
+      transformRef.current = IDENTITY_TRANSFORM;
+      floatCutRef.current = true;
+      return true;
+    },
+    [getCtx, snapshot],
+  );
+
+  /** Vẽ lại layer = nền đã khoét + pixel đang bay, theo phép biến đổi hiện tại. */
+  const renderFloat = useCallback(
+    (t: SelectionTransform) => {
+      const ctx = getCtx();
+      const float = floatCanvasRef.current;
+      const base = floatBaseRef.current;
+      const baseSel = floatBaseSelectionRef.current;
+      if (!ctx || !float || !base || !baseSel) return;
+      const c = selectionCenter(baseSel);
+      ctx.save();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+      ctx.filter = "none";
+      ctx.putImageData(base, 0, 0);
+      // Cùng thứ tự với `transformPoint`: scale/lật → xoay → dời, neo ở trọng tâm gốc
+      ctx.translate(c.x + t.dx, c.y + t.dy);
+      ctx.rotate((t.rotate * Math.PI) / 180);
+      ctx.scale(t.scale * (t.flipH ? -1 : 1), t.scale * (t.flipV ? -1 : 1));
+      ctx.translate(-c.x, -c.y);
+      ctx.drawImage(float, 0, 0);
+      ctx.restore();
+      renderComposite();
+    },
+    [getCtx, renderComposite],
+  );
+
+  /** Kết thúc một lần "bay": pixel đã nằm trong layer, chỉ cần bỏ tham chiếu. */
+  const endFloat = useCallback(() => {
+    floatCanvasRef.current = null;
+    floatBaseRef.current = null;
+    floatBaseSelectionRef.current = null;
+    floatStartRef.current = null;
+    floatCutRef.current = false;
+    transformRef.current = IDENTITY_TRANSFORM;
+  }, []);
+
+  /**
+   * Biến đổi vùng chọn **kèm pixel** bên trong (AC-T3.1: xoay ±15°, lật ngang/dọc,
+   * phóng to/thu nhỏ có tỉ lệ). Mỗi lần gọi = một bước undo riêng.
+   */
+  const transformSelectionBy = useCallback(
+    (patch: Partial<SelectionTransform>) => {
+      const sel = selectionRef.current;
+      if (!sel || !isSelectionUsable(sel)) {
+        showToast("Chưa có vùng chọn — hãy khoanh vùng bằng công cụ Chọn trước.");
+        return;
+      }
+      const reason = activeLayerBlockReason();
+      if (reason) {
+        showToast(reason);
+        return;
+      }
+      if (!beginFloat(sel)) return;
+      const t: SelectionTransform = { ...IDENTITY_TRANSFORM, ...patch };
+      transformRef.current = t;
+      renderFloat(t);
+      commitSelection(transformSelection(sel, t, selectionCenter(sel)));
+      endFloat();
+      compositeNow();
+    },
+    [
+      activeLayerBlockReason,
+      beginFloat,
+      commitSelection,
+      compositeNow,
+      endFloat,
+      renderFloat,
+      showToast,
+    ],
+  );
+
+  /** Xoay vùng chọn một nấc 15° (AC-T3.1). */
+  const rotateSelection = useCallback(
+    (direction: 1 | -1) =>
+      transformSelectionBy({ rotate: direction * ROTATE_STEP }),
+    [transformSelectionBy],
+  );
+
+  /** Lật vùng chọn theo trục ngang/dọc (AC-T3.1). */
+  const flipSelection = useCallback(
+    (axis: "h" | "v") =>
+      transformSelectionBy(axis === "h" ? { flipH: true } : { flipV: true }),
+    [transformSelectionBy],
+  );
+
+  /** Phóng to/thu nhỏ vùng chọn **có tỉ lệ** (AC-T3.1). */
+  const scaleSelectionBy = useCallback(
+    (factor: number) =>
+      transformSelectionBy(scaleTransform(IDENTITY_TRANSFORM, factor)),
+    [transformSelectionBy],
+  );
+
+  /** `Delete`: xoá nội dung trong vùng chọn trên layer đang chọn (AC-T3.2). */
+  const deleteSelection = useCallback(() => {
+    const sel = selectionRef.current;
+    if (!sel || !isSelectionUsable(sel)) {
+      showToast("Chưa có vùng chọn để xóa — hãy khoanh vùng bằng công cụ Chọn.");
+      return;
+    }
+    const ctx = getCtx();
+    if (!ctx) return;
+    const reason = activeLayerBlockReason();
+    if (reason) {
+      showToast(reason);
+      return;
+    }
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    snapshot();
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.filter = "none";
+    ctx.clip(buildSelectionPath(sel, w, h), selectionFillRule(sel));
+    ctx.clearRect(0, 0, w, h);
+    ctx.restore();
+    compositeNow();
+    showToast("Đã xóa nội dung trong vùng chọn.");
+  }, [
+    activeLayerBlockReason,
+    compositeNow,
+    getCtx,
+    showToast,
+    snapshot,
+  ]);
+
+  /** `Ctrl+C`: chép pixel trong vùng chọn của layer đang chọn vào clipboard nội bộ. */
+  const copySelection = useCallback(() => {
+    const sel = selectionRef.current;
+    const ctx = getCtx();
+    if (!sel || !isSelectionUsable(sel) || !ctx) {
+      showToast("Chưa có vùng chọn để sao chép.");
+      return;
+    }
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    const clip = document.createElement("canvas");
+    clip.width = w;
+    clip.height = h;
+    const cctx = clip.getContext("2d");
+    if (!cctx) return;
+    cctx.fillStyle = "#ffffff";
+    cctx.fill(buildSelectionPath(sel, w, h), selectionFillRule(sel));
+    cctx.globalCompositeOperation = "destination-in";
+    cctx.drawImage(ctx.canvas, 0, 0);
+    clipboardRef.current = { canvas: clip, selection: sel };
+    showToast("Đã sao chép vùng chọn — Ctrl+V để dán.");
+  }, [getCtx, showToast]);
+
+  /**
+   * `Ctrl+V`: dán vào layer đang chọn, lệch một nhịp để thấy ngay; vùng chọn
+   * chuyển sang phần vừa dán nên dời/xoay tiếp được luôn (AC-T3.3).
+   */
+  const pasteSelection = useCallback(() => {
+    const clip = clipboardRef.current;
+    if (!clip) {
+      showToast("Chưa có gì để dán — hãy Ctrl+C một vùng chọn trước.");
+      return;
+    }
+    const ctx = getCtx();
+    if (!ctx) return;
+    const reason = activeLayerBlockReason();
+    if (reason) {
+      showToast(reason);
+      return;
+    }
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    snapshot();
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.filter = "none";
+    ctx.drawImage(clip.canvas, PASTE_OFFSET, PASTE_OFFSET);
+    ctx.restore();
+    // Dán tiếp thì lệch thêm một nhịp, không chồng khít lên bản cũ
+    const shifted = document.createElement("canvas");
+    shifted.width = w;
+    shifted.height = h;
+    shifted.getContext("2d")?.drawImage(clip.canvas, PASTE_OFFSET, PASTE_OFFSET);
+    clipboardRef.current = {
+      canvas: shifted,
+      selection: translateSelection(clip.selection, PASTE_OFFSET, PASTE_OFFSET),
+    };
+    commitSelection(clipboardRef.current.selection);
+    compositeNow();
+    showToast("Đã dán vùng chọn vào layer đang chọn.");
+  }, [
+    activeLayerBlockReason,
+    commitSelection,
+    compositeNow,
+    getCtx,
+    showToast,
+    snapshot,
+  ]);
+
+  /** Đảo vùng chọn (AC-T3.4). */
+  const invertSelection = useCallback(() => {
+    const sel = selectionRef.current;
+    if (!sel || !isSelectionUsable(sel)) {
+      showToast("Chưa có vùng chọn để đảo.");
+      return;
+    }
+    const next = toggleSelectionInvert(sel);
+    commitSelection(next);
+    showToast(
+      next.inverted
+        ? "Đã đảo vùng chọn — thao tác giờ tác động ra ngoài đường bao."
+        : "Vùng chọn đã trở lại như trước.",
+    );
+  }, [commitSelection, showToast]);
+
+  /**
+   * Bút lấy màu: đọc 1 pixel từ **ảnh tổng hợp** đang hiển thị (BR-T09), không
+   * lấy từ layer đơn lẻ. Chỉ đọc nên không vào lịch sử undo.
+   */
+  const pickColorAt = useCallback(
+    (px: number, py: number) => {
+      const display = canvasRef.current;
+      const ctx = display?.getContext("2d");
+      if (!display || !ctx) return;
+      const x = Math.floor(px);
+      const y = Math.floor(py);
+      if (x < 0 || y < 0 || x >= display.width || y >= display.height) return;
+      const [r, g, b, a] = ctx.getImageData(x, y, 1, 1).data;
+      if (a === 0) {
+        showToast("Chỗ này trong suốt — không có màu để lấy.");
+        return;
+      }
+      const hex = `#${[r, g, b]
+        .map((v) => v.toString(16).padStart(2, "0"))
+        .join("")}`;
+      setColor(hex);
+      showToast(`Đã lấy màu ${hex} từ ảnh tổng hợp.`);
+    },
+    [showToast],
+  );
+
+  /** Công cụ Chọn lúc bấm xuống: trong vùng chọn = dời, ngoài = khoanh vùng mới. */
+  const selectPointerDown = useCallback(
+    (px: number, py: number) => {
+      const sel = selectionRef.current;
+      if (sel && pointInSelection(sel, { x: px, y: py })) {
+        const reason = activeLayerBlockReason();
+        if (reason) {
+          showToast(reason);
+          return;
+        }
+        // Chờ xem có kéo thật không rồi mới cắt pixel (bấm suông không đổi gì)
+        floatStartRef.current = { x: px, y: py };
+        floatBaseSelectionRef.current = sel;
+        floatCutRef.current = false;
+        isDrawing.current = true;
+        return;
+      }
+      selectionStartRef.current = { x: px, y: py };
+      selectionDraftRef.current =
+        selectMode === "rect"
+          ? rectSelection({ x: px, y: py }, { x: px, y: py })
+          : { points: [{ x: px, y: py }], inverted: false };
+      isDrawing.current = true;
+      drawSelectionOverlay();
+    },
+    [activeLayerBlockReason, drawSelectionOverlay, selectMode, showToast],
+  );
+
+  /** Công cụ Chọn lúc kéo: hoặc dời vùng chọn (kèm pixel), hoặc mở rộng vùng mới. */
+  const selectPointerMove = useCallback(
+    (px: number, py: number) => {
+      const start = floatStartRef.current;
+      const baseSel = floatBaseSelectionRef.current;
+      if (start && baseSel) {
+        const t: SelectionTransform = {
+          ...IDENTITY_TRANSFORM,
+          dx: px - start.x,
+          dy: py - start.y,
+        };
+        if (!floatCutRef.current) {
+          if (t.dx === 0 && t.dy === 0) return;
+          if (!beginFloat(baseSel)) return;
+        }
+        transformRef.current = t;
+        renderFloat(t);
+        // Kiến bám theo vùng chọn đang bay
+        selectionDraftRef.current = transformSelection(
+          baseSel,
+          t,
+          selectionCenter(baseSel),
+        );
+        drawSelectionOverlay();
+        return;
+      }
+      const s = selectionStartRef.current;
+      if (!s) return;
+      if (selectMode === "rect") {
+        selectionDraftRef.current = rectSelection(s, { x: px, y: py });
+      } else {
+        const draft = selectionDraftRef.current;
+        if (!draft) return;
+        selectionDraftRef.current = {
+          points: appendLassoPoint(draft.points, { x: px, y: py }),
+          inverted: false,
+        };
+      }
+      drawSelectionOverlay();
+    },
+    [beginFloat, drawSelectionOverlay, renderFloat, selectMode],
+  );
+
+  /** Công cụ Chọn lúc nhả chuột: chốt vùng chọn / kết thúc một lần dời. */
+  const selectPointerUp = useCallback(() => {
+    const wasMoving = floatStartRef.current !== null;
+    const draft = selectionDraftRef.current;
+    const t = transformRef.current;
+    const baseSel = floatBaseSelectionRef.current;
+    selectionDraftRef.current = null;
+    selectionStartRef.current = null;
+    if (wasMoving) {
+      if (floatCutRef.current && baseSel) {
+        commitSelection(transformSelection(baseSel, t, selectionCenter(baseSel)));
+        compositeNow();
+      }
+      endFloat();
+      drawSelectionOverlay();
+      return;
+    }
+    // Khoanh xong; vùng quá nhỏ (bấm suông) nghĩa là bỏ chọn (AC-T3.4)
+    commitSelection(draft);
+    drawSelectionOverlay();
+  }, [commitSelection, compositeNow, drawSelectionOverlay, endFloat]);
 
   /** Hoàn nguyên 1 bước: trả bitmap về đúng layer mà thao tác đó đã sửa. */
   const undo = useCallback(() => {
@@ -1222,31 +1713,61 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, page]);
 
-  // Phím tắt bàn phím (Ctrl+Z, Ctrl+Y, Ctrl+S)
+  // Phím tắt bàn phím (Ctrl+Z, Ctrl+Y, Ctrl+S, vùng chọn: Delete/C/C/V, Esc)
   useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      return Boolean(
+        el &&
+          (el.tagName === "INPUT" ||
+            el.tagName === "TEXTAREA" ||
+            el.isContentEditable),
+      );
+    };
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (mod && key === "z") {
         e.preventDefault();
         if (e.shiftKey) {
           redo();
         } else {
           undo();
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+      } else if (mod && key === "y") {
         e.preventDefault();
         redo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      } else if (mod && key === "s") {
         e.preventDefault();
         saveDraft();
-      } else if (!e.ctrlKey && !e.metaKey && (e.key === "[" || e.key === "]")) {
+      } else if (mod && key === "c") {
+        // AC-T3.3: sao chép vùng chọn trên layer đang chọn
+        if (isTypingTarget(e.target)) return;
+        e.preventDefault();
+        copySelection();
+      } else if (mod && key === "v") {
+        // AC-T3.3: dán trong cùng khung
+        if (isTypingTarget(e.target)) return;
+        e.preventDefault();
+        pasteSelection();
+      } else if (mod && e.shiftKey && key === "i") {
+        // AC-T3.4: đảo vùng chọn
+        e.preventDefault();
+        invertSelection();
+      } else if (!mod && (e.key === "Delete" || e.key === "Backspace")) {
+        // AC-T3.2: xoá nội dung trong vùng chọn
+        if (isTypingTarget(e.target)) return;
+        e.preventDefault();
+        deleteSelection();
+      } else if (e.key === "Escape") {
+        // AC-T3.4: Esc bỏ chọn. Đang toàn màn hình thì nhường Esc cho việc thoát
+        // toàn màn hình (đã có listener riêng) để không làm hai việc một lúc.
+        if (panelFullscreen) return;
+        if (isTypingTarget(e.target)) return;
+        if (selectionRef.current) clearSelection();
+      } else if (!mod && (e.key === "[" || e.key === "]")) {
         // AC-T2.4: [ ] đổi size ±2, Shift ±10
-        const target = e.target as HTMLElement | null;
-        const typing =
-          target &&
-          (target.tagName === "INPUT" ||
-            target.tagName === "TEXTAREA" ||
-            target.isContentEditable);
-        if (typing) return;
+        if (isTypingTarget(e.target)) return;
         e.preventDefault();
         const step = (e.shiftKey ? 10 : 2) * (e.key === "]" ? 1 : -1);
         nudgeSize(step);
@@ -1254,7 +1775,18 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo, saveDraft, nudgeSize]);
+  }, [
+    undo,
+    redo,
+    saveDraft,
+    nudgeSize,
+    panelFullscreen,
+    clearSelection,
+    copySelection,
+    pasteSelection,
+    invertSelection,
+    deleteSelection,
+  ]);
 
   // Chèn chữ / lời thoại vào canvas
   const insertText = useCallback(
@@ -1422,8 +1954,25 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     canvas.style.left = `${Math.round(tx)}px`;
     canvas.style.top = `${Math.round(ty)}px`;
 
+    // Lớp phủ vùng chọn: cùng khung hình với canvas hiển thị, nhưng mực vẽ theo
+    // CSS px (1,6px) nên đường kiến không dày lên khi zoom (BR-T06).
+    const overlay = selectionOverlayRef.current;
+    if (overlay) {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      overlayDprRef.current = dpr;
+      overlay.style.width = `${cssW}px`;
+      overlay.style.height = `${cssH}px`;
+      overlay.style.left = `${Math.round(tx)}px`;
+      overlay.style.top = `${Math.round(ty)}px`;
+      const bw = Math.max(1, Math.round(cssW * dpr));
+      const bh = Math.max(1, Math.round(cssH * dpr));
+      if (overlay.width !== bw) overlay.width = bw;
+      if (overlay.height !== bh) overlay.height = bh;
+    }
+
     viewportRef.current = { scale, tx, ty };
-  }, [activePanel, layout]);
+    drawSelectionOverlay();
+  }, [activePanel, layout, drawSelectionOverlay]);
 
   // Giữ tham chiếu mới nhất để effect zoom/pan không phải phụ thuộc identity
   const applyViewportRef = useRef(applyViewport);
@@ -1567,19 +2116,23 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
 
-      const currentLayer = layers.find((l) => l.id === activeLayerId);
-      if (currentLayer?.kind === "ai" || currentLayer?.readOnly) {
-        showToast(
-          `Layer "${currentLayer?.name}" là layer AI — chỉ đọc, hãy chọn layer khác để vẽ!`,
+      // 0b. Công cụ Chọn: khoanh vùng không cần layer ghi được, nên xét trước cổng
+      //     chặn (vẫn khoanh/copy được trên layer AI); chỉ lúc **dời** mới cần ghi.
+      if (tool === "select") {
+        const { x: selX, y: selY } = screenToArtwork(
+          viewportRef.current,
+          screenX,
+          screenY,
         );
+        selectPointerDown(selX, selY);
         return;
       }
-      if (currentLayer?.locked) {
-        showToast(`Layer "${currentLayer.name}" đang bị khóa, hãy mở khóa để vẽ!`);
-        return;
-      }
-      if (currentLayer && !currentLayer.visible) {
-        showToast(`Layer "${currentLayer.name}" đang bị ẩn!`);
+
+      // Cổng chặn ghi vào layer (layer AI chỉ đọc / bị khoá / đang ẩn) — luôn nêu
+      // đúng lý do thay vì thất bại im lặng (AC-T3.5).
+      const blockReason = activeLayerBlockReason();
+      if (blockReason) {
+        showToast(blockReason);
         return;
       }
 
@@ -1596,15 +2149,48 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         screenY,
       );
 
-      // 1. Công cụ đổ màu (Fill / Paint Bucket)
+      // 1. Bút lấy màu (BR-T09): chỉ đọc ảnh tổng hợp, không sửa layer
+      if (tool === "eyedropper") {
+        pickColorAt(px, py);
+        return;
+      }
+
+      // 2. Công cụ đổ màu (Fill / Paint Bucket) — tôn trọng vùng chọn (BR-T10)
       if (tool === "fill") {
-        snapshot();
-        floodFill(ctx, Math.floor(px), Math.floor(py), hexToRgba(color));
+        const w = ctx.canvas.width;
+        const h = ctx.canvas.height;
+        const mask = buildSelectionMask(w, h);
+        const before = ctx.getImageData(0, 0, w, h);
+        // Bản sao **trước khi đổ** → chỉ đẩy vào lịch sử nếu thật sự có pixel đổi
+        const forHistory = new ImageData(
+          new Uint8ClampedArray(before.data),
+          w,
+          h,
+        );
+        const painted = floodFillPixels(
+          before.data,
+          w,
+          h,
+          Math.floor(px),
+          Math.floor(py),
+          hexToRgba(color),
+          { mask, tolerance: FLOOD_TOLERANCE },
+        );
+        if (painted === 0) {
+          showToast(
+            mask
+              ? "Không đổ được: điểm bấm nằm ngoài vùng chọn hoặc vùng đã cùng màu."
+              : "Không đổ được: vùng này đã cùng màu rồi.",
+          );
+          return;
+        }
+        pushHistory(forHistory);
+        ctx.putImageData(before, 0, 0);
         compositeNow();
         return;
       }
 
-      // 2. Công cụ hình học (Shape)
+      // 3. Công cụ hình học (Shape)
       if (tool === "shape") {
         snapshot();
         isDrawing.current = true;
@@ -1618,7 +2204,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
 
-      // 3. Công cụ chèn chữ / lời thoại (Text)
+      // 4. Công cụ chèn chữ / lời thoại (Text)
       if (tool === "text") {
         // Ô nhập là CSS px màn hình — sẽ đổi sang toạ độ artwork lúc chèn chữ
         setTextInputPos({ x: screenX, y: screenY });
@@ -1626,7 +2212,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
 
-      // 4. Các công cụ nét vẽ tự do (Pen, Brush, Eraser)
+      // 5. Các công cụ nét vẽ tự do (Pen, Brush, Eraser)
       //    Nét tích vào bộ đệm rồi hợp nhất MỘT lần với `opacity` nét (AC-T2.6).
       const buffer = getStrokeBuffer();
       const bufferCtx = buffer?.getContext("2d");
@@ -1664,9 +2250,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       paintStrokeBuffer,
       snapshot,
       compositeNow,
-      layers,
-      activeLayerId,
       showToast,
+      activeLayerBlockReason,
+      selectPointerDown,
+      pickColorAt,
+      buildSelectionMask,
+      pushHistory,
     ],
   );
 
@@ -1694,6 +2283,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         e.clientX - rect.left,
         e.clientY - rect.top,
       );
+
+      // Công cụ Chọn: dời vùng chọn hoặc mở rộng vùng đang khoanh (AC-T3.1)
+      if (tool === "select") {
+        selectPointerMove(curX, curY);
+        return;
+      }
 
       // Xử lý preview kéo thả hình học (Rubber-band preview)
       if (tool === "shape" && startPosRef.current && previewSnapshotRef.current) {
@@ -1775,6 +2370,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       clampCurrentPan,
       shapeType,
       shapeFill,
+      selectPointerMove,
     ],
   );
 
@@ -1788,6 +2384,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     isDrawing.current = false;
     startPosRef.current = null;
     previewSnapshotRef.current = null;
+    // Công cụ Chọn: chốt vùng chọn / kết thúc một lần dời (AC-T3.1–T3.4)
+    if (tool === "select") {
+      selectPointerUp();
+      return;
+    }
     // Nét đã hợp nhất vào layer trong lúc vẽ → chỉ cần dọn bộ đệm.
     clearStrokeBuffer();
     const ctx = getCtx();
@@ -1810,7 +2411,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       }
       return next;
     });
-  }, [activePanel, getCtx, ghostType, compositeNow, clearStrokeBuffer]);
+  }, [
+    activePanel,
+    getCtx,
+    ghostType,
+    compositeNow,
+    clearStrokeBuffer,
+    tool,
+    selectPointerUp,
+  ]);
 
   // ── AI actions ────────────────────────────────────────────────────────────────
 
@@ -2111,12 +2720,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       setGhostStrokesSummary(null);
       historyRef.current = [];
       futureRef.current = [];
+      // Vùng chọn gắn với từng khung → đổi khung thì bỏ chọn (như lịch sử undo)
+      clearSelection();
+      endFloat();
       const autoCompId = panelAutoComp[panelId];
       if (autoCompId) {
         setSelectedComp(autoCompId);
       }
     },
-    [panelAutoComp],
+    [panelAutoComp, clearSelection, endFloat],
   );
 
   const exitPanel = useCallback(() => {
@@ -2185,6 +2797,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     // Canvas ref
     canvasRef,
     inputRef,
+    /** Lớp phủ vẽ "marching ants" của vùng chọn (3C) */
+    selectionOverlayRef,
     // Khung nhìn (3A — pan/zoom)
     zoom: viewZoom,
     zoomBy,
@@ -2223,6 +2837,18 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setShapeType,
     shapeFill,
     setShapeFill,
+    // Vùng chọn (3C — BR-T05, AC-T3.1–T3.4)
+    selection,
+    selectMode,
+    setSelectMode,
+    rotateSelection,
+    flipSelection,
+    scaleSelectionBy,
+    invertSelection,
+    deleteSelection,
+    copySelection,
+    pasteSelection,
+    clearSelection,
     showTextInput,
     setShowTextInput,
     textInputPos,

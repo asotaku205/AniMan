@@ -44,6 +44,8 @@ type Props = {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   /** Canvas input mờ phủ trên: nhận toàn bộ sự kiện vẽ (RC-2) */
   inputRef: React.RefObject<HTMLCanvasElement | null>;
+  /** Lớp phủ vẽ đường "marching ants" của vùng chọn (3C) — không vào ảnh xuất */
+  selectionOverlayRef: React.RefObject<HTMLCanvasElement | null>;
   tool: DrawTool;
   down: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   move: (e: React.PointerEvent<HTMLCanvasElement>) => void;
@@ -107,6 +109,7 @@ export function CanvasArea({
   panelAspect,
   canvasRef,
   inputRef,
+  selectionOverlayRef,
   tool,
   down,
   move,
@@ -274,6 +277,14 @@ export function CanvasArea({
             {/* Canvas hiển thị — CHỈ ĐỌC, không nhận sự kiện (RC-2) */}
             <canvas
               ref={canvasRef}
+              aria-hidden
+              className="absolute inset-0 w-full h-full z-30 pointer-events-none"
+              style={{ touchAction: "none" }}
+            />
+
+            {/* Lớp phủ vùng chọn — chỉ vẽ "marching ants", không nhận sự kiện (3C) */}
+            <canvas
+              ref={selectionOverlayRef}
               aria-hidden
               className="absolute inset-0 w-full h-full z-30 pointer-events-none"
               style={{ touchAction: "none" }}

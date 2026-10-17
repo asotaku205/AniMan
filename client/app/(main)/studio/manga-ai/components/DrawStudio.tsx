@@ -122,6 +122,15 @@ export function DrawStudio({
           onSettingsChange={s.updateSettings}
           color={s.color}
           disabled={!s.activePanel}
+          selectionActive={s.selection !== null}
+          selectMode={s.selectMode}
+          onSelectModeChange={s.setSelectMode}
+          onRotateSelection={s.rotateSelection}
+          onFlipSelection={s.flipSelection}
+          onScaleSelection={s.scaleSelectionBy}
+          onInvertSelection={s.invertSelection}
+          onDeleteSelection={s.deleteSelection}
+          onClearSelection={s.clearSelection}
         />
 
         <CanvasArea
@@ -133,6 +142,7 @@ export function DrawStudio({
           panelAspect={s.panelAspect}
           canvasRef={s.canvasRef}
           inputRef={s.inputRef}
+          selectionOverlayRef={s.selectionOverlayRef}
           tool={s.tool}
           down={s.down}
           move={s.move}

@@ -5,7 +5,7 @@ import type { AiStrokePath } from "@/lib/ai-drawing-api";
 export type StudioMode   = "projects" | "draw" | "storyboard" | "publish";
 export type SceneType    = "auto" | "action" | "dialogue" | "landscape" | "closeup" | "wide";
 export type RightTab     = "ai" | "layout" | "layers";
-export type DrawTool     = "pen" | "brush" | "eraser" | "fill" | "select" | "shape" | "text" | "pan";
+export type DrawTool     = "pen" | "brush" | "eraser" | "fill" | "select" | "shape" | "text" | "pan" | "eyedropper";
 export type GuideId      = "thirds" | "horizon" | "proportions" | "vanishing";
 export type PoseCategory = "stand" | "sit" | "action" | "emotion";
 export type DrawingPlaceholderId = "clean-lines" | "screentone" | "speech-bubble" | "speed-lines";

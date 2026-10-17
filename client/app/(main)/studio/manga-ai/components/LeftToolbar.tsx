@@ -6,6 +6,7 @@ import {
   Brush,
   Eraser,
   PaintBucket,
+  Pipette,
   MousePointer2,
   Square,
   Circle,
@@ -23,6 +24,7 @@ const TOOL_ICONS: Record<DrawTool, React.ReactNode> = {
   brush: <Brush size={16} />,
   eraser: <Eraser size={16} />,
   fill: <PaintBucket size={16} />,
+  eyedropper: <Pipette size={16} />,
   select: <MousePointer2 size={16} />,
   shape: <Square size={16} />,
   text: <TypeIcon size={16} />,
@@ -75,15 +77,27 @@ export function LeftToolbar({
   return (
     <div
       className={`w-16 bg-[#120a1f] border-r border-white/5 flex flex-col items-center py-3 gap-1 flex-shrink-0 relative ${
-        disabled ? "opacity-40 pointer-events-none" : ""
+        disabled ? "opacity-40" : ""
       }`}
     >
+      {/* AC-T1.3: chưa vào khung thì công cụ bị vô hiệu **kèm lý do**, không im lặng */}
+      {disabled && (
+        <p className="text-[8px] leading-tight text-amber-300/90 text-center px-1 mb-1">
+          Mở một khung tranh để dùng công cụ
+        </p>
+      )}
+
       {TOOLS.map((t) => (
         <button
           key={t}
           onClick={() => onToolChange(t)}
-          title={TOOL_NAMES[t]}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+          disabled={disabled}
+          title={
+            disabled
+              ? "Chưa mở khung tranh nào — hãy mở một khung để dùng công cụ"
+              : TOOL_NAMES[t]
+          }
+          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all disabled:cursor-not-allowed ${
             tool === t
               ? "bg-pink-500/30 text-pink-400 ring-1 ring-pink-500/50"
               : "text-white/40 hover:bg-white/5 hover:text-white/80"
@@ -94,7 +108,7 @@ export function LeftToolbar({
       ))}
 
       {/* Sub-menu chọn loại hình khi tool === "shape" */}
-      {tool === "shape" && (
+      {tool === "shape" && !disabled && (
         <div className="absolute left-16 top-32 z-50 bg-[#0d0817]/95 border border-purple-500/30 rounded-2xl p-2 shadow-2xl backdrop-blur-md flex flex-col gap-1.5 w-32">
           <p className="text-[9px] uppercase tracking-wider text-white/40 font-semibold px-1">
             Loại hình
@@ -158,6 +172,7 @@ export function LeftToolbar({
           <input
             type="color"
             value={color}
+            disabled={disabled}
             onChange={(e) => pickColor(e.target.value)}
             className="absolute -inset-1 opacity-0 cursor-pointer w-12 h-12"
           />
@@ -175,6 +190,7 @@ export function LeftToolbar({
           <button
             key={c}
             onClick={() => pickColor(c)}
+            disabled={disabled}
             title={c}
             className={`w-3.5 h-3.5 rounded-[4px] border transition-transform hover:scale-110 ${
               color.toLowerCase() === c
@@ -189,6 +205,7 @@ export function LeftToolbar({
       {/* Nhập HEX tay (AC-T2.3) */}
       <input
         value={hexValue}
+        disabled={disabled}
         onChange={(e) => setHexDraft(e.target.value)}
         onBlur={commitHex}
         onKeyDown={(e) => {
