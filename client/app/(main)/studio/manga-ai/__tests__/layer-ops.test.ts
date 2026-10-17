@@ -5,6 +5,8 @@ import {
   duplicateLayerInList,
   mergeDownInList,
   canRemoveLayerInList,
+  isLayerLimitReached,
+  MAX_LAYERS_PER_PANEL,
 } from "../lib/layerOps";
 import {
   createAiLayer,
@@ -175,5 +177,31 @@ describe("canRemoveLayerInList (luôn giữ ≥1 layer vẽ được)", () => {
 
   it("id không tồn tại → false", () => {
     expect(canRemoveLayerInList(list(["a", "b"]), "zz")).toBe(false);
+  });
+});
+
+describe("isLayerLimitReached (BR-L13 — trần 12 layer mỗi khung)", () => {
+  it("trần đúng là 12", () => {
+    expect(MAX_LAYERS_PER_PANEL).toBe(12);
+  });
+
+  it("dưới trần → còn thêm được", () => {
+    const layers = list(Array.from({ length: 11 }, (_, i) => `l${i}`));
+    expect(isLayerLimitReached(layers)).toBe(false);
+  });
+
+  it("đúng 12 layer → chạm trần, không thêm được nữa", () => {
+    const layers = list(Array.from({ length: 12 }, (_, i) => `l${i}`));
+    expect(isLayerLimitReached(layers)).toBe(true);
+  });
+
+  it("đếm cả layer AI vào trần", () => {
+    const user = list(Array.from({ length: 11 }, (_, i) => `l${i}`));
+    const withAi = [...user, createAiLayer("AI", { id: "ai1" })];
+    expect(isLayerLimitReached(withAi)).toBe(true);
+  });
+
+  it("khung rỗng chưa chạm trần", () => {
+    expect(isLayerLimitReached([])).toBe(false);
   });
 });

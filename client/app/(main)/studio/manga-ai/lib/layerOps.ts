@@ -104,3 +104,15 @@ export function canRemoveLayerInList(
   if (!target || target.kind === "ai") return false;
   return layers.some((l) => l.kind !== "ai" && l.id !== id);
 }
+
+/**
+ * BR-L13 — trần số layer mỗi khung: **12**, đếm cả layer người dùng lẫn layer
+ * AI. Quá trần thì **không tạo thêm** (thêm mới lẫn nhân bản đều là tạo mới) và
+ * UI phải nói rõ lý do; muốn thêm thì xóa/gộp bớt trước.
+ */
+export const MAX_LAYERS_PER_PANEL = 12;
+
+/** BR-L13: danh sách layer này đã chạm trần chưa? */
+export function isLayerLimitReached(layers: readonly LayerItem[]): boolean {
+  return layers.length >= MAX_LAYERS_PER_PANEL;
+}

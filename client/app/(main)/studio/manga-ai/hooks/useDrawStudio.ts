@@ -69,6 +69,8 @@ import {
 import {
   canRemoveLayerInList,
   duplicateLayerInList,
+  isLayerLimitReached,
+  MAX_LAYERS_PER_PANEL,
   mergeDownInList,
   moveLayerInList,
   moveLayerToIndex,
@@ -675,6 +677,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         showToast("Hãy mở một khung trước để thêm layer cho khung đó!");
         return;
       }
+      // BR-L13 / AC-L2.8: trần 12 layer mỗi khung (đếm cả layer AI).
+      if (isLayerLimitReached(layersRef.current)) {
+        showToast(
+          `Khung này đã đủ ${MAX_LAYERS_PER_PANEL} layer — hãy xóa hoặc gộp bớt rồi thêm!`,
+        );
+        return;
+      }
       const layer = createUserLayer(
         name?.trim() || `Layer ${layersRef.current.length + 1}`,
       );
@@ -748,6 +757,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       }
       const target = layersRef.current.find((l) => l.id === id);
       if (!target || target.kind === "ai") return;
+      // BR-L13: nhân bản cũng là tạo layer mới nên phải tôn trọng trần 12.
+      if (isLayerLimitReached(layersRef.current)) {
+        showToast(
+          `Khung này đã đủ ${MAX_LAYERS_PER_PANEL} layer — hãy xóa hoặc gộp bớt rồi nhân bản!`,
+        );
+        return;
+      }
       const clone = createUserLayer(`${target.name} (bản sao)`, {
         visible: target.visible,
         locked: false,

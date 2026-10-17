@@ -22,7 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { AiTab } from "./AiTab";
-import { canRemoveLayerInList } from "../lib/layerOps";
+import { canRemoveLayerInList, MAX_LAYERS_PER_PANEL } from "../lib/layerOps";
 import {
   LAYOUTS,
   type LayerItem,
@@ -59,7 +59,14 @@ export function RightPanel({ s }: Props) {
           [
             ["ai", <Bot size={13} />, "AI Gợi ý"],
             ["layout", <Grid3x3 size={13} />, "Bố cục trang"],
-            ["layers", <Layers size={13} />, "Layers"],
+            // AC-L2.8: tiêu đề tab hiện luôn số layer hiện tại / trần 12 (BR-L13).
+            [
+              "layers",
+              <Layers size={13} />,
+              s.layers.length > 0
+                ? `Layers ${s.layers.length}/${MAX_LAYERS_PER_PANEL}`
+                : "Layers",
+            ],
           ] as [RightTab, React.ReactNode, string][]
         ).map(([tab, icon, label]) => (
           <button
