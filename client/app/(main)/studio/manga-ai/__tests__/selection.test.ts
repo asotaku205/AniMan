@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appendLassoPoint,
+  composeTransform,
   IDENTITY_TRANSFORM,
   invertSelection,
   isIdentityTransform,
@@ -264,5 +265,41 @@ describe("scaleTransform / isIdentityTransform", () => {
     expect(isIdentityTransform(IDENTITY_TRANSFORM)).toBe(true);
     expect(isIdentityTransform({ ...IDENTITY_TRANSFORM, dy: 1 })).toBe(false);
     expect(isIdentityTransform({ ...IDENTITY_TRANSFORM, flipV: true })).toBe(false);
+  });
+});
+
+describe("composeTransform", () => {
+  it("ghép lên phép biến đổi rỗng = đúng patch (kèm kẹp tỉ lệ)", () => {
+    expect(composeTransform(IDENTITY_TRANSFORM, { rotate: 15 })).toEqual({
+      ...IDENTITY_TRANSFORM,
+      rotate: 15,
+    });
+    // Kẹp biên: nút phóng to bấm nhiều lần không vượt trần
+    expect(composeTransform(IDENTITY_TRANSFORM, { scale: 1e6 }).scale).toBe(
+      MAX_TRANSFORM_SCALE,
+    );
+  });
+
+  it("cộng dồn vị trí và độ xoay, nhân dồn tỉ lệ", () => {
+    const placed = { ...IDENTITY_TRANSFORM, dx: 30, dy: -10, rotate: 15 };
+    const next = composeTransform(placed, { dx: 5, dy: 5, rotate: 15, scale: 2 });
+    expect(next).toEqual({
+      dx: 35,
+      dy: -5,
+      rotate: 30,
+      scale: 2,
+      flipH: false,
+      flipV: false,
+    });
+    expect(composeTransform(next, { scale: 2 }).scale).toBe(4);
+  });
+
+  it("lật là giá trị tuyệt đối: patch quyết định, không tự đảo", () => {
+    const flipped = composeTransform(IDENTITY_TRANSFORM, { flipH: true });
+    expect(flipped.flipH).toBe(true);
+    // Không truyền flipH → giữ nguyên trạng thái đang lật
+    expect(composeTransform(flipped, { rotate: 15 }).flipH).toBe(true);
+    // Truyền flipH: false → lật lại về như cũ
+    expect(composeTransform(flipped, { flipH: false }).flipH).toBe(false);
   });
 });

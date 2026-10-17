@@ -249,6 +249,29 @@ export function scaleTransform(
   return { ...t, scale: clampTransformScale(t.scale * factor) };
 }
 
+/**
+ * Ghép thêm một nấc biến đổi lên phép biến đổi đang có, dùng cho **vật đang bay**
+ * (bản dán) để không mất vị trí/độ xoay đã đặt trước đó:
+ * `dx/dy/rotate` cộng dồn, `scale` nhân dồn (có kẹp biên), còn `flipH/flipV` là
+ * giá trị **tuyệt đối** nên muốn lật qua lật lại thì chỗ gọi truyền giá trị đảo.
+ *
+ * Ghép lên `IDENTITY_TRANSFORM` cho ra đúng `{ ...IDENTITY_TRANSFORM, ...patch }`
+ * (kèm kẹp tỉ lệ), nên đường "cắt rồi biến đổi một nấc" dùng chung hàm này.
+ */
+export function composeTransform(
+  base: SelectionTransform,
+  patch: Partial<SelectionTransform>,
+): SelectionTransform {
+  return {
+    dx: base.dx + (patch.dx ?? 0),
+    dy: base.dy + (patch.dy ?? 0),
+    rotate: base.rotate + (patch.rotate ?? 0),
+    scale: clampTransformScale(base.scale * (patch.scale ?? 1)),
+    flipH: patch.flipH ?? base.flipH,
+    flipV: patch.flipV ?? base.flipV,
+  };
+}
+
 /** Tỉ lệ vùng chọn đã đổi hay chưa (để biết có gì cần hợp nhất). */
 export function isIdentityTransform(t: SelectionTransform): boolean {
   return (

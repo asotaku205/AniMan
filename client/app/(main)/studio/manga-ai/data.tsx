@@ -383,6 +383,82 @@ export const SCENE_TYPE_LABEL: Record<SceneType, string> = {
   landscape: "Phong cảnh", closeup: "Cận cảnh", wide: "Tổng thể",
 };
 
+/**
+ * Hướng dẫn dùng từng công cụ vẽ (tooltip ở thanh công cụ trái). `summary` là
+ * một câu "công cụ này để làm gì", `hints` là các thao tác cụ thể theo thứ tự
+ * người dùng hay cần.
+ */
+export const TOOL_HELP: Record<DrawTool, { summary: string; hints: string[] }> = {
+  pen: {
+    summary: "Nét bút mảnh, đều — dùng cho line art và viền khung.",
+    hints: [
+      "Kéo chuột để vẽ; cả nét là một bước hoàn tác duy nhất (Ctrl+Z xoá cả nét vừa vẽ).",
+      "Độ to nét, độ mờ và độ cứng chỉnh ở thanh thuộc tính phía trên.",
+    ],
+  },
+  brush: {
+    summary: "Nét cọ mềm, đầu nét nhoè — dùng cho mảng tối, tóc, nền.",
+    hints: [
+      "Độ to nét là bề rộng thật của đầu cọ (mặc định 16px).",
+      "Độ chảy (flow) thấp thì chồng nhiều nhát lên nhau nét mới đậm dần.",
+      "Độ cứng (hardness) thấp cho viền nét mềm, tán màu.",
+    ],
+  },
+  eraser: {
+    summary: "Tẩy nét trên layer đang chọn.",
+    hints: [
+      "Chế độ Xóa sạch: xoá hẳn pixel. Chế độ Xóa mờ: chỉ nhạt dần theo độ mờ nét.",
+      "Tẩy sạch nét ở lớp trên sẽ lộ nét của lớp dưới ra.",
+    ],
+  },
+  fill: {
+    summary: "Đổ màu loang một vùng cùng màu, giống xô sơn.",
+    hints: [
+      "Bấm vào vùng cần đổ; màu loang dừng ở chỗ đổi màu (viền nét).",
+      "Đang có vùng chọn thì chỉ đổ bên trong vùng đó.",
+    ],
+  },
+  eyedropper: {
+    summary: "Lấy màu ở một điểm trên bức vẽ để dùng làm màu vẽ.",
+    hints: [
+      "Màu lấy từ ảnh đang hiển thị (đã trộn mọi layer trên nền giấy trắng).",
+      "Chỉ đọc màu, không sửa gì nên không vào lịch sử hoàn tác.",
+    ],
+  },
+  select: {
+    summary: "Khoanh vùng để dời, xoay, sao chép hoặc xoá riêng phần đó.",
+    hints: [
+      "Kéo ra ngoài vùng: khoanh vùng mới (chữ nhật hoặc lasso tự do).",
+      "Kéo bên trong vùng: dời nét trong vùng đó (nét vắt qua viền bị cắt ở viền).",
+      "Ctrl+C rồi Ctrl+V: dán bản sao ra chỗ khác; bản dán đang “bay” nên kéo riêng được, Enter hoặc Esc để chốt.",
+      "Delete: xoá nội dung trong vùng · Ctrl+Shift+I: đảo vùng chọn · Esc: bỏ chọn.",
+      "Nút trên thanh thuộc tính: xoay ±15°, lật ngang/dọc, phóng to/thu nhỏ theo tỉ lệ.",
+    ],
+  },
+  shape: {
+    summary: "Vẽ hình chữ nhật, ellipse hoặc đường thẳng.",
+    hints: [
+      "Kéo chuột để vẽ; thấy trước hình khi đang kéo.",
+      "Chọn loại hình ở bảng bên cạnh, bật Đổ đặc nền nếu muốn tô kín.",
+      "Độ to nét = độ dày viền hình.",
+    ],
+  },
+  text: {
+    summary: "Chèn lời thoại hoặc chữ vào khung.",
+    hints: [
+      "Bấm vào vị trí muốn đặt chữ, gõ nội dung rồi Enter.",
+      "Chữ được vẽ vào layer đang chọn nên xoá được bằng Ctrl+Z.",
+    ],
+  },
+  pan: {
+    summary: "Dịch khung nhìn để xem phần khác của khung tranh.",
+    hints: [
+      "Kéo chuột để dịch; giữ phím Space để tạm dùng công cụ này ở bất kỳ công cụ nào.",
+      "Dùng chip ở góc phải trên để phóng to/thu nhỏ hoặc về khung vừa khít.",
+    ],
+  },
+};
+
 // Contextual drawing tips shown inside the in-panel suggestion widget
 export const PANEL_DRAWING_TIPS: Record<SceneType, string> = {
   auto:

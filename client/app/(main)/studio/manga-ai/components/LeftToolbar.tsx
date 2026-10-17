@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Pen,
   Brush,
@@ -17,7 +18,7 @@ import {
 } from "lucide-react";
 import { TOOL_NAMES } from "../hooks/useDrawStudio";
 import { MANGA_PALETTE, normalizeHex } from "../lib/toolSettings";
-import type { DrawTool } from "../data";
+import { TOOL_HELP, type DrawTool } from "../data";
 
 const TOOL_ICONS: Record<DrawTool, React.ReactNode> = {
   pen: <Pen size={16} />,
@@ -61,6 +62,24 @@ export function LeftToolbar({
   // đang không sửa → hiện màu hiện tại, nên không cần đồng bộ bằng effect.
   const [hexDraft, setHexDraft] = useState<string | null>(null);
   const hexValue = hexDraft ?? color;
+  /**
+   * Công cụ đang được rê chuột (kèm toạ độ nút) → hiện bảng hướng dẫn. Bảng được
+   * render qua portal ra `document.body` và đặt `position: fixed` vì khung studio
+   * có `overflow-hidden`: để trong thanh công cụ thì bảng bị cắt cụt.
+   */
+  const [hovered, setHovered] = useState<{
+    tool: DrawTool;
+    left: number;
+    top: number;
+  } | null>(null);
+
+  const openHelp = (t: DrawTool, r: DOMRect) => {
+    setHovered({
+      tool: t,
+      left: Math.max(8, Math.min(r.right + 8, window.innerWidth - 272)),
+      top: Math.max(8, Math.min(r.top, window.innerHeight - 240)),
+    });
+  };
 
   /** Chọn màu từ bảng/circle: bỏ bản nháp đang gõ dở để ô HEX theo màu mới. */
   const pickColor = (c: string) => {
@@ -88,24 +107,70 @@ export function LeftToolbar({
       )}
 
       {TOOLS.map((t) => (
-        <button
+        // Bọc ngoài để vẫn có tooltip khi nút bị vô hiệu (nút disabled không nhận
+        // sự kiện chuột, nhưng phần tử cha thì nhận) — lúc đó người dùng cần lý do
+        // nhất.
+        <div
           key={t}
-          onClick={() => onToolChange(t)}
-          disabled={disabled}
-          title={
-            disabled
-              ? "Chưa mở khung tranh nào — hãy mở một khung để dùng công cụ"
-              : TOOL_NAMES[t]
+          className="flex-shrink-0"
+          onMouseEnter={(e) =>
+            openHelp(t, e.currentTarget.getBoundingClientRect())
           }
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all disabled:cursor-not-allowed ${
-            tool === t
-              ? "bg-pink-500/30 text-pink-400 ring-1 ring-pink-500/50"
-              : "text-white/40 hover:bg-white/5 hover:text-white/80"
-          }`}
+          onMouseLeave={() => setHovered(null)}
         >
-          {TOOL_ICONS[t]}
-        </button>
+          <button
+            onClick={() => onToolChange(t)}
+            disabled={disabled}
+            aria-label={TOOL_NAMES[t]}
+            onFocus={(e) => openHelp(t, e.currentTarget.getBoundingClientRect())}
+            onBlur={() => setHovered(null)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all disabled:cursor-not-allowed ${
+              tool === t
+                ? "bg-pink-500/30 text-pink-400 ring-1 ring-pink-500/50"
+                : "text-white/40 hover:bg-white/5 hover:text-white/80"
+            }`}
+          >
+            {TOOL_ICONS[t]}
+          </button>
+        </div>
       ))}
+
+      {/* Bảng hướng dẫn công cụ (portal ra body để không bị overflow cắt) */}
+      {hovered &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="pointer-events-none fixed z-[60] w-64 max-h-[calc(100vh-16px)] overflow-y-auto"
+            style={{ left: hovered.left, top: hovered.top }}
+          >
+            <div className="bg-[#0d0817]/97 border border-pink-500/25 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md">
+              <p className="text-[10px] font-semibold text-pink-300">
+                {TOOL_NAMES[hovered.tool]}
+              </p>
+              <p className="text-[10px] text-white/70 leading-relaxed mt-0.5">
+                {TOOL_HELP[hovered.tool].summary}
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {TOOL_HELP[hovered.tool].hints.map((hint) => (
+                  <li
+                    key={hint}
+                    className="flex gap-1.5 text-[9px] text-white/55 leading-relaxed"
+                  >
+                    <span className="text-pink-400/70">•</span>
+                    <span>{hint}</span>
+                  </li>
+                ))}
+              </ul>
+              {disabled && (
+                <p className="mt-1.5 pt-1.5 border-t border-white/10 text-[9px] text-amber-300/90">
+                  Chưa mở khung tranh nào — hãy mở một khung để dùng công cụ.
+                </p>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* Sub-menu chọn loại hình khi tool === "shape" */}
       {tool === "shape" && !disabled && (
