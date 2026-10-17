@@ -87,6 +87,8 @@ export function DrawStudio({
         onShapeTypeChange={s.setShapeType}
         shapeFill={s.shapeFill}
         onShapeFillChange={s.setShapeFill}
+        shapeSides={s.shapeSides}
+        onShapeSidesChange={s.setShapeSides}
       />
       {/* Center Canvas area */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -122,6 +124,8 @@ export function DrawStudio({
           onSettingsChange={s.updateSettings}
           color={s.color}
           disabled={!s.activePanel}
+          shapeType={s.shapeType}
+          onShapeTypeChange={s.setShapeType}
           selectionActive={s.selection !== null}
           selectMode={s.selectMode}
           onSelectModeChange={s.setSelectMode}

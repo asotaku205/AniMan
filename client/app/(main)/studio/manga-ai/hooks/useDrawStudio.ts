@@ -29,6 +29,35 @@ import {
 } from "@/lib/ai-drawing-api";
 import { getPageStacksFromDB, savePageDrawingToDB } from "../lib/mangaStorage";
 import { FLOOD_TOLERANCE, floodFillPixels, maskFromAlpha } from "../lib/floodFill";
+import { curveControlPoints } from "../lib/curve";
+import {
+  blurRadiusForSize,
+  boxBlurRGBA,
+  sharpenAmountForStrength,
+  sharpenRGBA,
+} from "../lib/effects";
+import { buildGradient } from "../lib/gradient";
+import {
+  buildShapePath,
+  constrainSquare,
+  kindLetsFill,
+  snapToAngle,
+  type ShapeKind,
+} from "../lib/shape";
+import {
+  drawWithSymmetry,
+  symmetryGuides,
+  symmetryTransforms,
+  transformSymmetryPoint,
+} from "../lib/symmetry";
+import {
+  airbrushDabRadius,
+  airbrushDabsPerTick,
+  dabAlpha,
+  hardnessBlurRadius,
+  smoothPoint,
+  sprayDabs,
+} from "../lib/stroke";
 import {
   buildCompositePlan,
   blendToComposite,
@@ -61,7 +90,6 @@ import {
   type SelectMode,
 } from "../lib/selection";
 import { blitSelectionMask } from "../lib/selectionBlit";
-import { dabAlpha, hardnessBlurRadius, smoothPoint } from "../lib/stroke";
 import {
   adjustSize,
   clampSize,
@@ -91,14 +119,57 @@ const PASTE_OFFSET = 24;
 export const TOOL_NAMES: Record<DrawTool, string> = {
   pen: "Bút vẽ",
   brush: "Cọ",
+  airbrush: "Cọ phun (airbrush)",
   eraser: "Tẩy",
   fill: "Đổ màu",
-  select: "Chọn",
+  gradient: "Chuyển sắc",
+  eyedropper: "Bút lấy màu",
   shape: "Hình",
+  line: "Đường / Mũi tên",
+  curve: "Đường cong",
+  select: "Chọn",
+  effect: "Mờ / Sắc nét",
+  symmetry: "Đối xứng",
   text: "Chữ",
   pan: "Di chuyển",
-  eyedropper: "Bút lấy màu",
 };
+
+/**
+ * Phím tắt của từng công cụ (AC-T1.1: mỗi công cụ có phím tắt riêng).
+ * `1`–`9` theo đúng bảng công cụ của BRD (Phụ lục A); các công cụ thêm ở Phase 3
+ * dùng chữ cái để không phải đánh số lại 9 công cụ cũ.
+ */
+export const TOOL_SHORTCUTS: Record<DrawTool, string> = {
+  pen: "1",
+  brush: "2",
+  eraser: "3",
+  fill: "4",
+  select: "5",
+  shape: "6",
+  text: "7",
+  pan: "8",
+  eyedropper: "9",
+  line: "L",
+  gradient: "G",
+  airbrush: "A",
+  symmetry: "Y",
+  curve: "C",
+  effect: "U",
+};
+
+/** Tra ngược phím tắt → công cụ (đã hạ chữ thường). */
+const SHORTCUT_TO_TOOL: Record<string, DrawTool> = Object.fromEntries(
+  (Object.entries(TOOL_SHORTCUTS) as [DrawTool, string][]).map(([tool, key]) => [
+    key.toLowerCase(),
+    tool,
+  ]),
+);
+
+/** Công cụ nào thuộc nhóm vẽ nét tự do (tích vào bộ đệm rồi hợp nhất một lần). */
+const FREEHAND_TOOLS: readonly DrawTool[] = ["pen", "brush", "eraser", "airbrush", "symmetry"];
+
+/** Công cụ nào vẽ bằng cú kéo có xem trước (hình / đường / cong / chuyển sắc). */
+const DRAG_PREVIEW_TOOLS: readonly DrawTool[] = ["shape", "line", "curve", "gradient"];
 
 export const GUIDE_CONFIG = [
   { id: "thirds" as GuideId, label: "Quy tắc 1/3", color: "text-amber-400" },
@@ -229,6 +300,14 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const strokeBaseImageRef = useRef<ImageData | null>(null);
   /** Điểm cuối đã làm mượt của nét đang vẽ (BR-T03). */
   const strokeLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  /** Nhịp phun của airbrush khi giữ chuột (BRD T-1 #12) — phun cả khi đứng yên. */
+  const sprayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Điểm đang phun (cập nhật mỗi lần di chuột, nhịp phun đọc lại). */
+  const sprayPointRef = useRef<{ x: number; y: number } | null>(null);
+  /** Canvas tạm cho công cụ Mờ/Sắc nét: xử lý pixel rồi gộp theo mặt nạ tròn. */
+  const effectTmpRef = useRef<HTMLCanvasElement | null>(null);
+  /** Trục đối xứng đang bật (cho lớp phủ vẽ đường trục mà không phải tạo lại callback). */
+  const symmetryRef = useRef<ToolSettings["symmetry"]>("off");
 
   // ── Vùng chọn (3C) ──────────────────────────────────────────────────────────
   /** Canvas lớp phủ vẽ "marching ants" — tách khỏi canvas hiển thị để kiến không
@@ -376,8 +455,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   );
 
   // Shape tool config
-  const [shapeType, setShapeType] = useState<"rect" | "circle" | "line">("rect");
+  const [shapeType, setShapeType] = useState<ShapeKind>("rect");
   const [shapeFill, setShapeFill] = useState(false);
+  /** Số cạnh đa giác / số cánh sao của công cụ Hình (BRD T-1 #6). */
+  const [shapeSides, setShapeSides] = useState(5);
 
   // Vùng chọn (3C — BR-T05)
   /** Kiểu khoanh vùng của công cụ `select`: chữ nhật hay tự do (lasso). */
@@ -1120,7 +1201,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     // Độ cứng đầu cọ → làm mờ viền nét (một lần, ngay lúc hợp nhất)
     const blur = hardnessBlurRadius(settings.hardness, settings.size);
     if (blur > 0.1) ctx.filter = `blur(${blur.toFixed(2)}px)`;
-    ctx.drawImage(buffer, 0, 0);
+    // Đối xứng (BRD T-1 #13): hợp nhất bộ đệm lặp lại theo từng trục gương
+    drawWithSymmetry(ctx, settings.symmetry, buffer.width, buffer.height, () => {
+      ctx.drawImage(buffer, 0, 0);
+    });
 
     ctx.filter = "none";
     ctx.globalAlpha = 1;
@@ -1223,16 +1307,35 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-    const sel = selectionDraftRef.current ?? selectionRef.current;
     const scale = viewportRef.current.scale;
-    if (!sel || sel.points.length < 3 || !(scale > 0)) return;
+    if (!(scale > 0)) return;
 
     const { artW, artH } = frameRef.current;
-    const path = buildSelectionPath(sel, artW, artH);
     // Toạ độ artwork → pixel lớp phủ (lớp phủ dùng cùng khung nhìn với canvas hiển thị)
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
+
+    // Trục đối xứng của công cụ đang dùng (BRD T-1 #13). Vẽ ở lớp phủ nên đường
+    // trục không lọt vào ảnh xuất hay ảnh gửi AI.
+    const guides = symmetryGuides(symmetryRef.current, artW, artH);
+    if (guides.length > 0) {
+      ctx.strokeStyle = "rgba(236,72,153,0.55)";
+      ctx.lineWidth = 1.2 / scale;
+      ctx.setLineDash([10 / scale, 6 / scale]);
+      ctx.lineDashOffset = 0;
+      ctx.beginPath();
+      for (const g of guides) {
+        ctx.moveTo(g.x1, g.y1);
+        ctx.lineTo(g.x2, g.y2);
+      }
+      ctx.stroke();
+    }
+
+    const sel = selectionDraftRef.current ?? selectionRef.current;
+    if (!sel || sel.points.length < 3) return;
+
+    const path = buildSelectionPath(sel, artW, artH);
     // Nền trắng đặc + nét đen đứt quãng → thấy được trên cả vùng trắng lẫn vùng đen
     ctx.setLineDash([]);
     ctx.strokeStyle = "rgba(255,255,255,0.92)";
@@ -1263,6 +1366,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [selection, drawSelectionOverlay]);
+
+  // Đổi trục đối xứng (hoặc đổi công cụ) thì vẽ lại lớp phủ để đường trục đúng ngay
+  useEffect(() => {
+    symmetryRef.current = settings.symmetry;
+    drawSelectionOverlay();
+  }, [settings.symmetry, drawSelectionOverlay]);
 
   /** Mặt nạ vùng chọn (1 = trong vùng chọn) cho thùng sơn (BR-T10). */
   const buildSelectionMask = useCallback(
@@ -1881,6 +1990,23 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         e.preventDefault();
         const step = (e.shiftKey ? 10 : 2) * (e.key === "]" ? 1 : -1);
         nudgeSize(step);
+      } else if (!mod && !e.altKey && !e.shiftKey && SHORTCUT_TO_TOOL[key]) {
+        // AC-T1.1: phím tắt riêng cho từng công cụ — `1`–`9` theo Phụ lục A,
+        // các công cụ thêm ở Phase 3 dùng chữ cái L / G / A / Y / C / U.
+        if (isTypingTarget(e.target)) return;
+        e.preventDefault();
+        const nextTool = SHORTCUT_TO_TOOL[key];
+        if (nextTool) setTool(nextTool);
+      } else if (mod && e.shiftKey && key === "n") {
+        // Phụ lục A: thêm layer. Chromium giành Ctrl+Shift+N cho cửa sổ ẩn danh
+        // nên trên Chrome phím này có thể không tới được trang; nút "+" ở bảng
+        // Layer vẫn dùng bình thường (xem appendix-T-CHECK).
+        e.preventDefault();
+        addLayer();
+      } else if (mod && e.shiftKey && key === "e") {
+        // Phụ lục A: gộp layer đang chọn xuống layer dưới
+        e.preventDefault();
+        if (activeLayerId) mergeLayerDown(activeLayerId);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1899,6 +2025,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     endFloat,
     compositeNow,
     showToast,
+    setTool,
+    addLayer,
+    mergeLayerDown,
+    activeLayerId,
   ]);
 
   // Chèn chữ / lời thoại vào canvas
@@ -2203,6 +2333,265 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     };
   }, []);
 
+  // ── Công cụ mở rộng (Phase 3 slice D) ─────────────────────────────────────────
+
+  /** Nhịp phun airbrush: ~25 nhịp/giây, đủ mượt mà không nặng máy. */
+  const AIRBRUSH_TICK_MS = 40;
+
+  /**
+   * Dừng nhịp phun airbrush. Gọi khi nhả chuột, đổi công cụ và lúc tháo hook —
+   * không thì nhịp phun cũ vẫn rắc mực lên layer sau khi người dùng đã buông.
+   */
+  const stopSpray = useCallback(() => {
+    if (sprayTimerRef.current !== null) {
+      clearInterval(sprayTimerRef.current);
+      sprayTimerRef.current = null;
+    }
+    sprayPointRef.current = null;
+  }, []);
+
+  /**
+   * Một nhịp phun: rắc các hạt ngẫu nhiên quanh điểm đang giữ vào bộ đệm nét
+   * rồi hợp nhất lại vào layer. Mực tích dần trong bộ đệm nên **càng giữ lâu
+   * chỗ đó càng đậm**, đúng cảm giác cọ phun.
+   */
+  const sprayOnce = useCallback(
+    (x: number, y: number) => {
+      const buffer = strokeBufferRef.current;
+      const bufferCtx = buffer?.getContext("2d");
+      if (!buffer || !bufferCtx) return;
+      const dabs = sprayDabs(
+        airbrushDabsPerTick(settings.flow),
+        Math.max(1, settings.size / 2),
+      );
+      const dabRadius = airbrushDabRadius(settings.size);
+      bufferCtx.globalCompositeOperation = "source-over";
+      bufferCtx.globalAlpha = dabAlpha(settings.flow) * 0.5;
+      bufferCtx.fillStyle = color;
+      for (const d of dabs) {
+        bufferCtx.beginPath();
+        bufferCtx.arc(x + d.x, y + d.y, dabRadius, 0, Math.PI * 2);
+        bufferCtx.fill();
+      }
+      paintStrokeBuffer();
+    },
+    [settings, color, paintStrokeBuffer],
+  );
+
+  /**
+   * Xem trước cú kéo của Hình / Đường-mũi tên / Đường cong / Chuyển sắc. Chỗ gọi
+   * đã khôi phục layer về bitmap trước cú kéo nên ở đây chỉ việc vẽ.
+   */
+  const drawDragPreview = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      from: { x: number; y: number },
+      to: { x: number; y: number },
+      shiftKey: boolean,
+    ) => {
+      const { artW, artH } = frameRef.current;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+      ctx.filter = "none";
+
+      // Chuyển sắc (BRD T-1 #11): cú kéo chính là trục chuyển sắc
+      if (tool === "gradient") {
+        const gradient = buildGradient(
+          ctx,
+          settings.gradientShape,
+          from,
+          to,
+          color,
+          settings.gradientEnd,
+        );
+        const sel = selectionRef.current;
+        ctx.save();
+        // Có vùng chọn thì chỉ trải màu bên trong vùng đó (như thùng sơn, BR-T10)
+        if (sel && isSelectionUsable(sel)) {
+          ctx.clip(buildSelectionPath(sel, artW, artH), selectionFillRule(sel));
+        }
+        ctx.globalAlpha = settings.opacity / 100;
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, artW, artH);
+        ctx.restore();
+        return;
+      }
+
+      // Đường cong (BRD T-1 #15): Bézier 2 điểm điều khiển, uốn theo "Độ cong"
+      if (tool === "curve") {
+        const end = shiftKey ? snapToAngle(from, to) : to;
+        const [c1, c2] = curveControlPoints(from, end, settings.curveBow);
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = settings.opacity / 100;
+        ctx.lineWidth = settings.size;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        drawWithSymmetry(
+          ctx,
+          settings.symmetry,
+          ctx.canvas.width,
+          ctx.canvas.height,
+          () => {
+            ctx.beginPath();
+            ctx.moveTo(from.x, from.y);
+            ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+            ctx.stroke();
+          },
+        );
+        return;
+      }
+
+      // Hình và Đường/mũi tên dùng chung một bộ dựng đường bao
+      const kind: ShapeKind =
+        tool === "line" ? (shapeType === "arrow" ? "arrow" : "line") : shapeType;
+      let end = to;
+      if (shiftKey) {
+        // Shift: khoá 45° cho đường/mũi tên, vuông/tròn đều cho hình
+        end =
+          kind === "line" || kind === "arrow"
+            ? snapToAngle(from, to)
+            : constrainSquare(from, to);
+      }
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = settings.opacity / 100;
+      ctx.lineWidth = settings.size;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      drawWithSymmetry(
+        ctx,
+        settings.symmetry,
+        ctx.canvas.width,
+        ctx.canvas.height,
+        () => {
+          buildShapePath(ctx, kind, from, end, shapeSides, settings.size);
+          // Đầu mũi tên luôn tô đặc; hình kín chỉ tô khi bật Đổ đặc nền
+          if (kind === "arrow" || (shapeFill && kindLetsFill(kind))) ctx.fill();
+          ctx.stroke();
+        },
+      );
+    },
+    [
+      tool,
+      shapeType,
+      shapeFill,
+      shapeSides,
+      color,
+      settings,
+    ],
+  );
+
+  /**
+   * Một nhát của công cụ Mờ / Sắc nét (BRD T-1 #16): lấy vùng dưới cọ, xử lý
+   * pixel, rồi gộp lại qua **mặt nạ tròn mềm** nên không thấy vết cọ.
+   */
+  const effectDabAt = useCallback(
+    (x: number, y: number) => {
+      const layer = activeLayerId ? getLayerCanvas(activeLayerId) : null;
+      const ctx = layer?.getContext("2d", { willReadFrequently: true });
+      if (!layer || !ctx) return;
+      const r = Math.max(2, settings.size / 2);
+      const x0 = Math.max(0, Math.floor(x - r));
+      const y0 = Math.max(0, Math.floor(y - r));
+      const x1 = Math.min(layer.width, Math.ceil(x + r));
+      const y1 = Math.min(layer.height, Math.ceil(y + r));
+      const w = x1 - x0;
+      const h = y1 - y0;
+      if (w < 3 || h < 3) return;
+
+      const region = ctx.getImageData(x0, y0, w, h);
+      if (settings.effectMode === "blur") {
+        boxBlurRGBA(region.data, w, h, blurRadiusForSize(settings.size), 2);
+      } else {
+        sharpenRGBA(
+          region.data,
+          w,
+          h,
+          sharpenAmountForStrength(settings.effectStrength),
+        );
+      }
+
+      let temp = effectTmpRef.current;
+      if (!temp || temp.width !== w || temp.height !== h) {
+        temp = document.createElement("canvas");
+        temp.width = w;
+        temp.height = h;
+        effectTmpRef.current = temp;
+      }
+      const tctx = temp.getContext("2d");
+      if (!tctx) return;
+      tctx.setTransform(1, 0, 0, 1, 0, 0);
+      tctx.globalCompositeOperation = "source-over";
+      tctx.globalAlpha = 1;
+      tctx.clearRect(0, 0, w, h);
+      tctx.putImageData(region, 0, 0);
+      // Mặt nạ vẽ SAU ảnh: `destination-in` giữ màu của đích (bài học 3C)
+      tctx.globalCompositeOperation = "destination-in";
+      const strength = Math.min(1, Math.max(0.05, settings.effectStrength / 100));
+      const mask = tctx.createRadialGradient(
+        w / 2,
+        h / 2,
+        0,
+        w / 2,
+        h / 2,
+        Math.max(1, Math.min(w, h) / 2),
+      );
+      mask.addColorStop(0, `rgba(255,255,255,${strength})`);
+      mask.addColorStop(0.55, `rgba(255,255,255,${(strength * 0.75).toFixed(3)})`);
+      mask.addColorStop(1, "rgba(255,255,255,0)");
+      tctx.fillStyle = mask;
+      tctx.fillRect(0, 0, w, h);
+
+      // Vùng chọn (3C) giới hạn phạm vi hiệu ứng, giống thùng sơn (BR-T10): nhân
+      // thêm mặt nạ vùng chọn vào alpha (vùng đã đảo vẫn đúng nhờ luật even-odd).
+      const sel = selectionRef.current;
+      if (sel && isSelectionUsable(sel)) {
+        tctx.save();
+        tctx.setTransform(1, 0, 0, 1, 0, 0);
+        tctx.translate(-x0, -y0);
+        tctx.fillStyle = "#ffffff";
+        tctx.globalCompositeOperation = "destination-in";
+        tctx.fill(
+          buildSelectionPath(sel, layer.width, layer.height),
+          selectionFillRule(sel),
+        );
+        tctx.restore();
+      }
+
+      tctx.globalCompositeOperation = "source-over";
+
+      ctx.globalAlpha = 1;
+      ctx.filter = "none";
+      ctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(temp, x0, y0);
+    },
+    [activeLayerId, getLayerCanvas, settings],
+  );
+
+  /**
+   * Nhát hiệu ứng kèm **đối xứng**: mỗi ô gương phải xử lý pixel tại chỗ của nó
+   * (khác nét vẽ, nơi chỉ cần chép lại hình).
+   */
+  const applyEffectDab = useCallback(
+    (x: number, y: number) => {
+      const layer = activeLayerId ? getLayerCanvas(activeLayerId) : null;
+      if (!layer) return;
+      const points = symmetryTransforms(
+        settings.symmetry,
+        layer.width,
+        layer.height,
+      ).map((m) => transformSymmetryPoint({ x, y }, m));
+      for (const p of points) effectDabAt(p.x, p.y);
+    },
+    [activeLayerId, getLayerCanvas, settings, effectDabAt],
+  );
+
+  /** Đang phun thì đổi công cụ / tháo hook phải dừng nhịp phun ngay. */
+  useEffect(() => {
+    if (tool !== "airbrush") stopSpray();
+  }, [tool, stopSpray]);
+  useEffect(() => () => stopSpray(), [stopSpray]);
+
   // ── Drawing event handlers ────────────────────────────────────────────────────
 
   const down = useCallback(
@@ -2307,8 +2696,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
 
-      // 3. Công cụ hình học (Shape)
-      if (tool === "shape") {
+      // 3. Công cụ kéo thả có xem trước: Hình / Đường-mũi tên / Đường cong /
+      //    Chuyển sắc (BRD T-1 #6, #10, #11, #15). Layer được chụp lại một lần
+      //    rồi mỗi lần di chuột vẽ lại từ ảnh chụp → hình không nhoè dần.
+      if (DRAG_PREVIEW_TOOLS.includes(tool)) {
         snapshot();
         isDrawing.current = true;
         startPosRef.current = { x: px, y: py };
@@ -2321,6 +2712,43 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
 
+      // 3b. Cọ phun (BRD T-1 #12): mực ra theo **nhịp**, nên giữ chuột đứng yên
+      //     vẫn phun; đổi công cụ hoặc nhả chuột là dừng nhịp.
+      if (tool === "airbrush") {
+        const airBuffer = getStrokeBuffer();
+        const airCtx = airBuffer?.getContext("2d");
+        if (!airBuffer || !airCtx) return;
+        snapshot();
+        strokeBaseImageRef.current = ctx.getImageData(
+          0,
+          0,
+          ctx.canvas.width,
+          ctx.canvas.height,
+        );
+        airCtx.globalCompositeOperation = "source-over";
+        airCtx.globalAlpha = 1;
+        airCtx.clearRect(0, 0, airBuffer.width, airBuffer.height);
+        isDrawing.current = true;
+        stopSpray();
+        sprayPointRef.current = { x: px, y: py };
+        sprayOnce(px, py);
+        sprayTimerRef.current = setInterval(() => {
+          const p = sprayPointRef.current;
+          if (p) sprayOnce(p.x, p.y);
+        }, AIRBRUSH_TICK_MS);
+        return;
+      }
+
+      // 3c. Làm mờ / Làm sắc nét (BRD T-1 #16): đọc pixel layer rồi ghi lại
+      //     theo mặt nạ tròn, nên mỗi nhát là một lần xử lý thật (đi lại thì mờ thêm).
+      if (tool === "effect") {
+        snapshot();
+        isDrawing.current = true;
+        applyEffectDab(px, py);
+        renderComposite();
+        return;
+      }
+
       // 4. Công cụ chèn chữ / lời thoại (Text)
       if (tool === "text") {
         // Ô nhập là CSS px màn hình — sẽ đổi sang toạ độ artwork lúc chèn chữ
@@ -2329,8 +2757,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
 
-      // 5. Các công cụ nét vẽ tự do (Pen, Brush, Eraser)
+      // 5. Các công cụ nét vẽ tự do (Bút, Cọ, Tẩy, Đối xứng)
       //    Nét tích vào bộ đệm rồi hợp nhất MỘT lần với `opacity` nét (AC-T2.6).
+      //    Chốt lại danh sách công cụ để một công cụ mới quên xử lý ở trên không
+      //    âm thầm vẽ ra nét (các công cụ khác đều đã `return` trước đó).
+      if (!FREEHAND_TOOLS.includes(tool)) return;
       const buffer = getStrokeBuffer();
       const bufferCtx = buffer?.getContext("2d");
       if (!buffer || !bufferCtx) return;
@@ -2343,7 +2774,9 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       );
       bufferCtx.globalCompositeOperation = "source-over";
       bufferCtx.clearRect(0, 0, buffer.width, buffer.height);
-      bufferCtx.globalAlpha = tool === "brush" ? dabAlpha(settings.flow) : 1;
+      // Cọ (và công cụ Đối xứng, vốn là cọ có trục gương) đậm dần theo `flow`
+      bufferCtx.globalAlpha =
+        tool === "brush" || tool === "symmetry" ? dabAlpha(settings.flow) : 1;
       bufferCtx.strokeStyle = tool === "eraser" ? "#000000" : color;
       bufferCtx.fillStyle = bufferCtx.strokeStyle;
       bufferCtx.lineWidth = settings.size;
@@ -2374,6 +2807,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       buildSelectionMask,
       pushHistory,
       endFloat,
+      sprayOnce,
+      stopSpray,
+      applyEffectDab,
+      renderComposite,
     ],
   );
 
@@ -2408,49 +2845,29 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
 
-      // Xử lý preview kéo thả hình học (Rubber-band preview)
-      if (tool === "shape" && startPosRef.current && previewSnapshotRef.current) {
-        ctx.putImageData(previewSnapshotRef.current, 0, 0);
-        const sx = startPosRef.current.x;
-        const sy = startPosRef.current.y;
-        ctx.globalCompositeOperation = "source-over";
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.globalAlpha = settings.opacity / 100;
-        ctx.lineWidth = settings.size;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
+      // Làm mờ / Làm sắc nét: mỗi lần di chuột là một nhát xử lý pixel thật
+      // (BRD T-1 #16) — đi qua đi lại thì vùng đó mờ (nét) thêm.
+      if (tool === "effect") {
+        applyEffectDab(curX, curY);
+        renderComposite();
+        return;
+      }
 
-        if (shapeType === "rect") {
-          const rx = Math.min(sx, curX);
-          const ry = Math.min(sy, curY);
-          const rw = Math.abs(curX - sx);
-          const rh = Math.abs(curY - sy);
-          if (shapeFill) ctx.fillRect(rx, ry, rw, rh);
-          ctx.strokeRect(rx, ry, rw, rh);
-        } else if (shapeType === "circle") {
-          const rx = Math.min(sx, curX);
-          const ry = Math.min(sy, curY);
-          const rw = Math.abs(curX - sx);
-          const rh = Math.abs(curY - sy);
-          ctx.beginPath();
-          ctx.ellipse(
-            rx + rw / 2,
-            ry + rh / 2,
-            Math.max(1, rw / 2),
-            Math.max(1, rh / 2),
-            0,
-            0,
-            Math.PI * 2,
-          );
-          if (shapeFill) ctx.fill();
-          ctx.stroke();
-        } else if (shapeType === "line") {
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(curX, curY);
-          ctx.stroke();
-        }
+      // Cọ phun: nhịp phun tự rắc mực, ở đây chỉ cập nhật điểm đang nhắm
+      // (BRD T-1 #12).
+      if (tool === "airbrush") {
+        sprayPointRef.current = { x: curX, y: curY };
+        return;
+      }
+
+      // Xem trước cú kéo: Hình / Đường-mũi tên / Đường cong / Chuyển sắc
+      if (
+        DRAG_PREVIEW_TOOLS.includes(tool) &&
+        startPosRef.current &&
+        previewSnapshotRef.current
+      ) {
+        ctx.putImageData(previewSnapshotRef.current, 0, 0);
+        drawDragPreview(ctx, startPosRef.current, { x: curX, y: curY }, e.shiftKey);
         renderComposite();
         return;
       }
@@ -2466,7 +2883,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         settings.smoothing,
       );
       bufferCtx.globalCompositeOperation = "source-over";
-      bufferCtx.globalAlpha = tool === "brush" ? dabAlpha(settings.flow) : 1;
+      bufferCtx.globalAlpha =
+        tool === "brush" || tool === "symmetry" ? dabAlpha(settings.flow) : 1;
       bufferCtx.strokeStyle = tool === "eraser" ? "#000000" : color;
       bufferCtx.lineWidth = settings.size;
       bufferCtx.lineCap = "round";
@@ -2486,8 +2904,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       paintStrokeBuffer,
       renderComposite,
       clampCurrentPan,
-      shapeType,
-      shapeFill,
+      drawDragPreview,
+      applyEffectDab,
       selectPointerMove,
     ],
   );
@@ -2502,6 +2920,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     isDrawing.current = false;
     startPosRef.current = null;
     previewSnapshotRef.current = null;
+    // Cọ phun: nhả chuột là hết nhịp phun (BRD T-1 #12)
+    stopSpray();
     // Công cụ Chọn: chốt vùng chọn / kết thúc một lần dời (AC-T3.1–T3.4)
     if (tool === "select") {
       selectPointerUp();
@@ -2537,6 +2957,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     clearStrokeBuffer,
     tool,
     selectPointerUp,
+    stopSpray,
   ]);
 
   // ── AI actions ────────────────────────────────────────────────────────────────
@@ -2955,6 +3376,9 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setShapeType,
     shapeFill,
     setShapeFill,
+    /** Số cạnh đa giác / số cánh sao của công cụ Hình (Phase 3D) */
+    shapeSides,
+    setShapeSides,
     // Vùng chọn (3C — BR-T05, AC-T3.1–T3.4)
     selection,
     selectMode,

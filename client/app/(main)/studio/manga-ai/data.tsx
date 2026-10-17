@@ -5,7 +5,9 @@ import type { AiStrokePath } from "@/lib/ai-drawing-api";
 export type StudioMode   = "projects" | "draw" | "storyboard" | "publish";
 export type SceneType    = "auto" | "action" | "dialogue" | "landscape" | "closeup" | "wide";
 export type RightTab     = "ai" | "layout" | "layers";
-export type DrawTool     = "pen" | "brush" | "eraser" | "fill" | "select" | "shape" | "text" | "pan" | "eyedropper";
+export type DrawTool     = "pen" | "brush" | "eraser" | "fill" | "select" | "shape" | "text" | "pan" | "eyedropper"
+  // Bộ công cụ mở rộng (Phase 3 slice D — BRD T-1 #10–#16)
+  | "line" | "gradient" | "airbrush" | "symmetry" | "curve" | "effect";
 export type GuideId      = "thirds" | "horizon" | "proportions" | "vanishing";
 export type PoseCategory = "stand" | "sit" | "action" | "emotion";
 export type DrawingPlaceholderId = "clean-lines" | "screentone" | "speech-bubble" | "speed-lines";
@@ -436,11 +438,12 @@ export const TOOL_HELP: Record<DrawTool, { summary: string; hints: string[] }> =
     ],
   },
   shape: {
-    summary: "Vẽ hình chữ nhật, ellipse hoặc đường thẳng.",
+    summary: "Vẽ hình chữ nhật, ellipse, đa giác, ngôi sao hoặc đường thẳng.",
     hints: [
       "Kéo chuột để vẽ; thấy trước hình khi đang kéo.",
-      "Chọn loại hình ở bảng bên cạnh, bật Đổ đặc nền nếu muốn tô kín.",
-      "Độ to nét = độ dày viền hình.",
+      "Giữ Shift khi kéo: chữ nhật/ellipse thành vuông/tròn đều.",
+      "Chọn loại hình ở bảng bên cạnh; đa giác và ngôi sao có thêm ô chọn số cạnh (3–12).",
+      "Bật Đổ đặc nền nếu muốn tô kín; độ to nét = độ dày viền hình.",
     ],
   },
   text: {
@@ -455,6 +458,58 @@ export const TOOL_HELP: Record<DrawTool, { summary: string; hints: string[] }> =
     hints: [
       "Kéo chuột để dịch; giữ phím Space để tạm dùng công cụ này ở bất kỳ công cụ nào.",
       "Dùng chip ở góc phải trên để phóng to/thu nhỏ hoặc về khung vừa khít.",
+    ],
+  },
+  line: {
+    summary: "Vẽ đường thẳng hoặc mũi tên một nhát kéo.",
+    hints: [
+      "Kéo từ điểm đầu tới điểm cuối; nhả chuột là nét nằm xuống layer.",
+      "Giữ Shift khi kéo: khoá hướng về bội số 45°.",
+      "Chọn Đường thẳng hay Mũi tên ở bảng bên cạnh; đầu mũi tự to theo độ dày nét.",
+      "Độ to nét = độ dày đường; muốn mũi tên dài dày hơn thì tăng độ to nét.",
+    ],
+  },
+  gradient: {
+    summary: "Tô chuyển sắc từ màu đang vẽ sang đầu màu kia.",
+    hints: [
+      "Kéo từ chỗ bắt đầu tới chỗ kết thúc: cú kéo chính là trục chuyển sắc.",
+      "Đầu kia chọn ở thanh thuộc tính: Trong suốt (mặc định), Trắng hoặc Đen.",
+      "Kiểu Ngang dọc trải màu theo đường kéo; Toả tròn loang từ điểm bắt đầu ra.",
+      "Đang có vùng chọn thì dải màu chỉ trải bên trong vùng đó.",
+    ],
+  },
+  airbrush: {
+    summary: "Cọ phun hạt li ti, phun liên tục cả khi đứng yên.",
+    hints: [
+      "Giữ chuột là mực phun ra liên tục; càng giữ lâu chỗ đó càng đậm.",
+      "Độ to nét = vùng phun; Độ chảy (flow) = số hạt mỗi nhịp và độ đậm.",
+      "Một lần giữ chuột là một bước hoàn tác duy nhất (Ctrl+Z xoá cả mảng vừa phun).",
+    ],
+  },
+  symmetry: {
+    summary: "Cọ vẽ có trục đối xứng: nét hiện đồng thời ở các ô gương.",
+    hints: [
+      "Kéo như vẽ bình thường; nét được vẽ lặp ở mọi ô gương của trục đang bật.",
+      "Chọn trục ở thanh thuộc tính: Trục dọc, Trục ngang, Dọc + ngang (4 ô) hay Hai đường chéo (4 ô).",
+      "Trục hiện thành đường đứt nét trong khung; đường này không lọt vào ảnh xuất.",
+      "Đối xứng cũng đặt được cho các công cụ nét khác ở thanh thuộc tính của chúng.",
+    ],
+  },
+  curve: {
+    summary: "Vẽ đường cong Bézier hai nút điều khiển.",
+    hints: [
+      "Kéo từ điểm đầu tới điểm cuối như vẽ đường thẳng.",
+      "Trượt “Độ cong” ở thanh thuộc tính để uốn đường về hai phía (-100…+100).",
+      "Giữ Shift khi kéo: khoá hướng dây cung về bội số 45°.",
+    ],
+  },
+  effect: {
+    summary: "Cọ hiệu ứng: làm mờ hoặc làm sắc nét vùng đi qua.",
+    hints: [
+      "Chọn chế độ Làm mờ hay Làm sắc nét ở thanh thuộc tính.",
+      "Độ to nét = vùng tác động; Độ mạnh = mức mờ/nét mỗi nhát.",
+      "Đưa đi đưa lại nhiều lần thì vùng đó mờ (hoặc nét) thêm dần.",
+      "Chỉ tác động lên layer đang chọn, các layer khác giữ nguyên.",
     ],
   },
 };

@@ -23,6 +23,14 @@ const ALL_TOOLS: DrawTool[] = [
   "shape",
   "text",
   "pan",
+  "eyedropper",
+  // Bộ công cụ mở rộng (Phase 3 slice D)
+  "line",
+  "gradient",
+  "airbrush",
+  "symmetry",
+  "curve",
+  "effect",
 ];
 
 const HEX6 = /^#[0-9a-f]{6}$/;
@@ -130,6 +138,17 @@ describe("mặc định từng công cụ (BR-T01, BR-T03, BR-T04)", () => {
         expect(v).toBeLessThanOrEqual(100);
       }
       expect(["clear", "alpha"]).toContain(s.eraserMode);
+      // Thuộc tính của bộ công cụ mở rộng (3D) cũng phải hợp lệ
+      expect(["off", "vertical", "horizontal", "cross", "diagonal"]).toContain(
+        s.symmetry,
+      );
+      expect(["transparent", "white", "black"]).toContain(s.gradientEnd);
+      expect(["linear", "radial"]).toContain(s.gradientShape);
+      expect(["blur", "sharpen"]).toContain(s.effectMode);
+      expect(s.curveBow).toBeGreaterThanOrEqual(-100);
+      expect(s.curveBow).toBeLessThanOrEqual(100);
+      expect(s.effectStrength).toBeGreaterThanOrEqual(0);
+      expect(s.effectStrength).toBeLessThanOrEqual(100);
     }
   });
 
@@ -154,5 +173,31 @@ describe("mặc định từng công cụ (BR-T01, BR-T03, BR-T04)", () => {
     s.size = 199;
     expect(DEFAULT_SETTINGS.pen.size).toBe(3);
     expect(defaultSettingsFor("pen").size).toBe(3);
+  });
+
+  it("công cụ Đối xứng mặc định bật trục dọc, các công cụ khác tắt (BRD T-1 #13)", () => {
+    expect(DEFAULT_SETTINGS.symmetry.symmetry).toBe("vertical");
+    expect(DEFAULT_SETTINGS.pen.symmetry).toBe("off");
+    expect(DEFAULT_SETTINGS.brush.symmetry).toBe("off");
+    expect(DEFAULT_SETTINGS.airbrush.symmetry).toBe("off");
+  });
+
+  it("cọ phun nhẹ tay hơn cọ thường, công cụ hiệu ứng mặc định làm mờ (3D)", () => {
+    expect(DEFAULT_SETTINGS.airbrush.size).toBeGreaterThan(
+      DEFAULT_SETTINGS.brush.size,
+    );
+    expect(DEFAULT_SETTINGS.airbrush.flow).toBeLessThan(
+      DEFAULT_SETTINGS.brush.flow,
+    );
+    expect(DEFAULT_SETTINGS.effect.effectMode).toBe("blur");
+    expect(DEFAULT_SETTINGS.gradient.gradientEnd).toBe("transparent");
+    expect(DEFAULT_SETTINGS.gradient.gradientShape).toBe("linear");
+  });
+
+  it("mỗi công cụ mới cũng có mặc định riêng, không dùng chung tham chiếu (BR-T01)", () => {
+    const a = defaultSettingsFor("effect");
+    a.size = 7;
+    expect(DEFAULT_SETTINGS.effect.size).toBe(40);
+    expect(defaultSettingsFor("effect").size).toBe(40);
   });
 });

@@ -14,9 +14,18 @@ import {
   ZoomOut,
 } from "lucide-react";
 import type { DrawTool } from "../data";
+import type { ShapeKind } from "../lib/shape";
 import { dabAlpha, hardnessBlurRadius, smoothStroke } from "../lib/stroke";
 import type { ToolSettings } from "../lib/toolSettings";
-import { SIZE_PRESETS } from "../lib/toolSettings";
+import { EFFECT_MODES, effectModeLabel, SIZE_PRESETS } from "../lib/toolSettings";
+import {
+  GRADIENT_ENDS,
+  GRADIENT_SHAPES,
+  gradientEndLabel,
+  gradientShapeLabel,
+} from "../lib/gradient";
+import { CURVE_BOW_MAX, CURVE_BOW_MIN } from "../lib/curve";
+import { SYMMETRY_MODES, symmetryHint, symmetryLabel } from "../lib/symmetry";
 import { ROTATE_STEP, SCALE_STEP, type SelectMode } from "../lib/selection";
 
 type Props = {
@@ -25,6 +34,9 @@ type Props = {
   onSettingsChange: (patch: Partial<ToolSettings>) => void;
   color: string;
   disabled: boolean;
+  /** Kiểu hình / kiểu đường đang chọn (dùng chung công cụ Hình và Đường — 3D). */
+  shapeType: ShapeKind;
+  onShapeTypeChange: (kind: ShapeKind) => void;
   /** Đang có vùng chọn hay không (3C) — quyết định nút biến đổi có sáng không. */
   selectionActive: boolean;
   selectMode: SelectMode;
@@ -79,6 +91,41 @@ function Slider({
   );
 }
 
+/** Nhóm nút chọn một trong vài lựa chọn (kiểu đối xứng, đầu màu, chế độ hiệu ứng…). */
+function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  title,
+}: {
+  value: T;
+  options: readonly { value: T; label: string; hint?: string }[];
+  onChange: (v: T) => void;
+  title?: string;
+}) {
+  return (
+    <div
+      className="flex items-center gap-0.5 bg-white/5 p-0.5 rounded-lg flex-shrink-0"
+      title={title}
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          title={o.hint ?? o.label}
+          className={`px-2 py-0.5 rounded-md text-[10px] whitespace-nowrap transition-colors ${
+            value === o.value
+              ? "bg-pink-500/30 text-pink-300 ring-1 ring-pink-500/40"
+              : "text-white/50 hover:text-white"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Nút biểu tượng nhỏ cho nhóm điều khiển vùng chọn (AC-T3.1, AC-T3.4). */
 function IconButton({
   onClick,
@@ -122,6 +169,8 @@ export function ToolOptionsBar({
   onSettingsChange,
   color,
   disabled,
+  shapeType,
+  onShapeTypeChange,
   selectionActive,
   selectMode,
   onSelectModeChange,
@@ -187,8 +236,9 @@ export function ToolOptionsBar({
     const blur = hardnessBlurRadius(settings.hardness, settings.size);
     if (blur > 0.1) ctx.filter = `blur(${blur.toFixed(2)}px)`;
 
-    if (tool === "brush") {
-      // Cọ: hai lớp mực lệch nhẹ theo `flow` → thấy rõ "chồng thì đậm"
+    if (tool === "brush" || tool === "airbrush" || tool === "symmetry") {
+      // Cọ (và cọ phun, đối xứng): hai lớp mực lệch nhẹ theo `flow` → thấy rõ
+      // "chồng thì đậm"
       ctx.globalAlpha = (settings.opacity / 100) * dabAlpha(settings.flow);
       ctx.save();
       ctx.translate(0, -1.5);
@@ -204,17 +254,37 @@ export function ToolOptionsBar({
     ctx.filter = "none";
   }, [tool, settings, color]);
 
+  /** Nhóm cọ: bút/cọ/tẩy dùng chung bộ điều khiển nét mượt (AC-T2.1). */
+  const isBrushLike =
+    tool === "brush" || tool === "airbrush" || tool === "symmetry";
   const showSize =
     tool !== "fill" &&
     tool !== "select" &&
     tool !== "pan" &&
-    tool !== "eyedropper";
+    tool !== "eyedropper" &&
+    tool !== "gradient";
   const showOpacity =
-    tool !== "fill" && tool !== "select" && tool !== "pan" && tool !== "eyedropper";
-  const showSmoothing = tool === "pen" || tool === "brush" || tool === "eraser";
-  // Preview nét chỉ có nghĩa với công cụ vẽ nét (bút/cọ/tẩy)
+    showSize && tool !== "effect";
+  const showFlow = isBrushLike;
+  const showHardness = isBrushLike || tool === "eraser";
+  const showSmoothing = isBrushLike || tool === "pen" || tool === "eraser";
+  // Preview nét chỉ có nghĩa với công cụ vẽ nét (bút/cọ/phun/đối xứng/tẩy)
   const showPreview = showSmoothing;
   const isSelectionTool = tool === "select";
+  /**
+   * Công cụ có vẽ nét nên đặt được trục đối xứng (BRD T-1 #13). Chuyển sắc và
+   * thùng sơn không dùng trục nên không hiện nhóm này.
+   */
+  const showSymmetry =
+    tool === "pen" ||
+    tool === "brush" ||
+    tool === "eraser" ||
+    tool === "airbrush" ||
+    tool === "symmetry" ||
+    tool === "line" ||
+    tool === "curve" ||
+    tool === "shape" ||
+    tool === "effect";
 
   return (
     <div
@@ -351,6 +421,101 @@ export function ToolOptionsBar({
         </>
       )}
 
+      {/* ── Bộ công cụ mở rộng (Phase 3 slice D) ──────────────────────────────── */}
+
+      {/* Đường thẳng / mũi tên (BRD T-1 #10) */}
+      {tool === "line" && (
+        <Segmented
+          title="Kiểu đường (giữ Shift khi kéo để khoá 45°)"
+          value={shapeType === "arrow" ? "arrow" : "line"}
+          options={[
+            { value: "line", label: "Đường thẳng", hint: "Đường thẳng một nhát kéo" },
+            { value: "arrow", label: "Mũi tên", hint: "Đường thẳng có đầu mũi tên" },
+          ]}
+          onChange={(v) => onShapeTypeChange(v)}
+        />
+      )}
+
+      {/* Chuyển sắc (BRD T-1 #11): đầu kia màu gì và trải màu kiểu gì */}
+      {tool === "gradient" && (
+        <>
+          <span className="text-[9px] uppercase tracking-wider text-white/40 font-semibold whitespace-nowrap">
+            Chuyển sắc
+          </span>
+          <Segmented
+            title="Màu ở đầu thứ hai của dải (đầu thứ nhất là màu đang vẽ)"
+            value={settings.gradientEnd}
+            options={GRADIENT_ENDS.map((end) => ({
+              value: end,
+              label: gradientEndLabel(end),
+            }))}
+            onChange={(v) => onSettingsChange({ gradientEnd: v })}
+          />
+          <Segmented
+            title="Cách trải màu giữa hai đầu"
+            value={settings.gradientShape}
+            options={GRADIENT_SHAPES.map((shape) => ({
+              value: shape,
+              label: gradientShapeLabel(shape),
+            }))}
+            onChange={(v) => onSettingsChange({ gradientShape: v })}
+          />
+        </>
+      )}
+
+      {/* Đường cong (BRD T-1 #15): uốn đường về hai phía */}
+      {tool === "curve" && (
+        <Slider
+          label="Độ cong"
+          value={settings.curveBow}
+          min={CURVE_BOW_MIN}
+          max={CURVE_BOW_MAX}
+          suffix=""
+          onChange={(v) => onSettingsChange({ curveBow: v })}
+        />
+      )}
+
+      {/* Làm mờ / Làm sắc nét (BRD T-1 #16) */}
+      {tool === "effect" && (
+        <>
+          <Segmented
+            title="Mỗi nhát cọ làm mờ hay làm sắc nét vùng bên dưới"
+            value={settings.effectMode}
+            options={EFFECT_MODES.map((mode) => ({
+              value: mode,
+              label: effectModeLabel(mode),
+            }))}
+            onChange={(v) => onSettingsChange({ effectMode: v })}
+          />
+          <Slider
+            label="Độ mạnh"
+            value={settings.effectStrength}
+            min={1}
+            max={100}
+            onChange={(v) => onSettingsChange({ effectStrength: v })}
+          />
+        </>
+      )}
+
+      {/* Đối xứng (BRD T-1 #13): dùng được cho mọi công cụ vẽ nét */}
+      {showSymmetry && (
+        <>
+          <span className="text-[9px] uppercase tracking-wider text-white/40 font-semibold whitespace-nowrap">
+            Đối xứng
+          </span>
+          <Segmented
+            title="Trục đối xứng khi vẽ"
+            value={settings.symmetry}
+            options={SYMMETRY_MODES.map((mode) => ({
+              value: mode,
+              label: symmetryLabel(mode),
+              hint: symmetryHint(mode),
+            }))}
+            onChange={(v) => onSettingsChange({ symmetry: v })}
+          />
+        </>
+      )}
+
       {/* Kích thước + preset (AC-T2.5) */}
       {showSize && (
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -392,27 +557,18 @@ export function ToolOptionsBar({
         />
       )}
 
-      {/* flow + hardness chỉ có ở cọ (AC-T2.1) */}
-      {tool === "brush" && (
-        <>
-          <Slider
-            label="Mực"
-            value={settings.flow}
-            min={1}
-            max={100}
-            onChange={(v) => onSettingsChange({ flow: v })}
-          />
-          <Slider
-            label="Cứng"
-            value={settings.hardness}
-            min={0}
-            max={100}
-            onChange={(v) => onSettingsChange({ hardness: v })}
-          />
-        </>
+      {/* flow + hardness: cọ, cọ phun, đối xứng; tẩy chỉ có độ cứng (AC-T2.1) */}
+      {showFlow && (
+        <Slider
+          label="Mực"
+          value={settings.flow}
+          min={1}
+          max={100}
+          onChange={(v) => onSettingsChange({ flow: v })}
+        />
       )}
 
-      {tool === "eraser" && (
+      {showHardness && (
         <Slider
           label="Cứng"
           value={settings.hardness}
@@ -467,7 +623,9 @@ export function ToolOptionsBar({
             ? "Thùng sơn: đổ màu đang chọn vào vùng kín (tôn trọng vùng chọn)"
             : tool === "eyedropper"
               ? "Bút lấy màu: bấm vào tranh để lấy màu từ ảnh tổng hợp"
-              : "Kéo để di chuyển khung nhìn — cuộn để phóng to"}
+              : tool === "gradient"
+                ? "Chuyển sắc: kéo từ đầu này sang đầu kia — cú kéo chính là trục chuyển sắc"
+                : "Kéo để di chuyển khung nhìn — cuộn để phóng to"}
         </span>
       )}
     </div>
