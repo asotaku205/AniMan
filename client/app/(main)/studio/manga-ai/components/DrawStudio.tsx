@@ -131,6 +131,9 @@ export function DrawStudio({
           down={s.down}
           move={s.move}
           up={s.up}
+          zoom={s.zoom}
+          zoomBy={s.zoomBy}
+          resetView={s.resetView}
           ghostType={s.ghostType}
           ghostId={s.ghostId}
           ghostOpacity={s.ghostOpacity}

@@ -42,6 +42,15 @@ import {
   moveLayerInList,
   moveLayerToIndex,
 } from "../lib/layerOps";
+import {
+  clampScale,
+  fitView,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  screenToArtwork,
+  zoomAt,
+  type ViewportView,
+} from "../lib/viewport";
 
 // ─── Derived constants (stable — defined outside hook) ────────────────────────
 
@@ -241,6 +250,27 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Khung nhìn pan/zoom (3A, BR-T06). `viewZoom` là hệ số **tương đối** so với
+   * khung vừa khít (1 = 100%), `viewPan` là độ lệch tâm theo screen px.
+   * `viewportRef` giữ ma trận hiện tại cho handler con trỏ, `fitRef` giữ khung
+   * vừa khít để quy đổi zoom tương đối.
+   */
+  const [viewZoom, setViewZoom] = useState(1);
+  const [viewPan, setViewPan] = useState({ x: 0, y: 0 });
+  const viewportRef = useRef<ViewportView>({ scale: 1, tx: 0, ty: 0 });
+  const fitRef = useRef<ViewportView>({ scale: 1, tx: 0, ty: 0 });
+  const viewZoomRef = useRef(1);
+  const viewPanRef = useRef({ x: 0, y: 0 });
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef<{
+    x: number;
+    y: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
+  const spaceHeldRef = useRef(false);
 
   // Drawing state
   const [tool, setTool] = useState<DrawTool>("pen");
@@ -1080,14 +1110,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       ctx.font = `${Math.max(14, size * 3.5)}px "Comic Sans MS", "Arial", sans-serif`;
       ctx.fillStyle = color;
       ctx.textBaseline = "middle";
-      // textInputPos là CSS px màn hình → đổi sang toạ độ artwork (RC-1)
-      const rect = canvas.getBoundingClientRect();
-      const coordScale = rect.width > 0 ? canvas.width / rect.width : 1;
-      ctx.fillText(
-        text,
-        textInputPos.x * coordScale,
-        textInputPos.y * coordScale,
+      // textInputPos là screen px trong khung → đổi sang toạ độ artwork (3A)
+      const { x: tx, y: ty } = screenToArtwork(
+        viewportRef.current,
+        textInputPos.x,
+        textInputPos.y,
       );
+      ctx.fillText(text, tx, ty);
       compositeNow();
       setShowTextInput(false);
       setTextInputPos(null);
@@ -1177,62 +1206,164 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     });
   }, [layout, panelData, page, showToast]);
 
-  // Đổi kích thước canvas theo khung & nạp pixel từng layer đã lưu (RC-1, spec 02 §2.2)
+  // Hình học khung nhìn (RC-1 + 3A): backing CỐ ĐỊNH theo khung; CSS đặt theo
+  // `scale = fitScale × zoom` + pan. Pan/zoom KHÔNG đụng pixel (BR-T06).
+  const applyViewport = useCallback(() => {
+    const canvas = canvasRef.current;
+    const parent = canvas?.parentElement;
+    if (!canvas || !parent || !activePanel) return;
+    const rect = parent.getBoundingClientRect();
+    if (!rect || rect.width < 1) return;
+
+    const backing = getPanelBackingSize(layout, activePanel);
+    if (canvas.width !== backing.w) canvas.width = backing.w;
+    if (canvas.height !== backing.h) canvas.height = backing.h;
+
+    const fit = fitView(backing.w, backing.h, rect.width, rect.height);
+    fitRef.current = fit;
+
+    const zoom = clampScale(viewZoomRef.current, MIN_ZOOM, MAX_ZOOM);
+    const scale = fit.scale * zoom;
+    const tx = fit.tx + viewPanRef.current.x;
+    const ty = fit.ty + viewPanRef.current.y;
+
+    let cssW = Math.round(backing.w * scale);
+    let cssH = Math.round(backing.h * scale);
+    // Khung vừa khít → khít đúng hộp để không hở viền 1px
+    if (
+      zoom === 1 &&
+      Math.abs(cssW - rect.width) < 2 &&
+      Math.abs(cssH - rect.height) < 2
+    ) {
+      cssW = Math.round(rect.width);
+      cssH = Math.round(rect.height);
+    }
+    canvas.style.width = `${cssW}px`;
+    canvas.style.height = `${cssH}px`;
+    canvas.style.left = `${Math.round(tx)}px`;
+    canvas.style.top = `${Math.round(ty)}px`;
+
+    viewportRef.current = { scale, tx, ty };
+  }, [activePanel, layout]);
+
+  // Giữ tham chiếu mới nhất để effect zoom/pan không phải phụ thuộc identity
+  const applyViewportRef = useRef(applyViewport);
+  useEffect(() => {
+    applyViewportRef.current = applyViewport;
+  }, [applyViewport]);
+
+  // Đổi khung → reset lịch sử undo + khung nhìn, nạp pixel từng layer đã lưu (RC-1)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !activePanel) return;
 
-    const applyLayout = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect();
-      if (!rect || rect.width < 1) return;
+    // Lịch sử undo gắn theo panel → reset khi đổi panel
+    historyRef.current = [];
+    futureRef.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
 
-      // RC-1: backing CỐ ĐỊNH theo kích thước khung — không bám theo cửa sổ.
-      // Đổi cỡ cửa sổ / fullscreen chỉ đổi CSS hiển thị, pixel dữ liệu không
-      // bị co giãn thêm (chữa "ảnh mờ" do resample nhiều lần).
-      const backing = getPanelBackingSize(layout, activePanel);
-      if (canvas.width !== backing.w) canvas.width = backing.w;
-      if (canvas.height !== backing.h) canvas.height = backing.h;
+    // Mỗi khung mở ra ở khung vừa khít (zoom 100%, không pan)
+    viewZoomRef.current = 1;
+    viewPanRef.current = { x: 0, y: 0 };
+    setViewZoom(1);
+    setViewPan({ x: 0, y: 0 });
 
-      // CSS fit theo khung hiển thị; letterbox khi tỉ lệ lệch (fullscreen).
-      const fitScale = Math.min(rect.width / backing.w, rect.height / backing.h);
-      let cssW = Math.round(backing.w * fitScale);
-      let cssH = Math.round(backing.h * fitScale);
-      if (Math.abs(cssW - rect.width) < 2 && Math.abs(cssH - rect.height) < 2) {
-        cssW = Math.round(rect.width);
-        cssH = Math.round(rect.height);
-      }
-      canvas.style.width = `${cssW}px`;
-      canvas.style.height = `${cssH}px`;
-      canvas.style.left = `${Math.round((rect.width - cssW) / 2)}px`;
-      canvas.style.top = `${Math.round((rect.height - cssH) / 2)}px`;
+    applyViewportRef.current();
 
-      // Lịch sử undo gắn theo panel → reset khi đổi panel
-      historyRef.current = [];
-      futureRef.current = [];
-      setCanUndo(false);
-      setCanRedo(false);
+    // Khung chưa từng mở trong phiên này → nạp pixel từng layer đã lưu
+    // (chỉ nạp layer chưa có bitmap; ảnh cũ được co 1 lần về backing).
+    const stack = stacksRef.current[activePanel];
+    if (stack) seedStackPixels(stack);
+    compositeNow();
 
-      // Khung chưa từng mở trong phiên này → nạp pixel từng layer đã lưu
-      // (chỉ nạp layer chưa có bitmap; ảnh cũ được co 1 lần về backing).
-      const stack = stacksRef.current[activePanel];
-      if (stack) seedStackPixels(stack);
-      compositeNow();
-    };
-
-    applyLayout();
-    const ro = new ResizeObserver(() => {
-      applyLayout();
-    });
+    const ro = new ResizeObserver(() => applyViewportRef.current());
     if (canvas.parentElement) ro.observe(canvas.parentElement);
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePanel, layout.id]);
+
+  // Zoom/pan đổi → cập nhật hình học, KHÔNG reset lịch sử undo
+  useEffect(() => {
+    viewZoomRef.current = viewZoom;
+    viewPanRef.current = viewPan;
+    applyViewportRef.current();
+  }, [viewZoom, viewPan]);
+
+  // Zoom bằng con lăn, neo tại vị trí con trỏ (BR-T06). Gắn native để
+  // preventDefault được (React để wheel ở chế độ passive).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || !activePanel) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const parent = el.parentElement;
+      if (!parent) return;
+      const rect = parent.getBoundingClientRect();
+      const fit = fitRef.current;
+      const next = zoomAt(
+        viewportRef.current,
+        Math.exp(-e.deltaY * 0.0015),
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+        fit.scale * MIN_ZOOM,
+        fit.scale * MAX_ZOOM,
+      );
+      setViewZoom(next.scale / (fit.scale || 1));
+      setViewPan({ x: next.tx - fit.tx, y: next.ty - fit.ty });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [activePanel]);
+
+  // Giữ Space = tạm chuyển sang pan (Phụ lục A BRD)
+  useEffect(() => {
+    const isTypingTarget = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      (t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.isContentEditable);
+    const onDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || isTypingTarget(e.target)) return;
+      e.preventDefault();
+      spaceHeldRef.current = true;
+    };
+    const onUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") spaceHeldRef.current = false;
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+    };
+  }, []);
 
   // ── Drawing event handlers ────────────────────────────────────────────────────
 
   const down = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!activePanel) return;
+
+      const canvasEl = canvasRef.current;
+      const parentEl = canvasEl?.parentElement;
+      const rect = parentEl?.getBoundingClientRect();
+      if (!canvasEl || !parentEl || !rect) return;
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+
+      // 0. Pan (công cụ pan hoặc giữ Space) — đổi khung nhìn, không đụng pixel
+      if (tool === "pan" || spaceHeldRef.current) {
+        e.preventDefault();
+        isPanningRef.current = true;
+        panStartRef.current = {
+          x: e.clientX,
+          y: e.clientY,
+          panX: viewPanRef.current.x,
+          panY: viewPanRef.current.y,
+        };
+        return;
+      }
 
       const currentLayer = layers.find((l) => l.id === activeLayerId);
       if (currentLayer?.kind === "ai" || currentLayer?.readOnly) {
@@ -1250,19 +1381,18 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
 
-      const canvas = canvasRef.current;
       const ctx = getCtx();
-      if (!canvas || !ctx) return;
+      if (!ctx) return;
 
       // Lưu ý: opacity/blend của layer được áp **lúc composite** (RC-4),
       // không nướng vào pixel → đổi opacity layer sau đó không mất nét.
 
-      const rect = canvas.getBoundingClientRect();
-      // Tọa độ artwork (pixel backing) — backing CỐ ĐỊNH theo khung (RC-1)
-      // nên có thể khác px màn hình; tỉ lệ = backing / khung CSS hiển thị.
-      const coordScale = canvas.width / rect.width;
-      const px = (e.clientX - rect.left) * coordScale;
-      const py = (e.clientY - rect.top) * coordScale;
+      // Toạ độ artwork qua khung nhìn (3A): pan/zoom không đổi pixel dữ liệu.
+      const { x: px, y: py } = screenToArtwork(
+        viewportRef.current,
+        screenX,
+        screenY,
+      );
 
       // 1. Công cụ đổ màu (Fill / Paint Bucket)
       if (tool === "fill") {
@@ -1289,10 +1419,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       // 3. Công cụ chèn chữ / lời thoại (Text)
       if (tool === "text") {
         // Ô nhập là CSS px màn hình — sẽ đổi sang toạ độ artwork lúc chèn chữ
-        setTextInputPos({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
+        setTextInputPos({ x: screenX, y: screenY });
         setShowTextInput(true);
         return;
       }
@@ -1325,14 +1452,25 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   const move = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      // Pan đang diễn ra → chỉ dịch khung nhìn
+      if (isPanningRef.current && panStartRef.current) {
+        const start = panStartRef.current;
+        setViewPan({
+          x: start.panX + (e.clientX - start.x),
+          y: start.panY + (e.clientY - start.y),
+        });
+        return;
+      }
       if (!isDrawing.current) return;
       const ctx = getCtx();
-      const canvas = canvasRef.current;
-      if (!canvas || !ctx) return;
-      const rect = canvas.getBoundingClientRect();
-      const coordScale = canvas.width / rect.width;
-      const curX = (e.clientX - rect.left) * coordScale;
-      const curY = (e.clientY - rect.top) * coordScale;
+      const parent = canvasRef.current?.parentElement;
+      if (!ctx || !parent) return;
+      const rect = parent.getBoundingClientRect();
+      const { x: curX, y: curY } = screenToArtwork(
+        viewportRef.current,
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+      );
 
       // Xử lý preview kéo thả hình học (Rubber-band preview)
       if (tool === "shape" && startPosRef.current && previewSnapshotRef.current) {
@@ -1389,6 +1527,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   );
 
   const up = useCallback(() => {
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+      panStartRef.current = null;
+      return;
+    }
     if (!isDrawing.current) return;
     isDrawing.current = false;
     startPosRef.current = null;
@@ -1758,6 +1901,17 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   // ── Derived values ────────────────────────────────────────────────────────────
 
+  /** Phóng/thu quanh tâm khung (nút −/+) — kẹp 10%–800% (BR-T06). */
+  const zoomBy = useCallback((factor: number) => {
+    setViewZoom((z) => clampScale(z * factor, MIN_ZOOM, MAX_ZOOM));
+  }, []);
+
+  /** Về khung vừa khít (zoom 100%, bỏ pan). */
+  const resetView = useCallback(() => {
+    setViewZoom(1);
+    setViewPan({ x: 0, y: 0 });
+  }, []);
+
   const panelDef = activePanel
     ? (layout.panels.find((p) => p.id === activePanel) ?? null)
     : null;
@@ -1767,6 +1921,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     // Canvas ref
     canvasRef,
     inputRef,
+    // Khung nhìn (3A — pan/zoom)
+    zoom: viewZoom,
+    zoomBy,
+    resetView,
     // Drawing
     tool,
     setTool,

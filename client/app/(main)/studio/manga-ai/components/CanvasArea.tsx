@@ -48,6 +48,10 @@ type Props = {
   down: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   move: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   up: () => void;
+  /** Khung nhìn (3A): hệ số zoom tương đối (1 = 100%) + điều khiển */
+  zoom: number;
+  zoomBy: (factor: number) => void;
+  resetView: () => void;
   // Ghost / guides (AI dynamic strokes)
   ghostType: "comp" | "pose" | null;
   ghostId: string | null;
@@ -105,6 +109,9 @@ export function CanvasArea({
   down,
   move,
   up,
+  zoom,
+  zoomBy,
+  resetView,
   ghostType,
   ghostId,
   ghostOpacity,
@@ -287,6 +294,34 @@ export function CanvasArea({
               onPointerUp={up}
               onPointerLeave={up}
             />
+
+            {/* Chip điều khiển khung nhìn (3A — pan/zoom, BR-T06) */}
+            <div className="absolute right-2 top-2 z-40 flex items-center gap-0.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-1.5 py-1 text-[10px] text-white/80">
+              <button
+                onClick={() => zoomBy(1 / 1.25)}
+                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10"
+                title="Thu nhỏ (10%)"
+              >
+                −
+              </button>
+              <span className="w-10 text-center font-mono">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                onClick={() => zoomBy(1.25)}
+                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10"
+                title="Phóng to (800%)"
+              >
+                +
+              </button>
+              <button
+                onClick={resetView}
+                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10"
+                title="Về khung vừa khít"
+              >
+                ⤢
+              </button>
+            </div>
 
             {/* Inline floating text input dialog */}
             {showTextInput && textInputPos && (
