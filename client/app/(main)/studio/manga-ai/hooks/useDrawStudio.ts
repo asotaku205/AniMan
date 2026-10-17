@@ -43,6 +43,7 @@ import {
   moveLayerToIndex,
 } from "../lib/layerOps";
 import {
+  clampPan,
   clampScale,
   fitView,
   MAX_ZOOM,
@@ -261,6 +262,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const [viewPan, setViewPan] = useState({ x: 0, y: 0 });
   const viewportRef = useRef<ViewportView>({ scale: 1, tx: 0, ty: 0 });
   const fitRef = useRef<ViewportView>({ scale: 1, tx: 0, ty: 0 });
+  /** Hình học khung/ảnh hiện tại — để kẹp pan mà không phải đọc lại DOM. */
+  const frameRef = useRef({ frameW: 0, frameH: 0, artW: 0, artH: 0 });
   const viewZoomRef = useRef(1);
   const viewPanRef = useRef({ x: 0, y: 0 });
   const isPanningRef = useRef(false);
@@ -1221,11 +1224,27 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
     const fit = fitView(backing.w, backing.h, rect.width, rect.height);
     fitRef.current = fit;
+    frameRef.current = {
+      frameW: rect.width,
+      frameH: rect.height,
+      artW: backing.w,
+      artH: backing.h,
+    };
 
     const zoom = clampScale(viewZoomRef.current, MIN_ZOOM, MAX_ZOOM);
     const scale = fit.scale * zoom;
-    const tx = fit.tx + viewPanRef.current.x;
-    const ty = fit.ty + viewPanRef.current.y;
+    // Kẹp pan để khung vẽ không hở khoảng trắng; ghi lại để lần kéo sau nối tiếp.
+    const pan = clampPan(
+      viewPanRef.current.x,
+      viewPanRef.current.y,
+      backing.w * scale,
+      backing.h * scale,
+      rect.width,
+      rect.height,
+    );
+    viewPanRef.current = pan;
+    const tx = fit.tx + pan.x;
+    const ty = fit.ty + pan.y;
 
     let cssW = Math.round(backing.w * scale);
     let cssH = Math.round(backing.h * scale);
@@ -1251,6 +1270,19 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   useEffect(() => {
     applyViewportRef.current = applyViewport;
   }, [applyViewport]);
+
+  /**
+   * Kẹp pan theo khung/ảnh hiện tại — chặn kéo ra ngoài biên làm hở khoảng
+   * trắng (BR-T06). Dùng cho handler kéo pan và zoom bằng con lăn.
+   */
+  const clampCurrentPan = useCallback(
+    (panX: number, panY: number, zoom: number) => {
+      const { frameW, frameH, artW, artH } = frameRef.current;
+      const scale = fitRef.current.scale * zoom;
+      return clampPan(panX, panY, artW * scale, artH * scale, frameW, frameH);
+    },
+    [],
+  );
 
   // Đổi khung → reset lịch sử undo + khung nhìn, nạp pixel từng layer đã lưu (RC-1)
   useEffect(() => {
@@ -1310,7 +1342,17 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         fit.scale * MAX_ZOOM,
       );
       setViewZoom(next.scale / (fit.scale || 1));
-      setViewPan({ x: next.tx - fit.tx, y: next.ty - fit.ty });
+      const { frameW, frameH, artW, artH } = frameRef.current;
+      setViewPan(
+        clampPan(
+          next.tx - fit.tx,
+          next.ty - fit.ty,
+          artW * next.scale,
+          artH * next.scale,
+          frameW,
+          frameH,
+        ),
+      );
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -1455,10 +1497,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       // Pan đang diễn ra → chỉ dịch khung nhìn
       if (isPanningRef.current && panStartRef.current) {
         const start = panStartRef.current;
-        setViewPan({
-          x: start.panX + (e.clientX - start.x),
-          y: start.panY + (e.clientY - start.y),
-        });
+        setViewPan(
+          clampCurrentPan(
+            start.panX + (e.clientX - start.x),
+            start.panY + (e.clientY - start.y),
+            viewZoomRef.current,
+          ),
+        );
         return;
       }
       if (!isDrawing.current) return;
@@ -1523,7 +1568,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       ctx.stroke();
       renderComposite();
     },
-    [getCtx, tool, color, size, shapeType, shapeFill, renderComposite],
+    [getCtx, tool, color, size, shapeType, shapeFill, renderComposite, clampCurrentPan],
   );
 
   const up = useCallback(() => {
@@ -1912,6 +1957,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setViewPan({ x: 0, y: 0 });
   }, []);
 
+  /**
+   * Cỡ pixel thật của panel khi xuất PNG — chính là backing (`getPanelBackingSize`),
+   * đúng bằng kích thước ảnh `exportCurrentPanel` tạo ra. Hiện ở chip zoom để
+   * người dùng biết đâu là chuẩn xuất bản.
+   */
+  const panelBackingSize = activePanel
+    ? getPanelBackingSize(layout, activePanel)
+    : null;
+
   const panelDef = activePanel
     ? (layout.panels.find((p) => p.id === activePanel) ?? null)
     : null;
@@ -1925,6 +1979,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     zoom: viewZoom,
     zoomBy,
     resetView,
+    panelBackingSize,
     // Drawing
     tool,
     setTool,

@@ -134,6 +134,7 @@ export function DrawStudio({
           zoom={s.zoom}
           zoomBy={s.zoomBy}
           resetView={s.resetView}
+          panelBackingSize={s.panelBackingSize}
           ghostType={s.ghostType}
           ghostId={s.ghostId}
           ghostOpacity={s.ghostOpacity}

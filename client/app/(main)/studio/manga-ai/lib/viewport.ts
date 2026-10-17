@@ -6,9 +6,8 @@
  * - `scale`: số pixel màn hình cho 1 pixel artwork (tuyệt đối).
  * - `t` (`tx`, `ty`): gốc artwork nằm ở đâu trong hộp khung nhìn (screen px).
  *
- * BRD nói zoom 10%–800% là **tương đối** so với khung vừa khít (`fitView`).
- * Hook tự tính `fitScale` rồi gọi `clampScale` với
- * `[fitScale * MIN_ZOOM, fitScale * MAX_ZOOM]`.
+ * Zoom 100%–800% là **tương đối** so với khung vừa khít (`fitView`). Hook tự
+ * tính `fitScale` rồi gọi `clampScale` với `[fitScale * MIN_ZOOM, fitScale * MAX_ZOOM]`.
  */
 
 export interface ViewportView {
@@ -22,8 +21,13 @@ export interface Point {
   y: number;
 }
 
-/** Hệ số zoom tương đối nhỏ nhất / lớn nhất (BR-T06: 10%–800%). */
-export const MIN_ZOOM = 0.1;
+/**
+ * Hệ số zoom tương đối nhỏ nhất / lớn nhất so với khung vừa khít (BR-T06).
+ * Chốt 17/10/2026: **100%–800%** — không cho thu nhỏ dưới khung vừa khít, để
+ * panel luôn phủ kín khung vẽ (hết khoảng trắng thừa) và 100% là cỡ tham chiếu
+ * (cỡ pixel thật khi xuất xem ở `getPanelBackingSize`).
+ */
+export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 8;
 
 /** Biên `scale` mặc định, dùng khi không có `fitScale` để quy chiếu. */
@@ -64,6 +68,30 @@ export function fitView(
 /** Dịch khung nhìn theo screen px; không đổi `scale`. */
 export function panBy(view: ViewportView, dx: number, dy: number): ViewportView {
   return { scale: view.scale, tx: view.tx + dx, ty: view.ty + dy };
+}
+
+/**
+ * Kẹp độ lệch pan để khung vẽ **không bao giờ hở khoảng trắng**:
+ * - ảnh lớn hơn khung → đi xa nhất là vừa chạm biên (`±(hiển thị − khung)/2`);
+ * - ảnh nhỏ hơn hoặc bằng khung → ép căn giữa (lệch 0).
+ * `dispW`/`dispH` là cỡ ảnh ĐANG hiển thị (artwork × scale).
+ */
+export function clampPan(
+  panX: number,
+  panY: number,
+  dispW: number,
+  dispH: number,
+  frameW: number,
+  frameH: number,
+): Point {
+  const maxX = Math.max(0, (dispW - frameW) / 2);
+  const maxY = Math.max(0, (dispH - frameH) / 2);
+  // `+0` chứ không `-0` (kẹp số âm về 0 cho kết quả so sánh ổn định)
+  const axis = (v: number, max: number) => {
+    const c = Math.max(-max, Math.min(max, Number.isFinite(v) ? v : 0));
+    return c === 0 ? 0 : c;
+  };
+  return { x: axis(panX, maxX), y: axis(panY, maxY) };
 }
 
 /** Phóng/thu quanh một điểm màn hình, giữ điểm artwork dưới con trỏ đứng yên. */

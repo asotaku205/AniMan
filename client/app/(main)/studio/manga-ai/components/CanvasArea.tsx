@@ -48,10 +48,12 @@ type Props = {
   down: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   move: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   up: () => void;
-  /** Khung nhìn (3A): hệ số zoom tương đối (1 = 100%) + điều khiển */
+  /** Khung nhìn (3A): hệ số zoom tương đối (1 = khung vừa khít) + điều khiển */
   zoom: number;
   zoomBy: (factor: number) => void;
   resetView: () => void;
+  /** Cỡ pixel thật của panel khi xuất PNG (null khi chưa mở khung) */
+  panelBackingSize: { w: number; h: number } | null;
   // Ghost / guides (AI dynamic strokes)
   ghostType: "comp" | "pose" | null;
   ghostId: string | null;
@@ -112,6 +114,7 @@ export function CanvasArea({
   zoom,
   zoomBy,
   resetView,
+  panelBackingSize,
   ghostType,
   ghostId,
   ghostOpacity,
@@ -299,8 +302,9 @@ export function CanvasArea({
             <div className="absolute right-2 top-2 z-40 flex items-center gap-0.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-1.5 py-1 text-[10px] text-white/80">
               <button
                 onClick={() => zoomBy(1 / 1.25)}
-                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10"
-                title="Thu nhỏ (10%)"
+                disabled={zoom <= 1}
+                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Thu nhỏ (nhỏ nhất = khung vừa khít, 100%)"
               >
                 −
               </button>
@@ -321,6 +325,14 @@ export function CanvasArea({
               >
                 ⤢
               </button>
+              {panelBackingSize && (
+                <span
+                  className="ml-1 pl-1.5 border-l border-white/15 font-mono text-white/50"
+                  title="Cỡ pixel thật của panel khi xuất PNG"
+                >
+                  {panelBackingSize.w}×{panelBackingSize.h}px
+                </span>
+              )}
             </div>
 
             {/* Inline floating text input dialog */}
