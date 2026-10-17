@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import type { DrawTool } from "../data";
-import { dabAlpha, smoothStroke } from "../lib/stroke";
+import { dabAlpha, hardnessBlurRadius, smoothStroke } from "../lib/stroke";
 import type { ToolSettings } from "../lib/toolSettings";
 import { SIZE_PRESETS } from "../lib/toolSettings";
 
@@ -102,8 +102,8 @@ export function ToolOptionsBar({
     ctx.lineWidth = Math.max(1, Math.min(settings.size, PREVIEW_H - 8));
 
     if (tool === "eraser") {
-      // Nền xám rồi tẩy → thấy đúng bề rộng và độ mờ của tẩy
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      // Nền xám trên giấy trắng rồi tẩy → thấy đúng bề rộng và độ mờ của tẩy
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
       ctx.fillRect(0, midY - 12, PREVIEW_W, 24);
       ctx.globalCompositeOperation = "destination-out";
       ctx.globalAlpha =
@@ -119,8 +119,9 @@ export function ToolOptionsBar({
       for (let i = 1; i < path.length; i += 1) ctx.lineTo(path[i].x, path[i].y);
       ctx.stroke();
     };
-    const blur = (1 - settings.hardness / 100) * (settings.size / 2);
-    if (blur > 0.2) ctx.filter = `blur(${blur.toFixed(2)}px)`;
+    // Cùng công thức với lúc hợp nhất nét xuống layer → preview đúng như thật
+    const blur = hardnessBlurRadius(settings.hardness, settings.size);
+    if (blur > 0.1) ctx.filter = `blur(${blur.toFixed(2)}px)`;
 
     if (tool === "brush") {
       // Cọ: hai lớp mực lệch nhẹ theo `flow` → thấy rõ "chồng thì đậm"
@@ -156,8 +157,12 @@ export function ToolOptionsBar({
         </span>
         <canvas
           ref={previewRef}
-          style={{ width: PREVIEW_W, height: PREVIEW_H }}
-          className="rounded-lg bg-white/5 border border-white/10"
+          style={{
+            width: PREVIEW_W,
+            height: PREVIEW_H,
+            background: "#ffffff",
+          }}
+          className="rounded-lg border border-white/15 shadow-inner"
         />
       </div>
 
