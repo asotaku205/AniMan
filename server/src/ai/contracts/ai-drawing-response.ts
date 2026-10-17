@@ -5,6 +5,8 @@ export const MAX_AI_RESPONSE_SUMMARY_LENGTH = 600;
 export const MAX_AI_RECOMMENDATIONS = 6;
 export const MAX_AI_FINDINGS = 8;
 export const MAX_AI_OVERLAY_PRIMITIVES = 12;
+export const AI_OVERLAY_OPACITY_MIN = 0.05;
+export const AI_OVERLAY_OPACITY_MAX = 0.3;
 export const MAX_AI_SOURCE_IDS = 8;
 export const MAX_AI_EXPLANATION_LENGTH = 400;
 
@@ -90,12 +92,45 @@ export interface AiDrawingReviewResponse extends AiDrawingResponseBase {
 
 // ─── Ghost stroke response (StrokeGuidance / CompositionOverlay / PoseGuidance) ──
 
-export const MAX_AI_GHOST_STROKES = 20;
-export const MAX_AI_STROKE_POINTS = 30;
-export const AI_STROKE_OPACITY_MIN = 0.05;
-export const AI_STROKE_OPACITY_MAX = 0.25;
-export const AI_STROKE_WIDTH_MIN = 0.002;
-export const AI_STROKE_WIDTH_MAX = 0.02;
+export const MAX_AI_GHOST_STROKES = 60;
+export const MAX_AI_STROKE_POINTS = 120;
+export const AI_STROKE_OPACITY_MIN = 0.15;
+export const AI_STROKE_OPACITY_MAX = 0.9;
+export const AI_STROKE_WIDTH_MIN = 0.0015;
+export const AI_STROKE_WIDTH_MAX = 0.025;
+export const MAX_AI_STROKE_LABEL_LENGTH = 60;
+
+/**
+ * Nhóm nội dung của một nét AI (Phase 5A). Thứ tự trong mảng **cũng là thứ tự vẽ**
+ * (nền trước, hiệu ứng sau) nên client vẽ theo đúng thứ tự này để nét chủ thể
+ * không bị nét nền đè.
+ */
+export const AI_STROKE_GROUPS = [
+  "background",
+  "midground",
+  "subject",
+  "detail",
+  "effects",
+  "guide",
+] as const;
+
+export type AiStrokeGroup = (typeof AI_STROKE_GROUPS)[number];
+
+/** Trường chung của mọi nét; cộng thêm trường riêng theo `kind`. */
+export const AI_STROKE_BASE_KEYS = [
+  "kind",
+  "style",
+  "group",
+  "label",
+  "opacity",
+  "strokeWidth",
+  "dashed",
+  "closed",
+  "fill",
+] as const;
+
+const STROKE_FILL_NONE = "none";
+const STROKE_FILL_PATTERN = /^#[0-9a-f]{6}$/;
 
 /**
  * Một nét vẽ gợi ý do AI sinh ra — được render dưới dạng SVG mờ,
@@ -114,12 +149,20 @@ export interface AiStrokePath {
   region?: NormalizedRegion;
   /** Nguyên lý mỹ thuật liên quan */
   style: AiDrawingPrinciple;
-  /** Độ trong suốt (0.05..0.25) */
+  /** Nhóm nội dung — quyết định thứ tự vẽ (Phase 5A) */
+  group: AiStrokeGroup;
+  /** Nhãn tiếng Việt ngắn hiện khi trỏ chuột; rỗng khi model không đặt tên */
+  label: string;
+  /** Độ trong suốt (0.15..0.9) */
   opacity: number;
-  /** Chiều rộng nét (normalized, 0.002..0.02) */
+  /** Chiều rộng nét (normalized, 0.0015..0.025) */
   strokeWidth: number;
   /** true nếu là guide phụ (đường đứt) */
   dashed?: boolean;
+  /** Với "path": đã khép kín chưa — chỉ path khép kín mới được `fill` */
+  closed?: boolean;
+  /** Màu tô kín: "#rrggbb" hoặc "none" */
+  fill?: string;
 }
 
 export interface AiGhostStrokeResponse extends AiDrawingResponseBase {
@@ -330,11 +373,11 @@ function validateOverlay(value: unknown, path: string): void {
   if (
     typeof value.opacity !== "number" ||
     !Number.isFinite(value.opacity) ||
-    value.opacity < 0.05 ||
-    value.opacity > 0.3
+    value.opacity < AI_OVERLAY_OPACITY_MIN ||
+    value.opacity > AI_OVERLAY_OPACITY_MAX
   ) {
     throw new AiDrawingResponseValidationError(
-      `${path}.opacity must be between 0.05 and 0.3`,
+      `${path}.opacity must be between ${AI_OVERLAY_OPACITY_MIN} and ${AI_OVERLAY_OPACITY_MAX}`,
     );
   }
 }
@@ -466,6 +509,8 @@ function validateFindings(value: unknown): asserts value is AiDrawingFinding[] {
 
 // ─── Ghost stroke validation ────────────────────────────────────────────────
 
+const STROKE_GROUPS = new Set<string>(AI_STROKE_GROUPS);
+
 function requireFiniteNumber(
   value: unknown,
   path: string,
@@ -480,6 +525,34 @@ function requireFiniteNumber(
   ) {
     throw new AiDrawingResponseValidationError(
       `${path} must be a finite number between ${min} and ${max}`,
+    );
+  }
+}
+
+/** Chuỗi được phép rỗng (nhãn hiển thị), chỉ chặn sai kiểu hoặc quá dài. */
+function requireShortText(
+  value: unknown,
+  path: string,
+  maximumLength: number,
+): void {
+  if (typeof value !== "string" || value.length > maximumLength) {
+    throw new AiDrawingResponseValidationError(
+      `${path} must be a string of at most ${maximumLength} characters`,
+    );
+  }
+}
+
+/** Trường thừa là lỗi: hợp đồng nói rõ "không thêm trường". */
+function requireAllowedKeys(
+  value: Record<string, unknown>,
+  allowedKeys: readonly string[],
+  path: string,
+): void {
+  const allowed = new Set(allowedKeys);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) {
+    throw new AiDrawingResponseValidationError(
+      `${path} must not contain: ${unknown.join(", ")}`,
     );
   }
 }
@@ -511,6 +584,14 @@ function validateStrokePath(value: unknown, index: number): void {
     );
   }
 
+  const kindKeys =
+    kind === "path"
+      ? (["points"] as const)
+      : kind === "line"
+        ? (["from", "to"] as const)
+        : (["region"] as const);
+  requireAllowedKeys(value, [...AI_STROKE_BASE_KEYS, ...kindKeys], path);
+
   if (kind === "path") {
     if (!Array.isArray(value.points) || value.points.length === 0 || value.points.length > MAX_AI_STROKE_POINTS) {
       throw new AiDrawingResponseValidationError(
@@ -534,11 +615,39 @@ function validateStrokePath(value: unknown, index: number): void {
   }
 
   requirePrinciple(value.style, `${path}.style`);
+  if (
+    typeof value.group !== "string" ||
+    !STROKE_GROUPS.has(value.group as AiStrokeGroup)
+  ) {
+    throw new AiDrawingResponseValidationError(
+      `${path}.group is not one of the supported stroke groups`,
+    );
+  }
+  requireShortText(value.label, `${path}.label`, MAX_AI_STROKE_LABEL_LENGTH);
   requireFiniteNumber(value.opacity, `${path}.opacity`, AI_STROKE_OPACITY_MIN, AI_STROKE_OPACITY_MAX);
   requireFiniteNumber(value.strokeWidth, `${path}.strokeWidth`, AI_STROKE_WIDTH_MIN, AI_STROKE_WIDTH_MAX);
 
   if (value.dashed !== undefined && typeof value.dashed !== "boolean") {
     throw new AiDrawingResponseValidationError(`${path}.dashed must be boolean`);
+  }
+  if (value.closed !== undefined && typeof value.closed !== "boolean") {
+    throw new AiDrawingResponseValidationError(`${path}.closed must be boolean`);
+  }
+  if (value.fill !== undefined && value.fill !== STROKE_FILL_NONE) {
+    if (
+      typeof value.fill !== "string" ||
+      !STROKE_FILL_PATTERN.test(value.fill)
+    ) {
+      throw new AiDrawingResponseValidationError(
+        `${path}.fill must be "none" or a "#rrggbb" colour`,
+      );
+    }
+    // Ellipse/rectangle vốn đã khép kín; path thì phải khai báo `closed`.
+    if (kind === "path" && value.closed !== true) {
+      throw new AiDrawingResponseValidationError(
+        `${path}.fill requires a closed path`,
+      );
+    }
   }
 }
 

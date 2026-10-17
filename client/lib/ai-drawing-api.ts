@@ -37,6 +37,21 @@ export interface NormalizedRegion {
   height: number;
 }
 
+/**
+ * Nhóm nội dung của nét AI — thứ tự trong mảng **cũng là thứ tự vẽ**
+ * (nền trước, hiệu ứng sau). Phải khớp `AI_STROKE_GROUPS` của server.
+ */
+export const AI_STROKE_GROUPS = [
+  "background",
+  "midground",
+  "subject",
+  "detail",
+  "effects",
+  "guide",
+] as const;
+
+export type AiStrokeGroup = (typeof AI_STROKE_GROUPS)[number];
+
 export interface AiDrawingFinding {
   principle: AiDrawingPrinciple;
   region: NormalizedRegion;
@@ -65,9 +80,17 @@ export interface AiStrokePath {
   /** Với ellipse/rectangle */
   region?: NormalizedRegion;
   style: AiDrawingPrinciple;
+  /** Nhóm nội dung — quyết định thứ tự vẽ (Phase 5A) */
+  group: AiStrokeGroup;
+  /** Nhãn tiếng Việt ngắn hiện khi trỏ chuột; rỗng khi model không đặt tên */
+  label: string;
   opacity: number;
   strokeWidth: number;
   dashed?: boolean;
+  /** Với path: nét đã khép kín chưa (chỉ path khép kín mới có `fill`) */
+  closed?: boolean;
+  /** Màu tô kín: "#rrggbb" hoặc "none" */
+  fill?: string;
 }
 
 export interface AiGhostStrokeResponse {

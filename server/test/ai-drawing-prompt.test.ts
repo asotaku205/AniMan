@@ -107,6 +107,37 @@ describe("AI drawing prompt assembly", () => {
     expect(assembly.userPrompt).toContain("layout L1 gồm p1..p4");
   });
 
+  it("bắt mọi nét AI khai group/label và nêu đúng thang độ đậm v2 (Phase 5A)", () => {
+    const ghostTasks = [
+      AiDrawingTask.StrokeGuidance,
+      AiDrawingTask.CompositionOverlay,
+      AiDrawingTask.PoseGuidance,
+    ];
+
+    for (const task of ghostTasks) {
+      const assembly = promptService.assemble(
+        makeRequest(task, "vẽ giúp tôi một dáng người đang vung kiếm"),
+      );
+
+      expect(assembly.templateVersion).toBe("2");
+      expect(assembly.systemInstruction).toContain("group");
+      expect(assembly.systemInstruction).toContain("label");
+      expect(assembly.systemInstruction).toContain("subject");
+    }
+
+    const strokeAssembly = promptService.assemble(
+      makeRequest(AiDrawingTask.StrokeGuidance, "dáng người vung kiếm"),
+    );
+    // Sáu nhóm nội dung hợp lệ phải được liệt kê đủ cho model.
+    for (const group of ["background", "midground", "subject", "detail", "effects", "guide"]) {
+      expect(strokeAssembly.systemInstruction).toContain(group);
+    }
+    // Sàn/trần mới của hợp đồng phải xuất hiện trong chỉ dẫn cho model.
+    expect(strokeAssembly.systemInstruction).toContain("0.15..0.9");
+    expect(strokeAssembly.systemInstruction).toContain("0.0015..0.025");
+    expect(strokeAssembly.systemInstruction).not.toContain("0.08..0.22");
+  });
+
   it("has a registered prompt template for every task of the contract", () => {
     for (const task of Object.values(AiDrawingTask)) {
       expect(() => promptService.assemble(makeRequest(task))).not.toThrow();

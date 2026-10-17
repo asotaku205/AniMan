@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   AI_DRAWING_MODEL_LABEL,
   AI_PANEL_CAMERAS,
+  AI_STROKE_GROUPS,
   MAX_STORY_FLOW_PANELS,
   isPageStoryFlowResponse,
   selectStoryFlowPanelsForLayout,
   type AiPageStoryFlowPanelHint,
   type AiPageStoryFlowResponse,
+  type AiStrokePath,
 } from "@/lib/ai-drawing-api";
 
 const validResponse: AiPageStoryFlowResponse = {
@@ -149,5 +151,40 @@ describe("Đối chiếu gợi ý khung với layout đang mở (VD-5)", () => {
   it("trả mảng rỗng khi layout không khớp gì (không ném lỗi)", () => {
     expect(selectStoryFlowPanelsForLayout([hint("p9", 1)], ["p1"])
     ).toEqual([]);
+  });
+});
+
+describe("Nét AI v2 phía client (Phase 5A)", () => {
+  it("có đúng sáu nhóm nội dung, đúng thứ tự vẽ của server", () => {
+    expect([...AI_STROKE_GROUPS]).toEqual([
+      "background",
+      "midground",
+      "subject",
+      "detail",
+      "effects",
+      "guide",
+    ]);
+  });
+
+  it("kiểu nét v2 nhận group/label và tùy chọn closed/fill", () => {
+    const stroke: AiStrokePath = {
+      kind: "path",
+      points: [
+        { x: 0.2, y: 0.2 },
+        { x: 0.6, y: 0.3 },
+        { x: 0.5, y: 0.7 },
+      ],
+      style: "lighting",
+      group: "effects",
+      label: "mảng bóng đổ dưới cằm",
+      opacity: 0.62,
+      strokeWidth: 0.012,
+      closed: true,
+      fill: "#223344",
+    };
+
+    expect(stroke.group).toBe("effects");
+    expect(stroke.label).toContain("bóng đổ");
+    expect(stroke.closed).toBe(true);
   });
 });

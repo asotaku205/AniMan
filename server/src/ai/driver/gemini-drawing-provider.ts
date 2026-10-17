@@ -8,6 +8,7 @@ import type { AiDrawingProviderRequest } from "./ai-drawing-driver.js";
 import { AiDrawingTask } from "../contracts/ai-drawing-request.dto.js";
 import {
   AI_PANEL_CAMERAS,
+  AI_STROKE_GROUPS,
   AI_STROKE_OPACITY_MAX,
   AI_STROKE_OPACITY_MIN,
   AI_STROKE_WIDTH_MAX,
@@ -16,6 +17,7 @@ import {
   MAX_AI_GHOST_STROKES,
   MAX_AI_PANEL_HINT_LENGTH,
   MAX_AI_STORY_FLOW_PANELS,
+  MAX_AI_STROKE_LABEL_LENGTH,
   MAX_AI_STROKE_POINTS,
   isValidStoryFlowPanelId,
 } from "../contracts/ai-drawing-response.js";
@@ -164,7 +166,45 @@ const ALLOWED_PRINCIPLES = new Set([
   "shadow",
 ]);
 
-function normalizeGeminiOutput(
+const ALLOWED_STROKE_GROUPS = new Set<string>(AI_STROKE_GROUPS);
+
+const STROKE_FILL_PATTERN = /^#[0-9a-f]{6}$/;
+
+/** Độ mờ mặc định cho nét AI khi model không khai (AC-A1.3: 0.55). */
+const DEFAULT_AI_STROKE_OPACITY = 0.55;
+
+/**
+ * Nhãn hiển thị của nét: gộp khoảng trắng, cắt theo giới hạn hợp đồng.
+ * Thiếu nhãn → chuỗi rỗng (hợp đồng cho phép rỗng, chỉ chặn kiểu/độ dài).
+ */
+function normalizeStrokeLabel(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const single = value.replace(/\s+/g, " ").trim();
+  if (single.length <= MAX_AI_STROKE_LABEL_LENGTH) return single;
+  return `${single.slice(0, MAX_AI_STROKE_LABEL_LENGTH - 3)}...`;
+}
+
+/**
+ * Màu tô kín: chỉ nhận `"none"` hoặc `"#rrggbb"`, còn lại bỏ trường để parser
+ * dùng giá trị mặc định (không tô).
+ */
+function normalizeStrokeFill(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim().toLowerCase();
+  if (text === "none") return "none";
+  return STROKE_FILL_PATTERN.test(text) ? text : undefined;
+}
+
+/**
+ * Chuẩn hoá JSON thô của model về đúng hợp đồng phản hồi.
+ *
+ * Nguyên tắc chung của dự án: **provider normalize, parser strict** — ở đây chỉ
+ * sửa những gì còn dùng được (nhóm nét mặc định, nhãn rỗng, kẹp số, bỏ trường
+ * lạ), còn `parseAiDrawingResponse()` mới là nơi ném lỗi.
+ *
+ * Xuất ra để test trực tiếp phần chuẩn hoá.
+ */
+export function normalizeGeminiOutput(
   raw: unknown,
   request: AiDrawingProviderRequest,
 ): unknown {
@@ -220,11 +260,15 @@ function normalizeGeminiOutput(
       const style = ALLOWED_PRINCIPLES.has(s.style as string)
         ? (s.style as string)
         : "flow";
+      const group = ALLOWED_STROKE_GROUPS.has(s.group as string)
+        ? (s.group as string)
+        : "detail";
+      const label = normalizeStrokeLabel(s.label);
       const opacity = clamp(
         s.opacity,
         AI_STROKE_OPACITY_MIN,
         AI_STROKE_OPACITY_MAX,
-        0.15,
+        DEFAULT_AI_STROKE_OPACITY,
       );
       const strokeWidth = clamp(
         s.strokeWidth,
@@ -233,6 +277,14 @@ function normalizeGeminiOutput(
         0.005,
       );
       const dashed = typeof s.dashed === "boolean" ? s.dashed : undefined;
+      const fill = normalizeStrokeFill(s.fill);
+      // Màu tô chỉ có nghĩa với hình khép kín: model quên `closed` thì tự khép.
+      const closed =
+        typeof s.closed === "boolean"
+          ? s.closed
+          : fill !== undefined && fill !== "none"
+            ? true
+            : undefined;
 
       if (kind === "path") {
         const rawPoints = Array.isArray(s.points) ? s.points : [];
@@ -251,9 +303,13 @@ function normalizeGeminiOutput(
           kind: "path",
           points,
           style,
+          group,
+          label,
           opacity,
           strokeWidth,
           ...(dashed !== undefined ? { dashed } : {}),
+          ...(closed !== undefined ? { closed } : {}),
+          ...(fill !== undefined ? { fill } : {}),
         });
       } else if (kind === "line") {
         if (
@@ -276,6 +332,8 @@ function normalizeGeminiOutput(
             y: clamp(toRaw.y, 0, 1, 0.9),
           },
           style,
+          group,
+          label,
           opacity,
           strokeWidth,
           ...(dashed !== undefined ? { dashed } : {}),
@@ -291,9 +349,12 @@ function normalizeGeminiOutput(
           kind: kind as "ellipse" | "rectangle",
           region: { x, y, width, height },
           style,
+          group,
+          label,
           opacity,
           strokeWidth,
           ...(dashed !== undefined ? { dashed } : {}),
+          ...(fill !== undefined ? { fill } : {}),
         });
       }
     }
