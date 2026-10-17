@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Pen,
   Brush,
@@ -15,6 +15,7 @@ import {
   Check,
 } from "lucide-react";
 import { TOOL_NAMES } from "../hooks/useDrawStudio";
+import { MANGA_PALETTE, normalizeHex } from "../lib/toolSettings";
 import type { DrawTool } from "../data";
 
 const TOOL_ICONS: Record<DrawTool, React.ReactNode> = {
@@ -35,8 +36,6 @@ type Props = {
   onToolChange: (t: DrawTool) => void;
   color: string;
   onColorChange: (c: string) => void;
-  size: number;
-  onSizeChange: (s: number) => void;
   /** Disabled when no active panel */
   disabled: boolean;
   shapeType?: "rect" | "circle" | "line";
@@ -50,14 +49,29 @@ export function LeftToolbar({
   onToolChange,
   color,
   onColorChange,
-  size,
-  onSizeChange,
   disabled,
   shapeType = "rect",
   onShapeTypeChange,
   shapeFill = false,
   onShapeFillChange,
 }: Props) {
+  // Ô nhập HEX chỉ chốt màu khi hợp lệ (AC-T2.3). `hexDraft = null` nghĩa là
+  // đang không sửa → hiện màu hiện tại, nên không cần đồng bộ bằng effect.
+  const [hexDraft, setHexDraft] = useState<string | null>(null);
+  const hexValue = hexDraft ?? color;
+
+  /** Chọn màu từ bảng/circle: bỏ bản nháp đang gõ dở để ô HEX theo màu mới. */
+  const pickColor = (c: string) => {
+    setHexDraft(null);
+    onColorChange(c);
+  };
+
+  const commitHex = () => {
+    const normalized = hexDraft === null ? null : normalizeHex(hexDraft);
+    if (normalized) onColorChange(normalized);
+    setHexDraft(null);
+  };
+
   return (
     <div
       className={`w-16 bg-[#120a1f] border-r border-white/5 flex flex-col items-center py-3 gap-1 flex-shrink-0 relative ${
@@ -144,7 +158,7 @@ export function LeftToolbar({
           <input
             type="color"
             value={color}
-            onChange={(e) => onColorChange(e.target.value)}
+            onChange={(e) => pickColor(e.target.value)}
             className="absolute -inset-1 opacity-0 cursor-pointer w-12 h-12"
           />
           <div
@@ -154,18 +168,36 @@ export function LeftToolbar({
         </div>
       </div>
 
-      {/* Size slider */}
-      <p className="text-white/30 text-[8px] tracking-widest mt-2">CỠ</p>
+      {/* Bảng màu nhanh 16 màu manga (AC-T2.3) */}
+      <p className="text-white/30 text-[8px] tracking-widest mt-3">MÀU</p>
+      <div className="grid grid-cols-4 gap-1 mt-1.5">
+        {MANGA_PALETTE.map((c) => (
+          <button
+            key={c}
+            onClick={() => pickColor(c)}
+            title={c}
+            className={`w-3.5 h-3.5 rounded-[4px] border transition-transform hover:scale-110 ${
+              color.toLowerCase() === c
+                ? "border-pink-400 ring-1 ring-pink-400/60"
+                : "border-white/15"
+            }`}
+            style={{ background: c }}
+          />
+        ))}
+      </div>
+
+      {/* Nhập HEX tay (AC-T2.3) */}
       <input
-        type="range"
-        min={1}
-        max={40}
-        value={size}
-        onChange={(e) => onSizeChange(+e.target.value)}
-        className="h-20 w-2 appearance-none bg-transparent cursor-pointer accent-pink-500"
-        style={{ writingMode: "vertical-lr", direction: "rtl" }}
+        value={hexValue}
+        onChange={(e) => setHexDraft(e.target.value)}
+        onBlur={commitHex}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commitHex();
+        }}
+        placeholder="#RRGGBB"
+        title="Nhập mã màu HEX rồi Enter"
+        className="mt-1.5 w-14 bg-white/5 border border-white/10 rounded-md px-1 py-0.5 text-[8px] font-mono text-white/70 text-center focus:outline-none focus:border-pink-500/40"
       />
-      <span className="text-white/50 text-[9px] font-mono">{size}px</span>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Check, BookOpen } from "lucide-react";
 import { LeftToolbar } from "./LeftToolbar";
 import { CanvasTopBar } from "./CanvasTopBar";
 import { CanvasArea } from "./CanvasArea";
+import { ToolOptionsBar } from "./ToolOptionsBar";
 import { RightPanel } from "./RightPanel";
 import { useDrawStudio } from "../hooks/useDrawStudio";
 import type { MangaProject } from "../hooks/useMangaProjects";
@@ -81,15 +82,12 @@ export function DrawStudio({
         onToolChange={s.setTool}
         color={s.color}
         onColorChange={s.setColor}
-        size={s.size}
-        onSizeChange={s.setSize}
         disabled={!s.activePanel}
         shapeType={s.shapeType}
         onShapeTypeChange={s.setShapeType}
         shapeFill={s.shapeFill}
         onShapeFillChange={s.setShapeFill}
       />
-
       {/* Center Canvas area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <CanvasTopBar
@@ -116,6 +114,14 @@ export function DrawStudio({
           activeGuides={aiConsentEligible ? s.activeGuides : []}
           ghostType={aiConsentEligible ? s.ghostType : null}
           ghostId={aiConsentEligible ? s.ghostId : null}
+        />
+
+        <ToolOptionsBar
+          tool={s.tool}
+          settings={s.settings}
+          onSettingsChange={s.updateSettings}
+          color={s.color}
+          disabled={!s.activePanel}
         />
 
         <CanvasArea

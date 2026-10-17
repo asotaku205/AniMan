@@ -32,6 +32,7 @@ import {
   buildCompositePlan,
   blendToComposite,
   compositeTo,
+  effectiveStrokeAlpha,
   getPanelBackingSize,
   layerAlpha,
 } from "../lib/layerEngine";
@@ -42,6 +43,14 @@ import {
   moveLayerInList,
   moveLayerToIndex,
 } from "../lib/layerOps";
+import { dabAlpha, hardnessBlurRadius, smoothPoint } from "../lib/stroke";
+import {
+  adjustSize,
+  clampSize,
+  defaultSettingsFor,
+  DEFAULT_SETTINGS,
+  type ToolSettings,
+} from "../lib/toolSettings";
 import {
   clampPan,
   clampScale,
@@ -247,6 +256,16 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const isDrawing = useRef(false);
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
   const previewSnapshotRef = useRef<ImageData | null>(null);
+  /**
+   * Bộ đệm của nét **đang vẽ** (AC-T2.6): cả nét tích vào đây ở alpha đầy, rồi
+   * hợp nhất vào layer **một lần** với `opacity` nét → chỗ nét đè nhau không bị
+   * đậm thêm (đậm dần khi chồng là việc của `flow`).
+   */
+  const strokeBufferRef = useRef<HTMLCanvasElement | null>(null);
+  /** Bitmap layer ngay trước khi bắt đầu nét — để mỗi lần di chuột vẽ lại sạch. */
+  const strokeBaseImageRef = useRef<ImageData | null>(null);
+  /** Điểm cuối đã làm mượt của nét đang vẽ (BR-T03). */
+  const strokeLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -276,9 +295,62 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const spaceHeldRef = useRef(false);
 
   // Drawing state
-  const [tool, setTool] = useState<DrawTool>("pen");
-  const [size, setSize] = useState(4);
+  const [tool, setToolState] = useState<DrawTool>("pen");
+  /**
+   * Thuộc tính nét theo **từng công cụ** (BR-T01): đổi công cụ giữ nguyên màu,
+   * nhưng nét trở về mặc định riêng của công cụ đó.
+   */
+  const [settingsByTool, setSettingsByTool] = useState<
+    Record<DrawTool, ToolSettings>
+  >(() => {
+    const initial = {} as Record<DrawTool, ToolSettings>;
+    (Object.keys(DEFAULT_SETTINGS) as DrawTool[]).forEach((t) => {
+      initial[t] = defaultSettingsFor(t);
+    });
+    return initial;
+  });
+  const settings = settingsByTool[tool] ?? defaultSettingsFor(tool);
+  const size = settings.size;
   const [color, setColor] = useState("#111111");
+
+  /** Cập nhật một phần thuộc tính nét của công cụ đang chọn (đã kẹp biên). */
+  const updateSettings = useCallback(
+    (patch: Partial<ToolSettings>) => {
+      setSettingsByTool((prev) => {
+        const current = prev[tool] ?? defaultSettingsFor(tool);
+        const merged: ToolSettings = { ...current, ...patch };
+        if (patch.size !== undefined) merged.size = clampSize(merged.size);
+        return { ...prev, [tool]: merged };
+      });
+      // Thuộc tính nét là trạng thái phiên, không phải pixel → không vào undo.
+    },
+    [tool],
+  );
+
+  /** Đổi công cụ (BR-T01). */
+  const setTool = useCallback((next: DrawTool) => {
+    setToolState(next);
+    setSettingsByTool((prev) => ({ ...prev, [next]: defaultSettingsFor(next) }));
+  }, []);
+
+  const setSize = useCallback(
+    (value: number) => updateSettings({ size: clampSize(value) }),
+    [updateSettings],
+  );
+
+  /** `[` / `]` đổi size ±2, `Shift` ±10 (AC-T2.4) — tính từ size hiện tại. */
+  const nudgeSize = useCallback(
+    (delta: number) => {
+      setSettingsByTool((prev) => {
+        const current = prev[tool] ?? defaultSettingsFor(tool);
+        return {
+          ...prev,
+          [tool]: { ...current, size: adjustSize(current.size, delta) },
+        };
+      });
+    },
+    [tool],
+  );
 
   // Shape tool config
   const [shapeType, setShapeType] = useState<"rect" | "circle" | "line">("rect");
@@ -958,6 +1030,80 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     return getLayerCanvas(activeLayerId)?.getContext("2d") ?? null;
   }, [activePanel, activeLayerId, getLayerCanvas]);
 
+  // ── Nét vẽ: bộ đệm + hợp nhất một lần (AC-T2.6) ───────────────────────────────
+
+  /** Bộ đệm nét, luôn cùng cỡ backing với layer (tạo mới khi đổi cỡ khung). */
+  const getStrokeBuffer = useCallback((): HTMLCanvasElement | null => {
+    const display = canvasRef.current;
+    if (!display) return null;
+    let buffer = strokeBufferRef.current;
+    if (
+      !buffer ||
+      buffer.width !== display.width ||
+      buffer.height !== display.height
+    ) {
+      buffer = document.createElement("canvas");
+      buffer.width = display.width;
+      buffer.height = display.height;
+      strokeBufferRef.current = buffer;
+    }
+    return buffer;
+  }, []);
+
+  /** Opacity (0–100) của layer đang chọn — vế thứ hai của AC-T2.6. */
+  const activeLayerOpacity = useCallback(
+    () => layers.find((l) => l.id === activeLayerId)?.opacity ?? 100,
+    [layers, activeLayerId],
+  );
+
+  /** Alpha hợp nhất nét xuống layer = opacity nét × opacity layer (AC-T2.6). */
+  const strokeCompositeAlpha = useCallback(
+    () => effectiveStrokeAlpha(settings.opacity, activeLayerOpacity()),
+    [settings.opacity, activeLayerOpacity],
+  );
+
+  /**
+   * Vẽ lại layer đang chọn = bitmap gốc (chụp lúc bắt đầu nét) + bộ đệm nét ở
+   * `opacity` nét, rồi composite lên canvas hiển thị. Chạy mỗi lần di chuột nên
+   * kết quả không phụ thuộc số lần vẽ lại (không cộng dồn độ mờ).
+   */
+  const paintStrokeBuffer = useCallback(() => {
+    const ctx = getCtx();
+    const buffer = strokeBufferRef.current;
+    const base = strokeBaseImageRef.current;
+    if (!ctx || !buffer || !base) return;
+
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.filter = "none";
+    ctx.putImageData(base, 0, 0);
+
+    const eraser = tool === "eraser";
+    ctx.globalCompositeOperation = eraser ? "destination-out" : "source-over";
+    ctx.globalAlpha = eraser
+      ? settings.eraserMode === "alpha"
+        ? strokeCompositeAlpha() // tẩy theo độ mờ (BR-T04)
+        : 1 // tẩy sạch pixel
+      : strokeCompositeAlpha();
+    // Độ cứng đầu cọ → làm mờ viền nét (một lần, ngay lúc hợp nhất)
+    const blur = hardnessBlurRadius(settings.hardness, settings.size);
+    if (blur > 0.1) ctx.filter = `blur(${blur.toFixed(2)}px)`;
+    ctx.drawImage(buffer, 0, 0);
+
+    ctx.filter = "none";
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    renderComposite();
+  }, [getCtx, tool, settings, strokeCompositeAlpha, renderComposite]);
+
+  /** Dọn bộ đệm nét sau khi kết thúc một nét. */
+  const clearStrokeBuffer = useCallback(() => {
+    const buffer = strokeBufferRef.current;
+    buffer?.getContext("2d")?.clearRect(0, 0, buffer.width, buffer.height);
+    strokeBaseImageRef.current = null;
+    strokeLastPointRef.current = null;
+  }, []);
+
   /**
    * Ghi lại bitmap của layer đang chọn **trước khi thay đổi nó**
    * (gọi ở đầu mỗi thao tác) → 1 lần Ctrl+Z hoàn nguyên đúng 1 thao tác,
@@ -1092,11 +1238,23 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         saveDraft();
+      } else if (!e.ctrlKey && !e.metaKey && (e.key === "[" || e.key === "]")) {
+        // AC-T2.4: [ ] đổi size ±2, Shift ±10
+        const target = e.target as HTMLElement | null;
+        const typing =
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable);
+        if (typing) return;
+        e.preventDefault();
+        const step = (e.shiftKey ? 10 : 2) * (e.key === "]" ? 1 : -1);
+        nudgeSize(step);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo, saveDraft]);
+  }, [undo, redo, saveDraft, nudgeSize]);
 
   // Chèn chữ / lời thoại vào canvas
   const insertText = useCallback(
@@ -1110,6 +1268,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       }
       snapshot();
       ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = settings.opacity / 100;
       ctx.font = `${Math.max(14, size * 3.5)}px "Comic Sans MS", "Arial", sans-serif`;
       ctx.fillStyle = color;
       ctx.textBaseline = "middle";
@@ -1120,12 +1279,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         textInputPos.y,
       );
       ctx.fillText(text, tx, ty);
+      ctx.globalAlpha = 1;
       compositeNow();
       setShowTextInput(false);
       setTextInputPos(null);
       showToast("Đã thêm lời thoại!");
     },
-    [getCtx, textInputPos, size, color, snapshot, compositeNow, showToast],
+    [getCtx, textInputPos, size, color, settings.opacity, snapshot, compositeNow, showToast],
   );
 
   const cancelText = useCallback(() => {
@@ -1467,29 +1627,47 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       }
 
       // 4. Các công cụ nét vẽ tự do (Pen, Brush, Eraser)
+      //    Nét tích vào bộ đệm rồi hợp nhất MỘT lần với `opacity` nét (AC-T2.6).
+      const buffer = getStrokeBuffer();
+      const bufferCtx = buffer?.getContext("2d");
+      if (!buffer || !bufferCtx) return;
       snapshot();
+      strokeBaseImageRef.current = ctx.getImageData(
+        0,
+        0,
+        ctx.canvas.width,
+        ctx.canvas.height,
+      );
+      bufferCtx.globalCompositeOperation = "source-over";
+      bufferCtx.clearRect(0, 0, buffer.width, buffer.height);
+      bufferCtx.globalAlpha = tool === "brush" ? dabAlpha(settings.flow) : 1;
+      bufferCtx.strokeStyle = tool === "eraser" ? "#000000" : color;
+      bufferCtx.fillStyle = bufferCtx.strokeStyle;
+      bufferCtx.lineWidth = settings.size;
+      bufferCtx.lineCap = "round";
+      bufferCtx.lineJoin = "round";
+      strokeLastPointRef.current = { x: px, y: py };
+      // Nhát đầu là một chấm tròn → nét hiện ngay khi vừa bấm, không phải kéo
+      bufferCtx.beginPath();
+      bufferCtx.arc(px, py, Math.max(0.5, settings.size / 2), 0, Math.PI * 2);
+      bufferCtx.fill();
       isDrawing.current = true;
-      ctx.beginPath();
-      ctx.moveTo(px, py);
-      if (tool === "eraser") {
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.strokeStyle = "rgba(0,0,0,1)";
-        ctx.lineWidth = size * 4;
-      } else if (tool === "brush") {
-        ctx.globalCompositeOperation = "source-over";
-        ctx.strokeStyle = color;
-        ctx.lineWidth = size * 2;
-        ctx.globalAlpha = 0.5;
-      } else {
-        ctx.globalCompositeOperation = "source-over";
-        ctx.strokeStyle = color;
-        ctx.lineWidth = size;
-        ctx.globalAlpha = 1;
-      }
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
+      paintStrokeBuffer();
     },
-    [activePanel, getCtx, tool, color, size, snapshot, compositeNow, layers, activeLayerId, showToast],
+    [
+      activePanel,
+      getCtx,
+      tool,
+      color,
+      settings,
+      getStrokeBuffer,
+      paintStrokeBuffer,
+      snapshot,
+      compositeNow,
+      layers,
+      activeLayerId,
+      showToast,
+    ],
   );
 
   const move = useCallback(
@@ -1525,7 +1703,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         ctx.globalCompositeOperation = "source-over";
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
-        ctx.lineWidth = size;
+        ctx.globalAlpha = settings.opacity / 100;
+        ctx.lineWidth = settings.size;
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
 
@@ -1563,12 +1742,40 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         return;
       }
 
-      // Xử lý nét vẽ tự do
-      ctx.lineTo(curX, curY);
-      ctx.stroke();
-      renderComposite();
+      // Nét vẽ tự do: tích vào bộ đệm (đã làm mượt — BR-T03) rồi vẽ lại preview
+      const buffer = strokeBufferRef.current;
+      const bufferCtx = buffer?.getContext("2d");
+      const lastPoint = strokeLastPointRef.current;
+      if (!buffer || !bufferCtx || !lastPoint) return;
+      const nextPoint = smoothPoint(
+        lastPoint,
+        { x: curX, y: curY },
+        settings.smoothing,
+      );
+      bufferCtx.globalCompositeOperation = "source-over";
+      bufferCtx.globalAlpha = tool === "brush" ? dabAlpha(settings.flow) : 1;
+      bufferCtx.strokeStyle = tool === "eraser" ? "#000000" : color;
+      bufferCtx.lineWidth = settings.size;
+      bufferCtx.lineCap = "round";
+      bufferCtx.lineJoin = "round";
+      bufferCtx.beginPath();
+      bufferCtx.moveTo(lastPoint.x, lastPoint.y);
+      bufferCtx.lineTo(nextPoint.x, nextPoint.y);
+      bufferCtx.stroke();
+      strokeLastPointRef.current = nextPoint;
+      paintStrokeBuffer();
     },
-    [getCtx, tool, color, size, shapeType, shapeFill, renderComposite, clampCurrentPan],
+    [
+      getCtx,
+      tool,
+      color,
+      settings,
+      paintStrokeBuffer,
+      renderComposite,
+      clampCurrentPan,
+      shapeType,
+      shapeFill,
+    ],
   );
 
   const up = useCallback(() => {
@@ -1581,9 +1788,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     isDrawing.current = false;
     startPosRef.current = null;
     previewSnapshotRef.current = null;
+    // Nét đã hợp nhất vào layer trong lúc vẽ → chỉ cần dọn bộ đệm.
+    clearStrokeBuffer();
     const ctx = getCtx();
     if (ctx) {
       ctx.globalAlpha = 1;
+      ctx.filter = "none";
       ctx.globalCompositeOperation = "source-over";
       ctx.beginPath();
     }
@@ -1600,7 +1810,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       }
       return next;
     });
-  }, [activePanel, getCtx, ghostType, compositeNow]);
+  }, [activePanel, getCtx, ghostType, compositeNow, clearStrokeBuffer]);
 
   // ── AI actions ────────────────────────────────────────────────────────────────
 
@@ -1985,6 +2195,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setTool,
     size,
     setSize,
+    /** Thuộc tính nét của công cụ đang chọn (3B) */
+    settings,
+    updateSettings,
+    nudgeSize,
     color,
     setColor,
     // Pages

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   blendToComposite,
   buildCompositePlan,
+  effectiveStrokeAlpha,
   getPanelBackingSize,
   layerAlpha,
   layerCanvasSize,
@@ -27,6 +28,24 @@ describe("layerAlpha (AC-L1.3)", () => {
   it("clamp về 0..1 với giá trị ngoài khoảng", () => {
     expect(layerAlpha(250)).toBe(1);
     expect(layerAlpha(-20)).toBe(0);
+  });
+});
+
+describe("effectiveStrokeAlpha (AC-T2.6: opacity nét × opacity layer)", () => {
+  it("nhân hai độ mờ lại với nhau", () => {
+    expect(effectiveStrokeAlpha(100, 100)).toBe(1);
+    expect(effectiveStrokeAlpha(50, 100)).toBe(0.5);
+    expect(effectiveStrokeAlpha(100, 50)).toBe(0.5);
+    expect(effectiveStrokeAlpha(50, 50)).toBe(0.25);
+  });
+
+  it("nét mờ 0 → vô hình dù layer đục", () => {
+    expect(effectiveStrokeAlpha(0, 100)).toBe(0);
+  });
+
+  it("kẹp giá trị ngoài khoảng như layerAlpha", () => {
+    expect(effectiveStrokeAlpha(250, 100)).toBe(1);
+    expect(effectiveStrokeAlpha(100, -20)).toBe(0);
   });
 });
 

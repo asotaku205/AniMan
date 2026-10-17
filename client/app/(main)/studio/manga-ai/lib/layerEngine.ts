@@ -55,6 +55,19 @@ export function layerAlpha(opacity: number): number {
 }
 
 /**
+ * AC-T2.6: alpha hiệu dụng của một nét = `opacity` nét **nhân** `opacity` layer,
+ * nhân **lúc render** (nét hợp nhất vào layer một lần với alpha này) chứ không
+ * nướng sẵn vào pixel — nhờ vậy đổi opacity layer sau đó vẫn đúng.
+ * Cả hai tham số theo thang 0–100; trả alpha canvas 0–1.
+ */
+export function effectiveStrokeAlpha(
+  strokeOpacity: number,
+  layerOpacity: number,
+): number {
+  return layerAlpha(strokeOpacity) * layerAlpha(layerOpacity);
+}
+
+/**
  * Kích thước canvas theo RC-1: kích thước khung × devicePixelRatio,
  * dpr không hợp lệ hoặc ≤ 0 → co về 1.
  */
