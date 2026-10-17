@@ -229,6 +229,97 @@ describe("AI Drawing End-to-End Suite (Slice 7)", () => {
     });
   });
 
+  describe("Tác vụ 6: Mạch truyện toàn trang (page_story_flow)", () => {
+    const storyFlowProfile: AiDrawingModelProfile = {
+      ...activeProfile,
+      tasks: [...activeProfile.tasks, AiDrawingTask.PageStoryFlow],
+    };
+
+    it("chạy end-to-end KHÔNG cần ảnh và trả gợi ý cho từng khung", async () => {
+      const mockProvider: AiDrawingProvider = {
+        generate: vi.fn(async () => ({
+          schemaVersion: "1",
+          task: AiDrawingTask.PageStoryFlow,
+          summary: "Trang dồn nhịp từ toàn cảnh xuống cận cảnh gương mặt.",
+          sourceIds: [],
+          flow: "Sân trường vắng → tiếng bước chân → quay đầu → gương mặt sững lại.",
+          panels: [
+            { panelId: "p1", order: 1, hint: "Toàn cảnh sân trường buổi sớm.", camera: "toàn cảnh" },
+            { panelId: "p2", order: 2, hint: "Cận đôi giày dừng lại.", camera: "cận cảnh" },
+            { panelId: "p3", order: 3, hint: "Nhân vật quay đầu.", camera: "trung cảnh" },
+            { panelId: "p4", order: 4, hint: "Gương mặt sững lại.", camera: "cận cảnh" },
+          ],
+        })),
+      };
+
+      const driver = new AiDrawingDriver(
+        mockProvider,
+        storyFlowProfile,
+        new AiDrawingPromptService(),
+      );
+
+      const response = await driver.execute({
+        task: AiDrawingTask.PageStoryFlow,
+        prompt: "layout L1 gồm p1..p4, trang 2/8, thể loại hành động",
+      });
+
+      expect(response.task).toBe(AiDrawingTask.PageStoryFlow);
+      if ("panels" in response) {
+        expect(response.panels).toHaveLength(4);
+        expect(response.panels[0].panelId).toBe("p1");
+        expect(response.panels[3].camera).toBe("cận cảnh");
+      }
+      expect(mockProvider.generate).toHaveBeenCalledTimes(1);
+    });
+
+    it("từ chối khi provider trả khung không tồn tại trong layout", async () => {
+      const mockProvider: AiDrawingProvider = {
+        generate: vi.fn(async () => ({
+          schemaVersion: "1",
+          task: AiDrawingTask.PageStoryFlow,
+          summary: "Mạch truyện có khung bịa.",
+          sourceIds: [],
+          flow: "A → B → C",
+          panels: [
+            { panelId: "p99", order: 1, hint: "Khung không tồn tại.", camera: "toàn cảnh" },
+          ],
+        })),
+      };
+
+      const driver = new AiDrawingDriver(
+        mockProvider,
+        storyFlowProfile,
+        new AiDrawingPromptService(),
+      );
+
+      await expect(
+        driver.execute({
+          task: AiDrawingTask.PageStoryFlow,
+          prompt: "layout L1 gồm p1..p4",
+        }),
+      ).rejects.toThrow(
+        "AI provider returned a response that violates the drawing contract",
+      );
+    });
+
+    it("từ chối task vẽ khác khi thiếu ảnh (VD-1)", async () => {
+      const mockProvider: AiDrawingProvider = { generate: vi.fn() };
+      const driver = new AiDrawingDriver(
+        mockProvider,
+        storyFlowProfile,
+        new AiDrawingPromptService(),
+      );
+
+      await expect(
+        driver.execute({
+          task: AiDrawingTask.StrokeGuidance,
+          prompt: "Vẽ giúp tôi một dáng người",
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockProvider.generate).not.toHaveBeenCalled();
+    });
+  });
+
   describe("Bảo vệ an toàn và xử lý lỗi vận hành (Safety & Operational Invariants)", () => {
     it("từ chối kích hoạt nếu profile model bị tắt (Kill switch)", async () => {
       const mockProvider: AiDrawingProvider = {

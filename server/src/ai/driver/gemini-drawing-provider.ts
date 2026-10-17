@@ -5,6 +5,20 @@ import {
   AiDrawingProviderTransientError,
 } from "./ai-drawing-driver.js";
 import type { AiDrawingProviderRequest } from "./ai-drawing-driver.js";
+import { AiDrawingTask } from "../contracts/ai-drawing-request.dto.js";
+import {
+  AI_PANEL_CAMERAS,
+  AI_STROKE_OPACITY_MAX,
+  AI_STROKE_OPACITY_MIN,
+  AI_STROKE_WIDTH_MAX,
+  AI_STROKE_WIDTH_MIN,
+  MAX_AI_FLOW_LENGTH,
+  MAX_AI_GHOST_STROKES,
+  MAX_AI_PANEL_HINT_LENGTH,
+  MAX_AI_STORY_FLOW_PANELS,
+  MAX_AI_STROKE_POINTS,
+  isValidStoryFlowPanelId,
+} from "../contracts/ai-drawing-response.js";
 
 /**
  * Gemini provider adapter for the AI drawing driver.
@@ -187,7 +201,7 @@ function normalizeGeminiOutput(
 
     for (const stroke of rawStrokes) {
       if (typeof stroke !== "object" || stroke === null) continue;
-      if (normalizedStrokes.length >= 20) break;
+      if (normalizedStrokes.length >= MAX_AI_GHOST_STROKES) break;
 
       const s = stroke as Record<string, unknown>;
       let kind = s.kind;
@@ -206,8 +220,18 @@ function normalizeGeminiOutput(
       const style = ALLOWED_PRINCIPLES.has(s.style as string)
         ? (s.style as string)
         : "flow";
-      const opacity = clamp(s.opacity, 0.05, 0.25, 0.15);
-      const strokeWidth = clamp(s.strokeWidth, 0.002, 0.02, 0.005);
+      const opacity = clamp(
+        s.opacity,
+        AI_STROKE_OPACITY_MIN,
+        AI_STROKE_OPACITY_MAX,
+        0.15,
+      );
+      const strokeWidth = clamp(
+        s.strokeWidth,
+        AI_STROKE_WIDTH_MIN,
+        AI_STROKE_WIDTH_MAX,
+        0.005,
+      );
       const dashed = typeof s.dashed === "boolean" ? s.dashed : undefined;
 
       if (kind === "path") {
@@ -215,7 +239,7 @@ function normalizeGeminiOutput(
         const points: Array<{ x: number; y: number }> = [];
         for (const pt of rawPoints) {
           if (typeof pt !== "object" || pt === null) continue;
-          if (points.length >= 30) break;
+          if (points.length >= MAX_AI_STROKE_POINTS) break;
           const p = pt as Record<string, unknown>;
           points.push({
             x: clamp(p.x, 0, 1, 0.5),
@@ -279,13 +303,91 @@ function normalizeGeminiOutput(
     delete obj.findings;
   }
 
+  if (request.task === AiDrawingTask.PageStoryFlow) {
+    const flow = normalizeStoryFlowText(obj.flow);
+    // Không bịa mạch truyện: model trả thiếu/không dùng được thì bỏ trường để
+    // parser chặn (502) thay vì trả về một câu tự chế trông như dữ liệu thật.
+    if (flow === null) {
+      delete obj.flow;
+    } else {
+      obj.flow = flow;
+    }
+    obj.panels = normalizeStoryFlowPanels(obj.panels);
+    delete obj.strokes;
+    delete obj.recommendations;
+    delete obj.findings;
+  }
+
   return obj;
+}
+
+/**
+ * Chuỗi mạch truyện cả trang: bỏ xuống dòng, cắt theo giới hạn hợp đồng.
+ * `null` khi model không trả về gì dùng được.
+ */
+function normalizeStoryFlowText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const single = value.replace(/\s+/g, " ").trim();
+  if (single.length === 0) return null;
+  if (single.length > MAX_AI_FLOW_LENGTH) {
+    return `${single.slice(0, MAX_AI_FLOW_LENGTH - 3)}...`;
+  }
+  return single;
+}
+
+/**
+ * Gợi ý từng khung: giữ tối đa `MAX_AI_STORY_FLOW_PANELS` khung, ép `panelId`
+ * về dạng `pN`, `order` về số nguyên dương, `hint` về chuỗi có nghĩa và
+ * `camera` về một trong bốn cỡ cảnh hợp lệ. Phần tử không có `panelId`/`hint`
+ * dùng được thì bị loại (parser phía sau chặt hơn: thiếu khung → lỗi).
+ */
+function normalizeStoryFlowPanels(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  const panels: Array<Record<string, unknown>> = [];
+
+  for (const rawPanel of value) {
+    if (typeof rawPanel !== "object" || rawPanel === null) continue;
+    if (panels.length >= MAX_AI_STORY_FLOW_PANELS) break;
+
+    const raw = rawPanel as Record<string, unknown>;
+    const panelId =
+      typeof raw.panelId === "string" ? raw.panelId.trim().toLowerCase() : "";
+    if (!isValidStoryFlowPanelId(panelId)) continue;
+
+    let hint = "";
+    if (typeof raw.hint === "string") {
+      hint = raw.hint.replace(/\s+/g, " ").trim();
+    }
+    if (hint.length === 0) continue;
+    if (hint.length > MAX_AI_PANEL_HINT_LENGTH) {
+      hint = `${hint.slice(0, MAX_AI_PANEL_HINT_LENGTH - 3)}...`;
+    }
+
+    const order = clamp(raw.order, 1, 99, panels.length + 1);
+    const camera =
+      typeof raw.camera === "string" &&
+      (AI_PANEL_CAMERAS as readonly string[]).includes(raw.camera.trim())
+        ? raw.camera.trim()
+        : "trung cảnh";
+
+    panels.push({
+      panelId,
+      order: Math.round(order),
+      hint,
+      camera,
+    });
+  }
+
+  return panels;
 }
 
 /**
  * Build the Gemini `contents` array for the request.
  * The panel image is sent as an inline base64 part so Gemini receives both the
  * user's text context and the canvas snapshot in a single turn.
+ *
+ * `page_story_flow` may run without an image (VD-1): then only the text part is
+ * sent, and the prompt must carry the layout/page context.
  */
 function buildContents(
   request: AiDrawingProviderRequest,
@@ -293,6 +395,10 @@ function buildContents(
   const textPart: Record<string, unknown> = {
     text: request.prompt.trim().length > 0 ? request.prompt : "(panel gửi để đánh giá)",
   };
+
+  if (!request.image) {
+    return [{ role: "user", parts: [textPart] }];
+  }
 
   const imagePart: Record<string, unknown> = {
     inlineData: {

@@ -9,6 +9,7 @@ import {
 } from "../src/ai/contracts/ai-drawing-request.dto.js";
 import {
   AiDrawingResponseValidationError,
+  MAX_AI_STORY_FLOW_PANELS,
   parseAiDrawingResponse,
 } from "../src/ai/contracts/ai-drawing-response.js";
 
@@ -73,6 +74,18 @@ async function validateRequest(input: unknown) {
 describe("AI drawing request contract", () => {
   it("accepts a valid composition-guidance request", async () => {
     await expect(validateRequest(validRequest)).resolves.toHaveLength(0);
+  });
+
+  it("accepts a page story flow request without an image (VD-1)", async () => {
+    const { image: _image, ...withoutImage } = validRequest;
+
+    await expect(
+      validateRequest({
+        ...withoutImage,
+        task: AiDrawingTask.PageStoryFlow,
+        prompt: "layout 4 khung, cảnh hành động trong lớp học",
+      }),
+    ).resolves.toHaveLength(0);
   });
 
   it("accepts a review request with an image", async () => {
@@ -328,5 +341,101 @@ describe("AI drawing response contract", () => {
         new Set(),
       ),
     ).toThrow(/must be a finite number between 0 and 1/);
+  });
+});
+
+const validStoryFlowResponse = {
+  schemaVersion: "1",
+  task: AiDrawingTask.PageStoryFlow,
+  summary: "Trang mở đầu bằng khung toàn cảnh lớp học rồi siết dần vào nhân vật.",
+  sourceIds: [],
+  flow: "Lớp học yên tĩnh → một bóng người xuất hiện ở cửa → cả lớp quay lại → mắt nhân vật mở to.",
+  panels: [
+    { panelId: "p1", order: 1, hint: "Toàn cảnh lớp học buổi sáng, cửa sổ mở.", camera: "toàn cảnh" },
+    { panelId: "p2", order: 2, hint: "Bóng người đứng ở khung cửa, ngược sáng.", camera: "trung cảnh" },
+    { panelId: "p3", order: 3, hint: "Cận mắt nhân vật mở to khi nhận ra.", camera: "cận cảnh" },
+    { panelId: "p4", order: 4, hint: "Cả lớp quay đầu về phía cửa.", camera: "chuyển động" },
+    { panelId: "p5", order: 5, hint: "Khung cuối để trống một phần, mở sang trang sau.", camera: "toàn cảnh" },
+  ],
+};
+
+describe("AI page story flow response contract (D-1)", () => {
+  it("accepts a valid page story flow response", () => {
+    expect(
+      parseAiDrawingResponse(
+        validStoryFlowResponse,
+        AiDrawingTask.PageStoryFlow,
+        new Set(),
+      ),
+    ).toEqual(validStoryFlowResponse);
+  });
+
+  it("rejects a panel id that cannot exist in a layout", () => {
+    const outOfRange = structuredClone(validStoryFlowResponse);
+    outOfRange.panels[0].panelId = "panel-1";
+
+    expect(() =>
+      parseAiDrawingResponse(outOfRange, AiDrawingTask.PageStoryFlow, new Set()),
+    ).toThrow(/panelId must match the layout panel ids/);
+
+    const beyondPageCapacity = structuredClone(validStoryFlowResponse);
+    beyondPageCapacity.panels[1].panelId = "p99";
+
+    expect(() =>
+      parseAiDrawingResponse(
+        beyondPageCapacity,
+        AiDrawingTask.PageStoryFlow,
+        new Set(),
+      ),
+    ).toThrow(/panelId must match the layout panel ids/);
+  });
+
+  it("rejects a camera scale outside the four supported values", () => {
+    const response = structuredClone(validStoryFlowResponse);
+    response.panels[1].camera = "góc rộng" as never;
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.PageStoryFlow, new Set()),
+    ).toThrow(/camera is not one of the supported camera scales/);
+  });
+
+  it("rejects more panels than a page can hold", () => {
+    const response = {
+      ...validStoryFlowResponse,
+      panels: Array.from({ length: MAX_AI_STORY_FLOW_PANELS + 1 }, (_, i) => ({
+        panelId: `p${i + 1}`,
+        order: i + 1,
+        hint: "Khung thừa.",
+        camera: "trung cảnh",
+      })),
+    };
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.PageStoryFlow, new Set()),
+    ).toThrow(/panels must contain between 1 and/);
+  });
+
+  it("rejects an empty panel list instead of silently succeeding", () => {
+    const response = { ...validStoryFlowResponse, panels: [] };
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.PageStoryFlow, new Set()),
+    ).toThrow(/panels must contain between 1 and/);
+  });
+
+  it("rejects an empty flow description", () => {
+    const response = { ...validStoryFlowResponse, flow: "   " };
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.PageStoryFlow, new Set()),
+    ).toThrow(/flow/);
+  });
+
+  it("rejects story flow responses that carry strokes", () => {
+    const response = { ...validStoryFlowResponse, strokes: [] };
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.PageStoryFlow, new Set()),
+    ).toThrow(AiDrawingResponseValidationError);
   });
 });

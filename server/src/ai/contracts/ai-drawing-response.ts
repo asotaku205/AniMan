@@ -130,8 +130,44 @@ export interface AiGhostStrokeResponse extends AiDrawingResponseBase {
   strokes: AiStrokePath[];
 }
 
+// ─── Page story flow response (D-1) ─────────────────────────────────────────
+
+export const MAX_AI_STORY_FLOW_PANELS = 12;
+export const MAX_AI_FLOW_LENGTH = 200;
+export const MAX_AI_PANEL_HINT_LENGTH = 160;
+export const MAX_AI_PANEL_ORDER = 99;
+
+/** Bốn cỡ cảnh hợp lệ cho gợi ý từng khung. */
+export const AI_PANEL_CAMERAS = [
+  "toàn cảnh",
+  "trung cảnh",
+  "cận cảnh",
+  "chuyển động",
+] as const;
+
+export type AiPanelCamera = (typeof AI_PANEL_CAMERAS)[number];
+
+export interface AiPageStoryFlowPanelHint {
+  /** "p1".."pN" — phải khớp id khung của layout (client đối chiếu lần cuối). */
+  panelId: string;
+  order: number;
+  hint: string;
+  camera: AiPanelCamera;
+}
+
+export interface AiPageStoryFlowResponse extends AiDrawingResponseBase {
+  task: AiDrawingTask.PageStoryFlow;
+  /** Chuỗi mạch truyện "A → B → C" cho cả trang. */
+  flow: string;
+  /** Gợi ý cho từng khung theo đúng thứ tự đọc. */
+  panels: AiPageStoryFlowPanelHint[];
+}
+
 export type AiDrawingResponse =
-  AiCompositionGuidanceResponse | AiDrawingReviewResponse | AiGhostStrokeResponse;
+  | AiCompositionGuidanceResponse
+  | AiDrawingReviewResponse
+  | AiGhostStrokeResponse
+  | AiPageStoryFlowResponse;
 
 export class AiDrawingResponseValidationError extends Error {
   constructor(message: string) {
@@ -158,6 +194,8 @@ const RESPONSE_KEYS = new Set([
   "recommendations",
   "findings",
   "strokes",
+  "flow",
+  "panels",
 ]);
 
 const BASE_RESPONSE_KEYS = [
@@ -519,6 +557,68 @@ const GHOST_STROKE_TASKS = new Set<AiDrawingTask>([
   AiDrawingTask.PoseGuidance,
 ]);
 
+// ─── Page story flow validation ─────────────────────────────────────────────
+
+/**
+ * Một trang chỉ có thể chia tối đa `MAX_AI_STORY_FLOW_PANELS` khung, nên `p1..p12`
+ * là toàn bộ id hợp lệ. Việc khớp **đúng layout đang dùng** được client đối chiếu
+ * lần cuối (nó là bên duy nhất biết layout nào đang mở).
+ */
+const PANEL_ID_PATTERN = /^p(?:[1-9]|1[0-2])$/;
+const PANEL_CAMERAS = new Set<string>(AI_PANEL_CAMERAS);
+
+export function isValidStoryFlowPanelId(value: unknown): value is string {
+  return typeof value === "string" && PANEL_ID_PATTERN.test(value);
+}
+
+function validateStoryFlowPanelHint(
+  value: unknown,
+  index: number,
+): asserts value is AiPageStoryFlowPanelHint {
+  const path = `panels[${index}]`;
+  if (!isRecord(value)) {
+    throw new AiDrawingResponseValidationError(`${path} must be an object`);
+  }
+  requireExactKeys(value, ["panelId", "order", "hint", "camera"], path);
+
+  if (!isValidStoryFlowPanelId(value.panelId)) {
+    throw new AiDrawingResponseValidationError(
+      `${path}.panelId must match the layout panel ids (p1..pN)`,
+    );
+  }
+  if (
+    typeof value.order !== "number" ||
+    !Number.isInteger(value.order) ||
+    value.order < 1 ||
+    value.order > MAX_AI_PANEL_ORDER
+  ) {
+    throw new AiDrawingResponseValidationError(
+      `${path}.order must be an integer between 1 and ${MAX_AI_PANEL_ORDER}`,
+    );
+  }
+  requireString(value.hint, `${path}.hint`, MAX_AI_PANEL_HINT_LENGTH);
+  if (typeof value.camera !== "string" || !PANEL_CAMERAS.has(value.camera)) {
+    throw new AiDrawingResponseValidationError(
+      `${path}.camera is not one of the supported camera scales`,
+    );
+  }
+}
+
+function validateStoryFlowPanels(
+  value: unknown,
+): asserts value is AiPageStoryFlowPanelHint[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_AI_STORY_FLOW_PANELS
+  ) {
+    throw new AiDrawingResponseValidationError(
+      `panels must contain between 1 and ${MAX_AI_STORY_FLOW_PANELS} items`,
+    );
+  }
+  value.forEach(validateStoryFlowPanelHint);
+}
+
 export function parseAiDrawingResponse(
   value: unknown,
   expectedTask: AiDrawingTask,
@@ -589,6 +689,22 @@ export function parseAiDrawingResponse(
       summary,
       sourceIds,
       strokes,
+    };
+  }
+
+  if (expectedTask === AiDrawingTask.PageStoryFlow) {
+    requireExactKeys(value, [...BASE_RESPONSE_KEYS, "flow", "panels"], "response");
+    const flow = value.flow;
+    requireString(flow, "flow", MAX_AI_FLOW_LENGTH);
+    const panels = value.panels;
+    validateStoryFlowPanels(panels);
+    return {
+      schemaVersion: AI_DRAWING_RESPONSE_SCHEMA_VERSION,
+      task: AiDrawingTask.PageStoryFlow,
+      summary,
+      sourceIds,
+      flow,
+      panels,
     };
   }
 

@@ -126,6 +126,21 @@ export const AI_DRAWING_PROMPT_TEMPLATES: readonly AiDrawingPromptTemplate[] =
         "principle chỉ được là: proportion, flow, composition, perspective.",
       ].join("\n"),
     },
+    {
+      id: "manga-page-story-flow",
+      version: "1",
+      task: AiDrawingTask.PageStoryFlow,
+      instruction: [
+        "Tác vụ: gợi ý mạch truyện xuyên suốt cho MỘT TRANG truyện đã chia khung (kishotenketsu: Khởi - Thừa - Chuyển - Hợp).",
+        'Trả schemaVersion "1", task "page_story_flow", summary, sourceIds và thêm đúng hai trường: flow và panels.',
+        'flow là chuỗi một dòng mô tả mạch truyện cả trang theo dạng "A → B → C → D" (tối đa 200 ký tự).',
+        "panels là mảng gợi ý cho TỪNG khung theo đúng thứ tự đọc; mỗi phần tử gồm: panelId (đúng id khung trong layout, dạng p1, p2, ...), order (số nguyên từ 1 theo thứ tự đọc), hint (một câu tiếng Việt tối đa 160 ký tự nói khung này nên chứa gì) và camera (chỉ được là một trong: toàn cảnh, trung cảnh, cận cảnh, chuyển động).",
+        "Nếu prompt có layoutId và số khung, trả ĐÚNG số khung đó, không thêm khung không tồn tại.",
+        "Ưu tiên nhịp điệu: xen kẽ khung rộng với khung cận, tạo điểm nhấn ở khung cao trào, để khung cuối mở sang trang sau.",
+        "Chỉ mô tả nội dung và cỡ cảnh; KHÔNG vẽ nét, KHÔNG trả strokes, KHÔNG hoàn thiện tranh thay người dùng.",
+        "Toàn bộ summary, flow và hint phải viết bằng tiếng Việt.",
+      ].join("\n"),
+    },
   ];
 
 @Injectable()

@@ -1,6 +1,5 @@
 import {
   IsBase64,
-  IsDefined,
   IsEnum,
   IsInt,
   IsOptional,
@@ -19,6 +18,7 @@ export enum AiDrawingTask {
   StrokeGuidance = "stroke_guidance",
   CompositionOverlay = "composition_overlay",
   PoseGuidance = "pose_guidance",
+  PageStoryFlow = "page_story_flow",
 }
 
 /**
@@ -85,8 +85,13 @@ export class AiDrawingRequestDto {
   @IsEnum(AiDrawingToolHint)
   toolHint?: AiDrawingToolHint;
 
-  @IsDefined()
+  /**
+   * Ảnh chụp canvas. **Bắt buộc với mọi task trừ `page_story_flow`** (VD-1):
+   * task kể chuyện cả trang có thể chạy chỉ bằng mô tả layout + ý tưởng, nên
+   * thiếu ảnh là hợp lệ. Driver kiểm tra ràng buộc "bắt buộc" này theo từng task.
+   */
+  @IsOptional()
   @ValidateNested()
   @Type(() => AiDrawingImageDto)
-  image: AiDrawingImageDto;
+  image?: AiDrawingImageDto;
 }

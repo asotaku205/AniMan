@@ -16,7 +16,6 @@ export interface PanelDef { id: string; x: number; y: number; w: number; h: numb
 export interface LayoutDef { id: string; label: string; panels: PanelDef[] }
 
 export interface CompSuggestion { id: string; name: string; desc: string; guides: GuideId[] }
-export interface PageCompletion { id: string; name: string; flow: string; hints: string[]; compIds: string[] }
 export interface PoseItem { id: string; label: string; category: PoseCategory }
 
 /** Loại layer: do người dùng vẽ hay do AI tạo (BR-L01) */
@@ -259,89 +258,6 @@ export const COMP_SUGGESTIONS: Record<SceneType, CompSuggestion[]> = {
     { id: "wid-c2", name: "Tương phản kích thước", desc: "Nhân vật vs thế giới", guides: ["proportions"] },
     { id: "wid-c3", name: "Điểm tụ đơn",  desc: "Chiều sâu tối đa",          guides: ["vanishing"] },
     { id: "wid-c4", name: "Panoramic",    desc: "Khung cảnh toàn diện",       guides: ["horizon"] },
-  ],
-};
-
-// ─── Page Completions ──────────────────────────────────────────────────────────
-
-export const PAGE_COMPLETIONS: Record<SceneType, PageCompletion[]> = {
-  auto: [
-    { id: "aut-1", name: "Kishōtenketsu (4 hồi Manga)", flow: "Khởi (Bối cảnh) → Thừa (Diễn biến) → Chuyển (Bước ngoặt) → Hợp (Kết thúc)",
-      hints: ["Thiết lập không gian & chủ thể", "Diễn biến sự kiện liên tục", "Khoảnh khắc bất ngờ / điểm nhấn", "Dư âm cảm xúc & chuyển cảnh"],
-      compIds: ["aut-c1","aut-c2","aut-c3","aut-c4"] },
-    { id: "aut-2", name: "Mạch truyện xuyên suốt", flow: "Mở đầu → Xung đột → Đỉnh điểm → Dư âm",
-      hints: ["Khung mở đầu rộng", "Cận cảnh nhân vật phản ứng", "Khung hành động chính", "Khung kết thúc trang"],
-      compIds: ["aut-c3","aut-c1","aut-c4","aut-c2"] },
-  ],
-  action: [
-    { id: "a1", name: "Leo thang căng thẳng", flow: "Thiết lập → Leo thang → Đỉnh điểm → Hậu quả",
-      hints: ["Cảnh thiết lập", "Nhân vật tiến lại", "Cú đánh cận cảnh", "Phản ứng sau đòn", "Hậu quả"],
-      compIds: ["act-c2","act-c1","act-c3","act-c4","act-c1"] },
-    { id: "a2", name: "Đa góc nhìn", flow: "Trên cao → Ngang → Dưới → Toàn",
-      hints: ["Góc chim nhìn", "Góc mắt nhân", "Góc ếch ngước", "Toàn cảnh"],
-      compIds: ["act-c3","act-c2","act-c1","act-c4"] },
-    { id: "a3", name: "Phản chiếu nhân vật", flow: "A tấn → B phòng → Giao → Kết",
-      hints: ["Nhân vật A tấn công", "Nhân vật B phòng", "Hai bên giao đấu", "Người thắng lộ"],
-      compIds: ["act-c1","act-c2","act-c3","act-c4"] },
-    { id: "a4", name: "Flash sequence", flow: "Chậm → Nhanh → Khoảnh khắc → Dư âm",
-      hints: ["Slow motion", "Chuyển động nhanh", "Khoảnh khắc quyết định", "Dư âm cảm xúc"],
-      compIds: ["act-c4","act-c1","act-c2","act-c3"] },
-  ],
-  dialogue: [
-    { id: "d1", name: "Hội thoại chuẩn", flow: "Giới thiệu → A nói → B đáp → Phản ứng",
-      hints: ["Hai nhân vật", "Nhân vật A", "Nhân vật B", "Phản ứng cuối"],
-      compIds: ["dia-c1","dia-c2","dia-c2","dia-c3"] },
-    { id: "d2", name: "Bước ngoặt bất ngờ", flow: "Bình thường → Gợi → Tiết lộ → Sốc",
-      hints: ["Cảnh bình thường", "Gợi ý điều gì", "Tiết lộ bất ngờ", "Cảm xúc bùng"],
-      compIds: ["dia-c4","dia-c1","dia-c3","dia-c3"] },
-    { id: "d3", name: "Đối đầu căng thẳng", flow: "Xa → Gần → Đối mặt → Đỉnh",
-      hints: ["Khoảng cách", "Tiến gần", "Khuôn mặt đối", "Ánh mắt sắc"],
-      compIds: ["dia-c4","dia-c1","dia-c2","dia-c3"] },
-    { id: "d4", name: "Nội tâm bộc phát", flow: "Bên ngoài → Nội → Ký ức → Quyết",
-      hints: ["Vẻ bình thản", "Suy nghĩ nội tâm", "Ký ức hiện", "Quyết định"],
-      compIds: ["dia-c1","dia-c3","dia-c4","dia-c2"] },
-  ],
-  landscape: [
-    { id: "l1", name: "Từ xa đến gần", flow: "Toàn → Trung → Cận → Chi tiết",
-      hints: ["Bối cảnh rộng", "Nhân vật trong khung", "Cận cảnh địa điểm", "Chi tiết đặc biệt"],
-      compIds: ["lan-c1","lan-c4","lan-c2","lan-c2"] },
-    { id: "l2", name: "Khám phá bối cảnh", flow: "Bí ẩn → Hé lộ → Khám phá → Phát hiện",
-      hints: ["Bí ẩn mờ", "Hé lộ phần", "Khám phá", "Phát hiện"],
-      compIds: ["lan-c3","lan-c1","lan-c4","lan-c2"] },
-    { id: "l3", name: "Thay đổi thời gian", flow: "Bình minh → Trưa → Hoàng hôn → Đêm",
-      hints: ["Bình minh nhẹ", "Nắng trưa gay", "Hoàng hôn đỏ", "Đêm tĩnh"],
-      compIds: ["lan-c1","lan-c1","lan-c1","lan-c1"] },
-    { id: "l4", name: "Theo dõi hành trình", flow: "Xuất phát → Đường → Chướng → Đích",
-      hints: ["Điểm xuất phát", "Con đường dài", "Chướng ngại", "Đến đích"],
-      compIds: ["lan-c3","lan-c4","lan-c2","lan-c1"] },
-  ],
-  closeup: [
-    { id: "c1", name: "Bùng nổ cảm xúc", flow: "Kìm → Rạn → Bùng → Vỡ",
-      hints: ["Kìm nén mặt", "Cảm xúc vỡ", "Biểu cảm mạnh", "Vỡ oà"],
-      compIds: ["clo-c1","clo-c2","clo-c3","clo-c4"] },
-    { id: "c2", name: "Tiết lộ dần", flow: "Che → Hé → Gần → Toàn",
-      hints: ["Che khuôn mặt", "Hé lộ phần", "Gần hơn", "Tiết lộ hết"],
-      compIds: ["clo-c4","clo-c2","clo-c1","clo-c3"] },
-    { id: "c3", name: "Tương phản cảm xúc", flow: "Vui → Buồn → Giận → Bình",
-      hints: ["Vui tươi", "Nỗi buồn", "Cơn giận", "Bình thản"],
-      compIds: ["clo-c1","clo-c2","clo-c3","clo-c4"] },
-    { id: "c4", name: "Micro-expressions", flow: "Trung → Mắt → Môi → Toàn",
-      hints: ["Trung tính", "Mắt thay đổi", "Môi hé", "Khuôn mặt đủ"],
-      compIds: ["clo-c1","clo-c4","clo-c2","clo-c3"] },
-  ],
-  wide: [
-    { id: "w1", name: "Thiết lập thế giới", flow: "Vũ trụ → Khu vực → Địa điểm → Nhân",
-      hints: ["Thế giới rộng", "Thu hẹp khu", "Địa điểm cụ thể", "Nhân lộ diện"],
-      compIds: ["wid-c1","wid-c3","wid-c2","wid-c4"] },
-    { id: "w2", name: "Sức mạnh không gian", flow: "Đơn độc → Tương phản → Áp → Vươn",
-      hints: ["Nhỏ bé trong không", "Tương phản kích", "Thế lực áp đảo", "Vươn lên"],
-      compIds: ["wid-c1","wid-c2","wid-c2","wid-c3"] },
-    { id: "w3", name: "Trước và sau", flow: "Bình → Xáo → Tàn → Hy vọng",
-      hints: ["Bình yên trước", "Xáo trộn bắt", "Sau tàn phá", "Tia hy vọng"],
-      compIds: ["wid-c4","wid-c1","wid-c1","wid-c3"] },
-    { id: "w4", name: "Theo dõi hành trình", flow: "A → Giữa → Gần → B",
-      hints: ["Bắt đầu", "Giữa chặng", "Sắp đến đích", "Điểm đến"],
-      compIds: ["wid-c3","wid-c4","wid-c2","wid-c1"] },
   ],
 };
 

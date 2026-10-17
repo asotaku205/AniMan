@@ -3,6 +3,7 @@ import {
   PAGE_DRAWING_SCHEMA_VERSION,
   migrateStoredPageToStacks,
   normalizePanelStacks,
+  stripLegacyMockProjects,
 } from "../lib/mangaStorage";
 import { createAiLayer, createDefaultPanelStack, createUserLayer } from "../data";
 
@@ -151,5 +152,46 @@ describe("normalizePanelStacks — đọc bản ghi v2 (spec 02 §3.1)", () => {
     expect(normalizePanelStacks(undefined)).toEqual({});
     expect(normalizePanelStacks(null)).toEqual({});
     expect(normalizePanelStacks("x")).toEqual({});
+  });
+});
+
+describe("Bộ lọc mock data (AC-D3.1 — BR-D02)", () => {
+  it("loại dự án mẫu theo id", () => {
+    const kept = stripLegacyMockProjects([
+      { id: "proj-1", title: "Bất kỳ" },
+      { id: "proj-2", title: "Bất kỳ" },
+      { id: "real-1", title: "Truyện thật" },
+    ]);
+
+    expect(kept.map((p) => p.id)).toEqual(["real-1"]);
+  });
+
+  it("loại dự án mẫu theo tiêu đề dù id khác", () => {
+    const kept = stripLegacyMockProjects([
+      { id: "x1", title: "Chiến Binh Ánh Sáng" },
+      { id: "x2", title: "Ký Ức Mùa Hè" },
+      { id: "x3", title: "Truyện thật" },
+    ]);
+
+    expect(kept.map((p) => p.id)).toEqual(["x3"]);
+  });
+
+  it("bỏ luôn entry rỗng và giữ nguyên thứ tự dự án thật", () => {
+    const kept = stripLegacyMockProjects([
+      null as unknown as { id: string; title: string },
+      { id: "a", title: "A" },
+      { id: "proj-1", title: "A" },
+      { id: "b", title: "B" },
+    ]);
+
+    expect(kept.map((p) => p.id)).toEqual(["a", "b"]);
+  });
+
+  it("danh sách sạch → giữ nguyên, không tạo bản sao phần tử", () => {
+    const input = [{ id: "a", title: "A" }];
+    const kept = stripLegacyMockProjects(input);
+
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toBe(input[0]);
   });
 });

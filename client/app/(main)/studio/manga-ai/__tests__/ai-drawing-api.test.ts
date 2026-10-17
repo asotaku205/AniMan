@@ -1,0 +1,153 @@
+import { describe, expect, it } from "vitest";
+import {
+  AI_DRAWING_MODEL_LABEL,
+  AI_PANEL_CAMERAS,
+  MAX_STORY_FLOW_PANELS,
+  isPageStoryFlowResponse,
+  selectStoryFlowPanelsForLayout,
+  type AiPageStoryFlowPanelHint,
+  type AiPageStoryFlowResponse,
+} from "@/lib/ai-drawing-api";
+
+const validResponse: AiPageStoryFlowResponse = {
+  schemaVersion: "1",
+  task: "page_story_flow",
+  summary: "Trang dồn nhịp từ toàn cảnh xuống cận cảnh gương mặt.",
+  sourceIds: [],
+  flow: "Sân trường vắng → tiếng bước chân → quay đầu → gương mặt sững lại.",
+  panels: [
+    { panelId: "p1", order: 1, hint: "Toàn cảnh sân trường.", camera: "toàn cảnh" },
+    { panelId: "p2", order: 2, hint: "Cận đôi giày dừng lại.", camera: "cận cảnh" },
+    { panelId: "p3", order: 3, hint: "Nhân vật quay đầu.", camera: "trung cảnh" },
+  ],
+};
+
+describe("Hợp đồng page_story_flow phía client (D-1)", () => {
+  it("nhận phản hồi hợp lệ", () => {
+    expect(isPageStoryFlowResponse(validResponse)).toBe(true);
+  });
+
+  it("nhãn model khớp profile server đang dùng", () => {
+    expect(AI_DRAWING_MODEL_LABEL).toBe("gemini-flash-latest");
+  });
+
+  it("có đúng bốn cỡ cảnh hợp lệ", () => {
+    expect([...AI_PANEL_CAMERAS]).toEqual([
+      "toàn cảnh",
+      "trung cảnh",
+      "cận cảnh",
+      "chuyển động",
+    ]);
+  });
+
+  it("loại phản hồi thiếu mạch truyện", () => {
+    const withoutFlow: Record<string, unknown> = { ...validResponse };
+    delete withoutFlow.flow;
+    expect(isPageStoryFlowResponse(withoutFlow)).toBe(false);
+  });
+
+  it("loại phản hồi không có khung nào", () => {
+    expect(isPageStoryFlowResponse({ ...validResponse, panels: [] })).toBe(
+      false,
+    );
+  });
+
+  it("loại phản hồi vượt trần số khung mỗi trang", () => {
+    const panels = Array.from(
+      { length: MAX_STORY_FLOW_PANELS + 1 },
+      (_, index): AiPageStoryFlowPanelHint => ({
+        panelId: `p${index + 1}`,
+        order: index + 1,
+        hint: "Khung thừa.",
+        camera: "trung cảnh",
+      }),
+    );
+
+    expect(isPageStoryFlowResponse({ ...validResponse, panels })).toBe(false);
+  });
+
+  it("loại cỡ cảnh ngoài hợp đồng", () => {
+    const panels = [
+      { ...validResponse.panels[0], camera: "góc rộng" },
+    ] as unknown;
+
+    expect(isPageStoryFlowResponse({ ...validResponse, panels })).toBe(false);
+  });
+
+  it("loại thứ tự khung không phải số nguyên", () => {
+    const panels = [{ ...validResponse.panels[0], order: 1.5 }];
+
+    expect(isPageStoryFlowResponse({ ...validResponse, panels })).toBe(false);
+  });
+
+  it("loại task khác", () => {
+    expect(
+      isPageStoryFlowResponse({ ...validResponse, task: "drawing_review" }),
+    ).toBe(false);
+  });
+});
+
+describe("Đối chiếu gợi ý khung với layout đang mở (VD-5)", () => {
+  const hint = (
+    panelId: string,
+    order: number,
+    extra: Partial<AiPageStoryFlowPanelHint> = {},
+  ): AiPageStoryFlowPanelHint => ({
+    panelId,
+    order,
+    hint: `Gợi ý ${panelId}`,
+    camera: "trung cảnh",
+    ...extra,
+  });
+
+  it("bỏ khung không có trong layout", () => {
+    const kept = selectStoryFlowPanelsForLayout(
+      [hint("p1", 1), hint("p7", 2), hint("p2", 3)],
+      ["p1", "p2", "p3"],
+    );
+
+    expect(kept.map((p) => p.panelId)).toEqual(["p1", "p2"]);
+  });
+
+  it("sắp theo thứ tự đọc của AI, không theo thứ tự layout", () => {
+    const kept = selectStoryFlowPanelsForLayout(
+      [hint("p3", 1), hint("p1", 2), hint("p2", 3)],
+      ["p1", "p2", "p3"],
+    );
+
+    expect(kept.map((p) => p.panelId)).toEqual(["p3", "p1", "p2"]);
+  });
+
+  it("gộp khung trùng id, giữ gợi ý có thứ tự đọc nhỏ hơn", () => {
+    const kept = selectStoryFlowPanelsForLayout(
+      [hint("p2", 5, { hint: "Bản đến sau" }), hint("p2", 2, { hint: "Bản chính" })],
+      ["p1", "p2"],
+    );
+
+    expect(kept).toHaveLength(1);
+    expect(kept[0].hint).toBe("Bản chính");
+  });
+
+  it("khi hai khung cùng thứ tự thì xếp theo thứ tự layout", () => {
+    const kept = selectStoryFlowPanelsForLayout(
+      [hint("p3", 1), hint("p1", 1)],
+      ["p1", "p2", "p3"],
+    );
+
+    expect(kept.map((p) => p.panelId)).toEqual(["p1", "p3"]);
+  });
+
+  it("bỏ gợi ý rỗng", () => {
+    const kept = selectStoryFlowPanelsForLayout(
+      [hint("p1", 1, { hint: "   " }), hint("p2", 2)],
+      ["p1", "p2"],
+    );
+
+    expect(kept.map((p) => p.panelId)).toEqual(["p2"]);
+  });
+
+  it("trả mảng rỗng khi layout không khớp gì (không ném lỗi)", () => {
+    expect(selectStoryFlowPanelsForLayout([hint("p9", 1)], ["p1"])
+    ).toEqual([]);
+  });
+});

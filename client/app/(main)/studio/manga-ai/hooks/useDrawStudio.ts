@@ -5,14 +5,13 @@ import {
   AI_TOOLS,
   COMP_SUGGESTIONS,
   LAYOUTS,
-  PAGE_COMPLETIONS,
+  SCENE_TYPE_LABEL,
   createUserLayer,
   createDefaultPanelStack,
   type DrawTool,
   type GuideId,
   type LayoutDef,
   type LayerItem,
-  type PageCompletion,
   type PanelLayerStack,
   type PanelStacks,
   type PoseCategory,
@@ -20,10 +19,14 @@ import {
 } from "../data";
 import { useAuth } from "@/app/auth/AuthProvider";
 import {
+  AiDrawingApiError,
   createCanvasSnapshot,
   requestAiDrawingReview,
   requestAiGhostStrokes,
+  requestAiPageStoryFlow,
+  selectStoryFlowPanelsForLayout,
   type AiDrawingReviewResponse,
+  type AiPageStoryFlowResponse,
   type AiStrokePath,
   type AiDrawingToolHint,
 } from "@/lib/ai-drawing-api";
@@ -370,7 +373,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const antsOffsetRef = useRef(0);
   /** DPR đang dùng cho lớp phủ (đổi khi cửa sổ đổi màn hình). */
   const overlayDprRef = useRef(1);
-  const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** AbortController cho yêu cầu mạch truyện cả trang (AC-D1.2 — nút hủy). */
+  const storyAbortRef = useRef<AbortController | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -564,6 +568,9 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const [ghostStrokes, setGhostStrokes] = useState<AiStrokePath[] | null>(null);
   /** Tóm tắt từ AI về ghost strokes hiện tại */
   const [ghostStrokesSummary, setGhostStrokesSummary] = useState<string | null>(null);
+  /** Thời điểm + nguồn của nét gợi ý đang hiện — dòng nguồn AI (AC-D2.2) */
+  const [ghostAt, setGhostAt] = useState<number | null>(null);
+  const [ghostSourceIds, setGhostSourceIds] = useState<string[]>([]);
   /**
    * Mô tả ý tưởng của người dùng (user prompt).
    * Khi hình vẽ chưa rõ ràng, người dùng nhập mô tả để AI
@@ -571,17 +578,19 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
    */
   const [userDrawingPrompt, setUserDrawingPrompt] = useState<string>("");
 
-  // Completion
-  const [completionLoading, setCompletionLoading] = useState(false);
-  const [completionReady, setCompletionReady] = useState(false);
-  const [completions, setCompletions] = useState<PageCompletion[]>([]);
-  const [appliedCompletion, setAppliedCompletion] = useState<string | null>(
+  // Mạch truyện toàn trang (D-1) — mọi chữ hiển thị đều đến từ API thật
+  /** Kết quả `page_story_flow` gần nhất; null khi chưa gọi hoặc đã xoá */
+  const [storyFlow, setStoryFlow] = useState<AiPageStoryFlowResponse | null>(
     null,
   );
+  const [storyLoading, setStoryLoading] = useState(false);
+  const [storyError, setStoryError] = useState<string | null>(null);
+  /** Thời điểm nhận kết quả — dòng nguồn AI (AC-D2.2) */
+  const [storyAt, setStoryAt] = useState<number | null>(null);
+  /** Id các khung đã được áp gợi ý, theo thứ tự đọc */
+  const [appliedStoryPanels, setAppliedStoryPanels] = useState<string[]>([]);
+  /** Gợi ý hiển thị trên từng khung ở chế độ xem trang */
   const [panelHints, setPanelHints] = useState<Record<string, string>>({});
-  const [panelAutoComp, setPanelAutoComp] = useState<
-    Record<string, string | null>
-  >({});
 
   // Stroke / analysis
   const { authenticatedFetch } = useAuth();
@@ -2978,78 +2987,144 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   // ── AI actions ────────────────────────────────────────────────────────────────
 
-  const runCompletion = useCallback(() => {
-    setCompletionLoading(true);
-    setCompletionReady(false);
-    setAppliedCompletion(null);
-    if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
-    completionTimerRef.current = setTimeout(() => {
-      const totalPages = pages.length || 1;
-      const currentPageNum = page || 1;
-      const isStart = currentPageNum === 1;
-      const isClimax = currentPageNum > 1 && currentPageNum < totalPages;
+  /**
+   * AC-D1.1: nút "Gợi Ý Kịch Bản Toàn Trang" gọi `POST /ai/drawing` với task
+   * `page_story_flow`. **Không** còn mock/setTimeout — mọi câu chữ hiển thị đều
+   * đến từ phản hồi của model, kèm `sourceIds` thật.
+   *
+   * Ảnh khung đang mở là **tùy chọn** (VD-1): chưa mở khung nào thì gửi mô tả
+   * layout/trang/thể loại trong prompt là đủ.
+   */
+  const runStoryFlow = useCallback(async () => {
+    if (storyAbortRef.current) storyAbortRef.current.abort();
+    const abortCtrl = new AbortController();
+    storyAbortRef.current = abortCtrl;
 
-      const dynamicCompletions: PageCompletion[] = [
-        {
-          id: `dyn-kisho-${currentPageNum}`,
-          name: isStart
-            ? `Trang ${currentPageNum}/${totalPages} — Khởi (Thiết lập bối cảnh)`
-            : isClimax
-              ? `Trang ${currentPageNum}/${totalPages} — Thừa/Chuyển (Cao trào & Xung đột)`
-              : `Trang ${currentPageNum}/${totalPages} — Hợp (Giải quyết & Chuyển tiếp)`,
-          flow: isStart
-            ? "Đại cảnh rộng → Giới thiệu nhân vật → Sự kiện khơi mào → Đẩy nhanh nhịp"
-            : isClimax
-              ? "Căng thẳng dồn dập → Va chạm bất ngờ → Đòn đánh cao trào → Dư chấn"
-              : "Hậu quả đòn đánh → Biểu cảm lắng đọng → Hé lộ manh mối mới → Chuyển cảnh",
-          hints: isStart
-            ? [
-                "Đại cảnh thiết lập không gian",
-                "Nhân vật xuất hiện",
-                "Cận cảnh phản ứng",
-                "Khoảnh khắc kích hoạt câu chuyện",
-              ]
-            : isClimax
-              ? [
-                  "Xung đột bắt đầu",
-                  "Góc nhìn kịch tính",
-                  "Khung điểm nhấn bùng nổ",
-                  "Phản ứng sau cao trào",
-                ]
-              : [
-                  "Khung toàn cảnh dư âm",
-                  "Cận cảnh nhân vật suy ngẫm",
-                  "Gợi mở bí ẩn tiếp theo",
-                  "Khung kết chuyển sang trang sau",
-                ],
-          compIds: ["aut-c1", "aut-c3", "aut-c2", "aut-c4"],
-        },
-        ...PAGE_COMPLETIONS[sceneType],
-      ];
+    setStoryLoading(true);
+    setStoryError(null);
+    setStoryFlow(null);
+    setStoryAt(null);
+    setAppliedStoryPanels([]);
+    setPanelHints({});
 
-      setCompletions(dynamicCompletions);
-      setCompletionLoading(false);
-      setCompletionReady(true);
-    }, 1200);
-  }, [sceneType, page, pages.length]);
+    const canvas = canvasRef.current;
+    const image = activePanel && canvas ? createCanvasSnapshot(canvas) : null;
 
-  const applyCompletion = useCallback(
-    (c: PageCompletion) => {
-      setAppliedCompletion(c.id);
-      const hints: Record<string, string> = {};
-      const comps: Record<string, string | null> = {};
-      layout.panels.forEach((p, pi) => {
-        if (p.id !== activePanel) {
-          hints[p.id] = c.hints[pi] ?? "AI gợi ý";
-          comps[p.id] = c.compIds[pi] ?? null;
-        }
-      });
-      setPanelHints(hints);
-      setPanelAutoComp(comps);
-      showToast("Đã áp dụng gợi ý AI cho các khung trống");
-    },
-    [layout.panels, activePanel, showToast],
+    const layoutContext = [
+      `layoutId: ${layout.id}`,
+      `số khung: ${layout.panels.length} (${layout.panels
+        .map((p) => p.id)
+        .join(", ")})`,
+      `trang: ${page}/${pages.length || 1}`,
+      `thể loại cảnh: ${SCENE_TYPE_LABEL[sceneType]}`,
+    ].join(" | ");
+    const prompt = [layoutContext, userDrawingPrompt.trim()]
+      .filter((part) => part.length > 0)
+      .join("\n");
+
+    try {
+      const result = await requestAiPageStoryFlow(
+        authenticatedFetch,
+        { prompt, ...(image ? { image } : {}) },
+        abortCtrl.signal,
+      );
+      if (abortCtrl.signal.aborted) return;
+      setStoryFlow(result);
+      setStoryAt(Date.now());
+      showToast(
+        result.sourceIds.length > 0
+          ? "AI đã gợi ý mạch truyện kèm nguồn tham khảo"
+          : "AI đã gợi ý mạch truyện cho cả trang",
+      );
+    } catch (error) {
+      if (abortCtrl.signal.aborted) return;
+      const message =
+        error instanceof AiDrawingApiError
+          ? error.message
+          : "Không gọi được AI lúc này. Vui lòng thử lại.";
+      setStoryError(message);
+      showToast(message);
+    } finally {
+      if (storyAbortRef.current === abortCtrl) {
+        storyAbortRef.current = null;
+      }
+      setStoryLoading(false);
+    }
+  }, [
+    activePanel,
+    authenticatedFetch,
+    layout.id,
+    layout.panels,
+    page,
+    pages.length,
+    sceneType,
+    showToast,
+    userDrawingPrompt,
+  ]);
+
+  /** AC-D1.2: người dùng hủy được yêu cầu đang chạy. */
+  const cancelStoryFlow = useCallback(() => {
+    if (!storyAbortRef.current) return;
+    storyAbortRef.current.abort();
+    storyAbortRef.current = null;
+    setStoryLoading(false);
+    showToast("Đã hủy yêu cầu gợi ý mạch truyện");
+  }, [showToast]);
+
+  /**
+   * Gợi ý khung **đã đối chiếu layout đang mở** (VD-5), sắp theo thứ tự đọc.
+   * Server chỉ biết `p1..p12`; chỉ ở đây mới biết trang đang dùng layout nào.
+   */
+  const storyFlowPanels = useMemo(
+    () =>
+      storyFlow
+        ? selectStoryFlowPanelsForLayout(
+            storyFlow.panels,
+            layout.panels.map((panel) => panel.id),
+          )
+        : [],
+    [layout.panels, storyFlow],
   );
+
+  /**
+   * Áp gợi ý của AI lên các khung. Gợi ý đã được đối chiếu layout thật (VD-5)
+   * nên khung bịa từ model không lọt vào UI.
+   */
+  const applyStoryFlow = useCallback(() => {
+    if (!storyFlow) {
+      showToast("Chưa có gợi ý mạch truyện để áp dụng");
+      return;
+    }
+    if (storyFlowPanels.length === 0) {
+      showToast("Gợi ý của AI không khớp khung nào của trang này");
+      return;
+    }
+
+    const hints: Record<string, string> = {};
+    // Gợi ý chỉ hiện ở chế độ xem trang nên điền cho mọi khung, kể cả khung
+    // đang mở: người dùng cần thấy đủ mạch truyện khi quay lại trang.
+    storyFlowPanels.forEach((panel) => {
+      hints[panel.panelId] = `${panel.camera}: ${panel.hint}`;
+    });
+    setPanelHints(hints);
+    setAppliedStoryPanels(storyFlowPanels.map((panel) => panel.panelId));
+    setShowPanelSuggestions(true);
+    showToast(`Đã áp dụng gợi ý AI cho ${storyFlowPanels.length} khung`);
+  }, [showToast, storyFlow, storyFlowPanels]);
+
+  /** Bỏ kết quả đang hiện mà không gọi lại AI */
+  const dismissStoryFlow = useCallback(() => {
+    if (storyAbortRef.current) {
+      storyAbortRef.current.abort();
+      storyAbortRef.current = null;
+    }
+    setStoryFlow(null);
+    setStoryError(null);
+    setStoryLoading(false);
+    setStoryAt(null);
+    setAppliedStoryPanels([]);
+    setPanelHints({});
+  }, []);
 
   const dismissAnalysis = useCallback(() => {
     if (reviewAbortRef.current) {
@@ -3151,6 +3226,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       setProcessingTool(toolId);
       setGhostStrokes(null);
       setGhostStrokesSummary(null);
+      setGhostAt(null);
+      setGhostSourceIds([]);
 
       try {
         const result = await requestAiGhostStrokes(
@@ -3164,6 +3241,9 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         if (abortCtrl.signal.aborted) return;
         setGhostStrokes(result.strokes.length > 0 ? result.strokes : null);
         setGhostStrokesSummary(result.summary);
+        // Dòng nguồn AI (AC-D2.2) chỉ hiện khi có kết quả thật từ model
+        setGhostAt(Date.now());
+        setGhostSourceIds(result.sourceIds);
         if (result.strokes.length === 0) {
           showToast(`AI: ${result.summary}`);
         } else {
@@ -3186,7 +3266,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   );
 
   const clearAiSuggestions = useCallback(() => {
-    if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
     if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     if (toolTimerRef.current) clearTimeout(toolTimerRef.current);
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
@@ -3198,17 +3277,20 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       ghostAbortRef.current.abort();
       ghostAbortRef.current = null;
     }
-    completionTimerRef.current = null;
+    if (storyAbortRef.current) {
+      storyAbortRef.current.abort();
+      storyAbortRef.current = null;
+    }
     analysisTimerRef.current = null;
     toolTimerRef.current = null;
     pulseTimerRef.current = null;
     setPanelSuggestPulse(false);
-    setCompletionLoading(false);
-    setCompletionReady(false);
-    setCompletions([]);
-    setAppliedCompletion(null);
+    setStoryLoading(false);
+    setStoryFlow(null);
+    setStoryError(null);
+    setStoryAt(null);
+    setAppliedStoryPanels([]);
     setPanelHints({});
-    setPanelAutoComp({});
     setAnalyzing(false);
     setAnalysisError(null);
     setReviewResult(null);
@@ -3219,6 +3301,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setGhostId(null);
     setGhostStrokes(null);
     setGhostStrokesSummary(null);
+    setGhostAt(null);
+    setGhostSourceIds([]);
     setSelectedComp(null);
     setActiveGuides([]);
     setShowPanelSuggestions(false);
@@ -3278,12 +3362,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       // Vùng chọn gắn với từng khung → đổi khung thì bỏ chọn (như lịch sử undo)
       clearSelection();
       endFloat();
-      const autoCompId = panelAutoComp[panelId];
-      if (autoCompId) {
-        setSelectedComp(autoCompId);
-      }
     },
-    [panelAutoComp, clearSelection, endFloat],
+    [clearSelection, endFloat],
   );
 
   const exitPanel = useCallback(() => {
@@ -3457,20 +3537,23 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     ghostStrokes,
     setGhostStrokes,
     ghostStrokesSummary,
+    /** Dòng nguồn AI của nét gợi ý (AC-D2.2) */
+    ghostAt,
+    ghostSourceIds,
     userDrawingPrompt,
     setUserDrawingPrompt,
     // Legacy placeholder compat
     drawingPlaceholder: null,
     setDrawingPlaceholder: () => {},
-    // Completion
-    completionLoading,
-    completionReady,
-    setCompletionReady,
-    completions,
-    appliedCompletion,
-    setAppliedCompletion,
+    // Mạch truyện toàn trang (D-1 — thay mock PageCompletion)
+    storyFlow,
+    /** Gợi ý đã lọc theo layout đang mở, theo thứ tự đọc (VD-5) */
+    storyFlowPanels,
+    storyLoading,
+    storyError,
+    storyAt,
+    appliedStoryPanels,
     panelHints,
-    panelAutoComp,
     // Analysis & Review
     strokeCount,
     analyzing,
@@ -3503,8 +3586,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     down,
     move,
     up,
-    runCompletion,
-    applyCompletion,
+    runStoryFlow,
+    cancelStoryFlow,
+    applyStoryFlow,
+    dismissStoryFlow,
     runAnalysis,
     runTool,
     toggleGuide,

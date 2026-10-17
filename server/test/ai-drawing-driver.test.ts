@@ -95,6 +95,25 @@ function createDriver(
   );
 }
 
+const storyFlowProfile: AiDrawingModelProfile = {
+  ...enabledProfile,
+  tasks: [...enabledProfile.tasks, AiDrawingTask.PageStoryFlow],
+};
+
+const storyFlowResponse = {
+  schemaVersion: "1",
+  task: AiDrawingTask.PageStoryFlow,
+  summary: "Trang dồn từ toàn cảnh xuống cận cảnh gương mặt.",
+  sourceIds: [],
+  flow: "Sân trường vắng → tiếng bước chân → quay đầu → gương mặt sững lại.",
+  panels: [
+    { panelId: "p1", order: 1, hint: "Toàn cảnh sân trường.", camera: "toàn cảnh" },
+    { panelId: "p2", order: 2, hint: "Cận giày dừng lại.", camera: "cận cảnh" },
+    { panelId: "p3", order: 3, hint: "Nhân vật quay đầu.", camera: "trung cảnh" },
+    { panelId: "p4", order: 4, hint: "Gương mặt sững lại.", camera: "cận cảnh" },
+  ],
+};
+
 describe("AI drawing driver", () => {
   it(
     "registers the driver through the dynamic Nest module",
@@ -131,6 +150,42 @@ describe("AI drawing driver", () => {
     const driver = createDriver(async () => validResponse);
 
     await expect(driver.execute(validRequest)).resolves.toEqual(validResponse);
+  });
+
+  it("requires an image for every task except page story flow (VD-1)", async () => {
+    let calls = 0;
+    const driver = createDriver(async () => {
+      calls += 1;
+      return validResponse;
+    });
+    const { image: _image, ...withoutImage } = validRequest;
+
+    await expect(driver.execute(withoutImage)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(calls).toBe(0);
+  });
+
+  it("runs page story flow without an image and keeps the layout context", async () => {
+    let receivedRequest: AiDrawingProviderRequest | undefined;
+    const driver = createDriver(
+      async (request) => {
+        receivedRequest = request;
+        return storyFlowResponse;
+      },
+      storyFlowProfile,
+    );
+
+    await expect(
+      driver.execute({
+        task: AiDrawingTask.PageStoryFlow,
+        prompt: "layout L1 gồm p1..p4, trang 2/8, thể loại hành động",
+      }),
+    ).resolves.toEqual(storyFlowResponse);
+
+    expect(receivedRequest?.image).toBeUndefined();
+    expect(receivedRequest?.templateId).toBe("manga-page-story-flow");
+    expect(receivedRequest?.prompt).toContain("layout L1 gồm p1..p4");
   });
 
   it("passes versioned prompt and retrieved evidence separately to the provider", async () => {

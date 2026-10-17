@@ -88,17 +88,18 @@ export function RightPanel({ s }: Props) {
         <AiTab
           sceneType={s.sceneType}
           setSceneType={s.setSceneType}
-          setCompletionReady={s.setCompletionReady}
-          setAppliedCompletion={s.setAppliedCompletion}
-          runCompletion={s.runCompletion}
+          runStoryFlow={s.runStoryFlow}
+          cancelStoryFlow={s.cancelStoryFlow}
+          applyStoryFlow={s.applyStoryFlow}
+          dismissStoryFlow={s.dismissStoryFlow}
+          storyFlow={s.storyFlow}
+          storyFlowPanels={s.storyFlowPanels}
+          storyLoading={s.storyLoading}
+          storyError={s.storyError}
+          storyAt={s.storyAt}
+          appliedStoryPanels={s.appliedStoryPanels}
           strokeCount={s.strokeCount}
-          completionLoading={s.completionLoading}
-          completionReady={s.completionReady}
-          completions={s.completions}
-          layout={s.layout}
           activePanel={s.activePanel}
-          appliedCompletion={s.appliedCompletion}
-          applyCompletion={s.applyCompletion}
           runAnalysis={s.runAnalysis}
           processingTool={s.processingTool}
           analyzing={s.analyzing}
@@ -119,6 +120,8 @@ export function RightPanel({ s }: Props) {
           ghostStrokes={s.ghostStrokes}
           setGhostStrokes={s.setGhostStrokes}
           ghostStrokesSummary={s.ghostStrokesSummary}
+          ghostAt={s.ghostAt}
+          ghostSourceIds={s.ghostSourceIds}
           userDrawingPrompt={s.userDrawingPrompt}
           setUserDrawingPrompt={s.setUserDrawingPrompt}
           showGuideSection={s.showGuideSection}

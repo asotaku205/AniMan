@@ -35,7 +35,11 @@ export interface AiDrawingProviderRequest {
   readonly systemInstruction: string;
   readonly prompt: string;
   readonly evidence: readonly AiDrawingPromptEvidence[];
-  readonly image: {
+  /**
+   * Ảnh canvas. **Vắng mặt là hợp lệ với `page_story_flow`** (VD-1); mọi task
+   * khác driver đã chặn từ trước nên tới đây luôn có ảnh.
+   */
+  readonly image?: {
     readonly data: string;
     readonly mimeType: string;
     readonly width: number;
@@ -126,7 +130,7 @@ export const GEMINI_DRAWING_MODEL_PROFILE: AiDrawingModelProfile = {
   provider: "google-gemini",
   modelId: "gemini-flash-latest",
   description:
-    "Google Gemini Flash (Latest) — vision model for structured composition guidance, stroke guidance, pose guidance and drawing review.",
+    "Google Gemini Flash (Latest) — vision model for structured composition guidance, stroke guidance, pose guidance, page story flow and drawing review.",
   version: "2",
   tasks: [
     AiDrawingTask.CompositionGuidance,
@@ -134,6 +138,7 @@ export const GEMINI_DRAWING_MODEL_PROFILE: AiDrawingModelProfile = {
     AiDrawingTask.StrokeGuidance,
     AiDrawingTask.CompositionOverlay,
     AiDrawingTask.PoseGuidance,
+    AiDrawingTask.PageStoryFlow,
   ],
   capabilities: {
     textInput: true,

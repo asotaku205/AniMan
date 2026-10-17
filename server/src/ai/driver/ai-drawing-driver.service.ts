@@ -54,9 +54,21 @@ export class AiDrawingDriver {
 
   async execute(input: unknown): Promise<AiDrawingResponse> {
     const request = await this.validateRequest(input);
-    await validateAiDrawingImage(request.image);
+    // VD-1: ảnh bắt buộc với mọi task TRỪ page_story_flow (task kể chuyện cả
+    // trang chạy được chỉ bằng mô tả layout + ý tưởng).
+    if (!request.image) {
+      if (request.task !== AiDrawingTask.PageStoryFlow) {
+        throw new BadRequestException(
+          "AI drawing image is required for this task",
+        );
+      }
+    } else {
+      await validateAiDrawingImage(request.image);
+    }
     const profile = this.selectProfile(request.task);
-    this.validateImageSize(request.image.data, profile);
+    if (request.image) {
+      this.validateImageSize(request.image.data, profile);
+    }
     const prompt = this.promptService.assemble(request);
 
     const providerRequest: AiDrawingProviderRequest = {

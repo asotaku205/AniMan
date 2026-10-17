@@ -3,13 +3,19 @@
 import React, { useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  AlertTriangle,
+  ArrowRight,
   BarChart2,
   Bot,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Clock,
   Dumbbell,
   Grid3x3,
+  Info,
+  Layers,
   Maximize2,
   MessageCircle,
   Mountain,
@@ -21,40 +27,43 @@ import {
   Sparkles,
   User,
   Wand2,
+  X,
   Zap,
-  Info,
-  Layers,
-  ArrowRight,
-  CheckCircle2,
 } from "lucide-react";
-import { CompletionCard } from "./CompletionCard";
 import { GUIDE_CONFIG, GUIDE_DOT } from "../hooks/useDrawStudio";
 import {
   AI_TOOLS,
   COMP_SUGGESTIONS,
   POSES,
   type GuideId,
-  type LayoutDef,
-  type PageCompletion,
   type PoseCategory,
   type SceneType,
 } from "../data";
-import type { AiStrokePath } from "@/lib/ai-drawing-api";
+import {
+  AI_DRAWING_MODEL_LABEL,
+  type AiPageStoryFlowPanelHint,
+  type AiPageStoryFlowResponse,
+  type AiStrokePath,
+} from "@/lib/ai-drawing-api";
 
 type Props = {
   sceneType: SceneType;
   setSceneType: (t: SceneType) => void;
-  setCompletionReady: (v: boolean) => void;
-  setAppliedCompletion: (v: string | null) => void;
-  runCompletion: () => void;
+  /** Mạch truyện cả trang — mọi trường đều từ API thật (D-1) */
+  runStoryFlow: () => void;
+  cancelStoryFlow: () => void;
+  applyStoryFlow: () => void;
+  dismissStoryFlow: () => void;
+  storyFlow: AiPageStoryFlowResponse | null;
+  /** Gợi ý đã đối chiếu layout đang mở (VD-5) */
+  storyFlowPanels: AiPageStoryFlowPanelHint[];
+  storyLoading: boolean;
+  storyError: string | null;
+  /** Thời điểm nhận kết quả, ms — dòng nguồn AI (AC-D2.2) */
+  storyAt: number | null;
+  appliedStoryPanels: string[];
   strokeCount: number;
-  completionLoading: boolean;
-  completionReady: boolean;
-  completions: PageCompletion[];
-  layout: LayoutDef;
   activePanel: string | null;
-  appliedCompletion: string | null;
-  applyCompletion: (c: PageCompletion) => void;
   runAnalysis: () => void;
   processingTool: string | null;
   analyzing: boolean;
@@ -75,6 +84,9 @@ type Props = {
   ghostStrokes?: AiStrokePath[] | null;
   setGhostStrokes?: (v: AiStrokePath[] | null) => void;
   ghostStrokesSummary?: string | null;
+  /** Thời điểm + nguồn của nét gợi ý đang hiện (AC-D2.2) */
+  ghostAt?: number | null;
+  ghostSourceIds?: string[];
   userDrawingPrompt?: string;
   setUserDrawingPrompt?: (v: string) => void;
   showGuideSection: boolean;
@@ -176,20 +188,63 @@ const SCENE_METADATA: Record<
   },
 };
 
+/** Giờ:phút:giây của thời điểm gọi AI, theo giờ máy người dùng. */
+function formatAiTime(at: number): string {
+  return new Date(at).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/**
+ * BR-D04 / AC-D2.2: mọi khối hiển thị dữ liệu **thật** từ AI đều phải có dòng
+ * nguồn gồm thời điểm gọi, mô hình đang dùng và `sourceIds` trích dẫn.
+ * Không có dữ liệu AI thì không hiện dòng nào.
+ */
+function AiSourceLine({
+  at,
+  sourceIds,
+}: {
+  at: number | null;
+  sourceIds?: readonly string[];
+}) {
+  if (at === null) return null;
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[8px] leading-tight text-white/35">
+      <span className="inline-flex items-center gap-1">
+        <Bot size={8} />
+        {AI_DRAWING_MODEL_LABEL}
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <Clock size={8} />
+        {formatAiTime(at)}
+      </span>
+      <span>
+        Nguồn:{" "}
+        {sourceIds && sourceIds.length > 0
+          ? sourceIds.join(", ")
+          : "không trích dẫn"}
+      </span>
+    </p>
+  );
+}
+
 export function AiTab({
   sceneType,
   setSceneType,
-  setCompletionReady,
-  setAppliedCompletion,
-  runCompletion,
+  runStoryFlow,
+  cancelStoryFlow,
+  applyStoryFlow,
+  dismissStoryFlow,
+  storyFlow,
+  storyFlowPanels,
+  storyLoading,
+  storyError,
+  storyAt,
+  appliedStoryPanels,
   strokeCount,
-  completionLoading,
-  completionReady,
-  completions,
-  layout,
   activePanel,
-  appliedCompletion,
-  applyCompletion,
   runAnalysis,
   processingTool,
   analyzing,
@@ -210,6 +265,8 @@ export function AiTab({
   ghostStrokes,
   setGhostStrokes,
   ghostStrokesSummary,
+  ghostAt,
+  ghostSourceIds,
   userDrawingPrompt,
   setUserDrawingPrompt,
   showGuideSection,
@@ -218,7 +275,7 @@ export function AiTab({
   activeGuides,
 }: Props) {
   const currentScene = SCENE_METADATA[sceneType];
-  const isWorking = processingTool !== null || analyzing || completionLoading;
+  const isWorking = processingTool !== null || analyzing || storyLoading;
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#120a1f] text-white">
@@ -249,8 +306,8 @@ export function AiTab({
                 key={type}
                 onClick={() => {
                   setSceneType(type);
-                  setCompletionReady(false);
-                  setAppliedCompletion(null);
+                  // Đổi thể loại cảnh ⇒ kết quả AI cũ không còn đúng ngữ cảnh
+                  dismissStoryFlow();
                 }}
                 title={label}
                 className={`flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl text-[9px] font-medium transition-all ${
@@ -403,6 +460,8 @@ export function AiTab({
               </p>
             )}
 
+            <AiSourceLine at={ghostAt ?? null} sourceIds={ghostSourceIds} />
+
             {ghostOpacity !== undefined && setGhostOpacity && (
               <div className="flex items-center gap-2 pt-1 border-t border-purple-500/20">
                 <Sliders size={11} className="text-purple-300 flex-shrink-0" />
@@ -483,7 +542,7 @@ export function AiTab({
           </div>
         </div>
 
-        {/* 5. Bố Cục Gợi Ý Động (Theo đúng SceneType đang chọn) */}
+        {/* 5. Bố Cục Mẫu (tham chiếu, theo SceneType đang chọn) */}
         <div className="border border-white/5 rounded-2xl overflow-hidden bg-white/[0.01]">
           <button
             onClick={() => setShowCompSection((v) => !v)}
@@ -491,9 +550,14 @@ export function AiTab({
           >
             <span className="text-[10px] uppercase tracking-wider font-bold flex items-center gap-1.5">
               <Grid3x3 size={11} className="text-purple-400" />
-              Bố Cục Gợi Ý Cho: {currentScene.title.split("(")[0]}
+              Bố Cục Mẫu Cho: {currentScene.title.split("(")[0]}
             </span>
-            {showCompSection ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            <span className="flex items-center gap-2">
+              <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-[8px] font-semibold normal-case tracking-normal text-white/50">
+                Mẫu tham chiếu
+              </span>
+              {showCompSection ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            </span>
           </button>
 
           <AnimatePresence>
@@ -506,7 +570,8 @@ export function AiTab({
               >
                 <div className="p-3 pt-0 space-y-2">
                   <p className="text-[9px] text-white/40">
-                    Chọn bố cục tương ứng với thể loại để AI sinh đường dẫn mắt:
+                    Bố cục do studio soạn sẵn để tham chiếu, không phải kết quả
+                    AI. Chọn một mẫu để AI sinh đường dẫn mắt theo mẫu đó:
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {COMP_SUGGESTIONS[sceneType].map((c) => (
@@ -534,7 +599,7 @@ export function AiTab({
           </AnimatePresence>
         </div>
 
-        {/* 6. Tư Thế Tham Chiếu (AI Phân Tích Dáng) */}
+        {/* 6. Tư Thế Mẫu (tham chiếu) */}
         <div className="border border-white/5 rounded-2xl overflow-hidden bg-white/[0.01]">
           <button
             onClick={() => setShowPoseSection((v) => !v)}
@@ -542,9 +607,14 @@ export function AiTab({
           >
             <span className="text-[10px] uppercase tracking-wider font-bold flex items-center gap-1.5">
               <PersonStanding size={11} className="text-pink-400" />
-              Tư Thế Tham Chiếu Dáng Vẽ
+              Tư Thế Mẫu Tham Chiếu
             </span>
-            {showPoseSection ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            <span className="flex items-center gap-2">
+              <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-[8px] font-semibold normal-case tracking-normal text-white/50">
+                Mẫu tham chiếu
+              </span>
+              {showPoseSection ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            </span>
           </button>
 
           <AnimatePresence>
@@ -604,7 +674,7 @@ export function AiTab({
                         className="rounded-xl border border-white/10 hover:border-pink-500/40 p-2 text-center bg-white/[0.02] hover:bg-pink-500/10 transition-all disabled:opacity-50"
                       >
                         <p className="text-[10px] text-white font-medium truncate">{pose.label}</p>
-                        <span className="text-[8px] text-pink-400 block mt-0.5">+ AI Dáng</span>
+                        <span className="text-[8px] text-pink-400 block mt-0.5">+ AI sinh dáng</span>
                       </button>
                     ))}
                   </div>
@@ -614,47 +684,120 @@ export function AiTab({
           </AnimatePresence>
         </div>
 
-        {/* 7. AI Gợi Ý Hoàn Thiện Toàn Trang (Full Page Flow) */}
+        {/* 7. Mạch Truyện Cả Trang — kết quả API thật, task `page_story_flow` (D-1) */}
         <div className="space-y-2 bg-gradient-to-br from-purple-950/20 to-black p-3 rounded-2xl border border-white/5">
           <span className="text-white/40 text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5">
             <Layers size={11} className="text-purple-400" />
-            AI Hoàn Thiện Mạch Truyện Cả Trang
+            AI Gợi Ý Mạch Truyện Cả Trang
           </span>
 
-          <button
-            onClick={runCompletion}
-            disabled={completionLoading}
-            className="w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white shadow-md shadow-purple-500/20 active:scale-[0.99] disabled:opacity-50"
-          >
-            {completionLoading ? (
-              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                <RefreshCw size={13} />
-              </motion.div>
-            ) : (
-              <Wand2 size={13} />
+          <div className="flex items-stretch gap-1.5">
+            <button
+              onClick={runStoryFlow}
+              disabled={storyLoading}
+              className="flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white shadow-md shadow-purple-500/20 active:scale-[0.99] disabled:opacity-50"
+            >
+              {storyLoading ? (
+                <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                  <RefreshCw size={13} />
+                </motion.div>
+              ) : (
+                <Wand2 size={13} />
+              )}
+              <span>
+                {storyLoading
+                  ? "AI đang dựng mạch truyện theo ngữ cảnh..."
+                  : storyFlow
+                    ? "Gọi lại gợi ý mạch truyện"
+                    : "Gợi Ý Kịch Bản Toàn Trang (Xuyên Suốt)"}
+              </span>
+            </button>
+
+            {storyLoading && (
+              <button
+                onClick={cancelStoryFlow}
+                className="rounded-xl border border-white/15 bg-white/5 px-2.5 text-[10px] font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <X size={12} />
+              </button>
             )}
-            <span>{completionLoading ? "AI đang tính mạch truyện theo ngữ cảnh..." : "Gợi Ý Kịch Bản Toàn Trang (Xuyên Suốt)"}</span>
-          </button>
+          </div>
+
+          {storyError && (
+            <div className="flex items-start gap-1.5 rounded-xl border border-amber-500/25 bg-amber-500/10 p-2 text-[9px] leading-relaxed text-amber-200">
+              <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p>{storyError}</p>
+                <p className="text-amber-200/60">
+                  Bạn vẫn có thể tiếp tục vẽ; nút gọi lại vẫn dùng được.
+                </p>
+              </div>
+            </div>
+          )}
 
           <AnimatePresence>
-            {completionReady && (
+            {storyFlow && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 className="overflow-hidden"
               >
-                <div className="grid grid-cols-2 gap-1.5 mt-2">
-                  {completions.map((c) => (
-                    <CompletionCard
-                      key={c.id}
-                      completion={c}
-                      layout={layout}
-                      activePanel={activePanel}
-                      applied={appliedCompletion === c.id}
-                      onApply={() => applyCompletion(c)}
-                    />
-                  ))}
+                <div className="mt-2 space-y-2 rounded-xl border border-purple-500/20 bg-black/30 p-2.5">
+                  <div className="flex items-start gap-1.5">
+                    <p className="flex-1 text-[10px] italic leading-relaxed text-purple-100">
+                      &ldquo;{storyFlow.summary}&rdquo;
+                    </p>
+                    <button
+                      onClick={dismissStoryFlow}
+                      title="Ẩn kết quả"
+                      className="text-white/30 transition-colors hover:text-white/70"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+
+                  <p className="rounded-lg bg-purple-500/10 px-2 py-1.5 text-[9px] leading-relaxed text-purple-200">
+                    {storyFlow.flow}
+                  </p>
+
+                  <ul className="space-y-1">
+                    {storyFlowPanels.map((panel) => (
+                      <li
+                        key={`${panel.panelId}-${panel.order}`}
+                        className="flex items-start gap-1.5 text-[9px] leading-relaxed text-white/70"
+                      >
+                        <span className="rounded bg-white/10 px-1 font-mono text-[8px] text-white/50">
+                          {panel.panelId}
+                        </span>
+                        <span className="flex-1">
+                          <span className="text-purple-300">{panel.camera}</span>
+                          {" — "}
+                          {panel.hint}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {storyFlowPanels.length === 0 && (
+                    <p className="text-[9px] leading-relaxed text-amber-200/70">
+                      Gợi ý không khớp khung nào của trang này (layout đang mở
+                      không có các khung mà AI trả về).
+                    </p>
+                  )}
+
+                  <AiSourceLine at={storyAt} sourceIds={storyFlow.sourceIds} />
+
+                  <button
+                    onClick={applyStoryFlow}
+                    disabled={storyFlowPanels.length === 0}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-purple-500/40 bg-purple-500/15 py-1.5 text-[10px] font-semibold text-purple-100 transition-colors hover:bg-purple-500/25 disabled:opacity-40"
+                  >
+                    <Check size={11} />
+                    {appliedStoryPanels.length > 0
+                      ? `Đã áp lên ${appliedStoryPanels.length} khung — áp lại`
+                      : "Áp gợi ý lên từng khung"}
+                  </button>
                 </div>
               </motion.div>
             )}

@@ -74,7 +74,35 @@ function openDB(): Promise<IDBDatabase> {
 
 // ─── Dọn dẹp Mock Data cũ và Shared LocalStorage cũ ──────────────────────────
 
-const LEGACY_STORAGE_KEY = "animan_manga_projects_v1";
+export const LEGACY_STORAGE_KEY = "animan_manga_projects_v1";
+
+/** Tiêu đề dự án mẫu đời đầu — không bao giờ được hiện lại (BR-D02). */
+export const LEGACY_MOCK_PROJECT_TITLES = [
+  "Chiến Binh Ánh Sáng",
+  "Ký Ức Mùa Hè",
+] as const;
+
+/** Id dự án mẫu đời đầu — không bao giờ được hiện lại (BR-D02). */
+export const LEGACY_MOCK_PROJECT_IDS = ["proj-1", "proj-2"] as const;
+
+/**
+ * AC-D3.1: bộ lọc mock data dùng **chung** cho cả `localStorage` lẫn IndexedDB
+ * để hai đường đọc không bao giờ lệch nhau. Hàm thuần, không đụng storage.
+ */
+export function stripLegacyMockProjects<
+  T extends { id?: string; title?: string },
+>(projects: readonly T[]): T[] {
+  return projects.filter(
+    (project) =>
+      !!project &&
+      !LEGACY_MOCK_PROJECT_IDS.includes(
+        project.id as (typeof LEGACY_MOCK_PROJECT_IDS)[number],
+      ) &&
+      !LEGACY_MOCK_PROJECT_TITLES.includes(
+        project.title as (typeof LEGACY_MOCK_PROJECT_TITLES)[number],
+      ),
+  );
+}
 
 export function cleanupLegacyMockData() {
   if (typeof window === "undefined") return;
@@ -89,23 +117,12 @@ export function cleanupLegacyMockData() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const containsMock = parsed.some(
-          (p: any) =>
-            p.title === "Chiến Binh Ánh Sáng" ||
-            p.title === "Ký Ức Mùa Hè" ||
-            p.id === "proj-1" ||
-            p.id === "proj-2",
-        );
-        if (containsMock) {
-          // Lọc bỏ mock data
-          const realProjects = parsed.filter(
-            (p: any) =>
-              p.title !== "Chiến Binh Ánh Sáng" &&
-              p.title !== "Ký Ức Mùa Hè" &&
-              p.id !== "proj-1" &&
-              p.id !== "proj-2",
+        const realProjects = stripLegacyMockProjects(parsed);
+        if (realProjects.length !== parsed.length) {
+          localStorage.setItem(
+            LEGACY_STORAGE_KEY,
+            JSON.stringify(realProjects),
           );
-          localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(realProjects));
         }
       }
     }
@@ -126,16 +143,8 @@ export async function getAllProjectsFromDB(): Promise<MangaProject[]> {
 
       req.onsuccess = () => {
         const list = req.result as MangaProject[];
-        // Lọc bỏ bất kỳ mock data nào còn sót lại
-        const cleaned = (list || []).filter(
-          (p) =>
-            p &&
-            p.id !== "proj-1" &&
-            p.id !== "proj-2" &&
-            p.title !== "Chiến Binh Ánh Sáng" &&
-            p.title !== "Ký Ức Mùa Hè",
-        );
-        resolve(cleaned);
+        // Lọc bỏ bất kỳ mock data nào còn sót lại (BR-D02, AC-D3.1)
+        resolve(stripLegacyMockProjects(list || []));
       };
 
       req.onerror = () => {

@@ -4,12 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import type { LayoutDef, PanelStacks } from "../data";
 import { LAYOUTS } from "../data";
 import {
+  LEGACY_STORAGE_KEY,
   getAllProjectsFromDB,
   saveProjectToDB,
   deleteProjectFromDB,
   savePageDrawingToDB,
   migrateStoredPageToStacks,
   cleanupLegacyMockData,
+  stripLegacyMockProjects,
 } from "../lib/mangaStorage";
 
 import type { LayerItem } from "../data";
@@ -35,7 +37,6 @@ export interface MangaProject {
 }
 
 const ACTIVE_PROJECT_KEY = "animan_manga_active_project_id_v1";
-const LEGACY_STORAGE_KEY = "animan_manga_projects_v1";
 
 export function useMangaProjects() {
   const [projects, setProjects] = useState<MangaProject[]>([]);
@@ -60,15 +61,8 @@ export function useMangaProjects() {
             try {
               const parsed = JSON.parse(raw);
               if (Array.isArray(parsed)) {
-                // Lọc bỏ triệt để mock data
-                const realProjects = parsed.filter(
-                  (p: any) =>
-                    p &&
-                    p.id !== "proj-1" &&
-                    p.id !== "proj-2" &&
-                    p.title !== "Chiến Binh Ánh Sáng" &&
-                    p.title !== "Ký Ức Mùa Hè",
-                );
+                // Lọc bỏ triệt để mock data (cùng bộ lọc với cleanupLegacyMockData)
+                const realProjects = stripLegacyMockProjects(parsed);
                 for (const p of realProjects) {
                   await saveProjectToDB(p);
                   for (const pg of p.pages || []) {
@@ -92,14 +86,7 @@ export function useMangaProjects() {
           }
         }
 
-        const cleanedList = (list || []).filter(
-          (p) =>
-            p &&
-            p.id !== "proj-1" &&
-            p.id !== "proj-2" &&
-            p.title !== "Chiến Binh Ánh Sáng" &&
-            p.title !== "Ký Ức Mùa Hè",
-        );
+        const cleanedList = stripLegacyMockProjects(list || []);
 
         setProjects(cleanedList);
 

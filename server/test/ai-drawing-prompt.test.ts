@@ -87,4 +87,29 @@ describe("AI drawing prompt assembly", () => {
     expect(assembly.evidence).toEqual([]);
     expect(assembly.sourceIds).toEqual([]);
   });
+
+  it("selects the page story flow template and states the flow/panels contract", () => {
+    const assembly = promptService.assemble(
+      makeRequest(
+        AiDrawingTask.PageStoryFlow,
+        "layout L1 gồm p1..p4, trang 3/12, thể loại hành động",
+      ),
+    );
+
+    expect(assembly.templateId).toBe("manga-page-story-flow");
+    expect(assembly.templateVersion).toBe("1");
+    expect(assembly.systemInstruction).toContain('"page_story_flow"');
+    expect(assembly.systemInstruction).toContain("flow");
+    expect(assembly.systemInstruction).toContain("panels");
+    expect(assembly.systemInstruction).toContain(
+      "toàn cảnh, trung cảnh, cận cảnh, chuyển động",
+    );
+    expect(assembly.userPrompt).toContain("layout L1 gồm p1..p4");
+  });
+
+  it("has a registered prompt template for every task of the contract", () => {
+    for (const task of Object.values(AiDrawingTask)) {
+      expect(() => promptService.assemble(makeRequest(task))).not.toThrow();
+    }
+  });
 });
