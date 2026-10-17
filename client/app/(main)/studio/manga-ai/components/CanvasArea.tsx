@@ -308,7 +308,10 @@ export function CanvasArea({
               >
                 −
               </button>
-              <span className="w-10 text-center font-mono">
+              <span
+                className="w-10 text-center font-mono"
+                title="100% = khung vừa khít (cỡ tương đối, không phải px thật)"
+              >
                 {Math.round(zoom * 100)}%
               </span>
               <button
