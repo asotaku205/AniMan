@@ -1,8 +1,12 @@
 import "reflect-metadata";
 import { describe, expect, it } from "vitest";
 import {
+  buildGeminiDrawingOutput,
   normalizeGeminiOutput,
 } from "../src/ai/driver/gemini-drawing-provider.js";
+import {
+  AiDrawingProviderTruncatedError,
+} from "../src/ai/driver/ai-drawing-driver.js";
 import { AiDrawingTask } from "../src/ai/contracts/ai-drawing-request.dto.js";
 import {
   AI_STROKE_OPACITY_MAX,
@@ -481,5 +485,88 @@ describe("normalizeGeminiOutput — blueprint toàn cảnh (Phase 5B)", () => {
 
     expect(normalized.layers).toBeUndefined();
     expect(normalized.strokes).toBeUndefined();
+  });
+});
+
+describe("buildGeminiDrawingOutput — cắt output & tên model (Phase 5E)", () => {
+  const sceneRequest = providerRequest(AiDrawingTask.SceneBlueprint);
+
+  it("ném lỗi cắt khi finishReason là MAX_TOKENS, kèm số token để ghi log", () => {
+    let caught: unknown;
+    try {
+      buildGeminiDrawingOutput(
+        {
+          text: '{"schemaVersion":"1","task":"scene_blueprint","summary":"dở',
+          candidates: [{ finishReason: "MAX_TOKENS" }],
+          usageMetadata: { candidatesTokenCount: 6871 },
+        },
+        sceneRequest,
+        "gemini-flash-latest",
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AiDrawingProviderTruncatedError);
+    const truncated = caught as AiDrawingProviderTruncatedError;
+    expect(truncated.finishReason).toBe("MAX_TOKENS");
+    expect(truncated.outputTokens).toBe(6871);
+    expect(truncated.textLength).toBe(59);
+  });
+
+  it("kiểm finishReason TRƯỚC khi đọc JSON, để không núp dưới lỗi parse", () => {
+    // JSON hợp lệ nhưng bị cắt: nếu kiểm parse trước thì lỗi ra là "parse", đúng cái ngụy trang cũ.
+    expect(() =>
+      buildGeminiDrawingOutput(
+        {
+          text: '{"schemaVersion":"1","task":"scene_blueprint"}',
+          candidates: [{ finishReason: "MAX_TOKENS" }],
+        },
+        sceneRequest,
+        "gemini-flash-latest",
+      ),
+    ).toThrow(AiDrawingProviderTruncatedError);
+  });
+
+  it("điền model thật đã phục vụ vào phản hồi", () => {
+    const output = buildGeminiDrawingOutput(
+      {
+        text: JSON.stringify({
+          schemaVersion: "1",
+          task: "stroke_guidance",
+          summary: "Gợi ý nét.",
+          sourceIds: [],
+          strokes: [],
+        }),
+        candidates: [{ finishReason: "STOP" }],
+      },
+      providerRequest(),
+      "gemini-2.5-flash-fallback",
+    ) as Record<string, unknown>;
+
+    expect(output.model).toBe("gemini-2.5-flash-fallback");
+    expect(parseAiDrawingResponse(output, AiDrawingTask.StrokeGuidance, new Set())).toMatchObject({
+      model: "gemini-2.5-flash-fallback",
+    });
+  });
+
+  it("phân biệt text rỗng với output bị cắt", () => {
+    expect(() =>
+      buildGeminiDrawingOutput(
+        { text: "", candidates: [{ finishReason: "STOP" }] },
+        sceneRequest,
+        "gemini-flash-latest",
+      ),
+    ).toThrow(/empty or non-text/);
+  });
+
+  it("JSON hỏng mà không bị cắt vẫn là lỗi provider thường", () => {
+    expect(() =>
+      buildGeminiDrawingOutput(
+        { text: "{ không phải JSON", candidates: [{ finishReason: "STOP" }] },
+        sceneRequest,
+        "gemini-flash-latest",
+      ),
+    ).toThrow(/could not be parsed as JSON/);
   });
 });

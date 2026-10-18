@@ -9,6 +9,7 @@ import {
 } from "../src/ai/contracts/ai-drawing-request.dto.js";
 import {
   AiDrawingResponseValidationError,
+  MAX_AI_MODEL_LENGTH,
   MAX_AI_STORY_FLOW_PANELS,
   parseAiDrawingResponse,
 } from "../src/ai/contracts/ai-drawing-response.js";
@@ -208,6 +209,33 @@ describe("AI drawing response contract", () => {
         new Set(["composition-basics"]),
       ),
     ).toThrow(AiDrawingResponseValidationError);
+  });
+
+  it("accepts and keeps the optional model field (Phase 5E)", () => {
+    const response = {
+      ...validGuidanceResponse,
+      model: "gemini-2.5-flash-fallback",
+    };
+
+    expect(
+      parseAiDrawingResponse(
+        response,
+        AiDrawingTask.CompositionGuidance,
+        new Set(["composition-basics"]),
+      ),
+    ).toEqual(response);
+  });
+
+  it("rejects a model field that is not a short string (Phase 5E)", () => {
+    for (const model of [5, "", "x".repeat(MAX_AI_MODEL_LENGTH + 1)]) {
+      expect(() =>
+        parseAiDrawingResponse(
+          { ...validGuidanceResponse, model },
+          AiDrawingTask.CompositionGuidance,
+          new Set(["composition-basics"]),
+        ),
+      ).toThrow(AiDrawingResponseValidationError);
+    }
   });
 
   it("rejects overlay geometry outside normalized canvas bounds", () => {

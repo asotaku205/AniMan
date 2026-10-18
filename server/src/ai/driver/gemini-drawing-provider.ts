@@ -3,6 +3,7 @@ import {
   AiDrawingProvider,
   AiDrawingProviderError,
   AiDrawingProviderTransientError,
+  AiDrawingProviderTruncatedError,
 } from "./ai-drawing-driver.js";
 import type { AiDrawingProviderRequest } from "./ai-drawing-driver.js";
 import { AiDrawingTask } from "../contracts/ai-drawing-request.dto.js";
@@ -121,27 +122,72 @@ export function createGeminiDrawingProvider(apiKey: string): AiDrawingProvider {
           throw mapGeminiError(error);
         }
 
-        const text = response.text;
-        if (typeof text !== "string" || text.trim().length === 0) {
-          throw new AiDrawingProviderError(
-            "Gemini returned an empty or non-text response",
-          );
-        }
-
-        try {
-          const cleanedText = cleanJsonText(text);
-          const parsed = JSON.parse(cleanedText) as unknown;
-          return normalizeGeminiOutput(parsed, request);
-        } catch {
-          throw new AiDrawingProviderError(
-            "Gemini response could not be parsed as JSON",
-          );
-        }
+        return buildGeminiDrawingOutput(response, request, modelToTry);
       }
 
       throw mapGeminiError(lastError);
     },
   };
+}
+
+/** Phần phản hồi mà bộ đọc cần — tách ra để test được không cần SDK. */
+export interface GeminiDrawingResponseLike {
+  text?: string;
+  candidates?: Array<{ finishReason?: string }>;
+  usageMetadata?: { candidatesTokenCount?: number };
+}
+
+/**
+ * Biến phản hồi Gemini thành đối tượng sẽ đi vào `parseAiDrawingResponse()`.
+ *
+ * Hai điều quan trọng (Phase 5E):
+ * 1. `finishReason === "MAX_TOKENS"` được kiểm **trước** khi đọc JSON. Output bị cắt
+ *    thường để lại JSON đứt giữa dòng, nên nếu để phần parse báo lỗi trước thì nguyên
+ *    nhân thật (hết trần token) bị giấu sau câu "could not be parsed as JSON" — đúng cái
+ *    ngụy trang đã khiến lỗi 503 bị hiểu nhầm là "chờ kích hoạt hoặc bảo trì".
+ * 2. Gắn `model` = model **thật đã phục vụ** lần gọi này, không phải model cấu hình
+ *    trong profile; khi provider rơi sang model dự phòng thì đây mới là tên đúng.
+ */
+export function buildGeminiDrawingOutput(
+  response: GeminiDrawingResponseLike,
+  request: AiDrawingProviderRequest,
+  modelId: string,
+): unknown {
+  const text = response.text;
+  const finishReason = response.candidates?.[0]?.finishReason;
+
+  if (finishReason === "MAX_TOKENS") {
+    throw new AiDrawingProviderTruncatedError(
+      finishReason,
+      response.usageMetadata?.candidatesTokenCount,
+      typeof text === "string" ? text.length : 0,
+    );
+  }
+
+  if (typeof text !== "string" || text.trim().length === 0) {
+    throw new AiDrawingProviderError(
+      "Gemini returned an empty or non-text response",
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleanJsonText(text)) as unknown;
+  } catch {
+    throw new AiDrawingProviderError(
+      "Gemini response could not be parsed as JSON",
+    );
+  }
+
+  const normalized = normalizeGeminiOutput(parsed, request);
+  if (
+    typeof normalized === "object" &&
+    normalized !== null &&
+    !Array.isArray(normalized)
+  ) {
+    (normalized as Record<string, unknown>).model = modelId;
+  }
+  return normalized;
 }
 
 function cleanJsonText(raw: string): string {

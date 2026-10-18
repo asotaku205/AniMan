@@ -123,12 +123,14 @@ export function RightPanel({ s }: Props) {
           ghostStrokesSummary={s.ghostStrokesSummary}
           ghostAt={s.ghostAt}
           ghostSourceIds={s.ghostSourceIds}
+          ghostModel={s.ghostModel}
           userDrawingPrompt={s.userDrawingPrompt}
           setUserDrawingPrompt={s.setUserDrawingPrompt}
           blueprint={s.blueprint}
           blueprintLoading={s.blueprintLoading}
           blueprintError={s.blueprintError}
           blueprintApplied={s.blueprintApplied}
+          blueprintAt={s.blueprintAt}
           runSceneBlueprint={s.runSceneBlueprint}
           cancelSceneBlueprint={s.cancelSceneBlueprint}
           applyBlueprintToPanel={s.applyBlueprintToPanel}

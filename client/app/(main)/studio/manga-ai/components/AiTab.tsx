@@ -94,6 +94,8 @@ type Props = {
   /** Thời điểm + nguồn của nét gợi ý đang hiện (AC-D2.2) */
   ghostAt?: number | null;
   ghostSourceIds?: string[];
+  /** Model thật đã phục vụ nét AI (Phase 5E); thiếu thì hiện hằng dự phòng */
+  ghostModel?: string | null;
   userDrawingPrompt?: string;
   setUserDrawingPrompt?: (v: string) => void;
   // Bức tranh toàn cảnh (A-2 — 5B.5/5B.6)
@@ -101,6 +103,8 @@ type Props = {
   blueprintLoading?: boolean;
   blueprintError?: string | null;
   blueprintApplied?: boolean;
+  /** Thời điểm nhận blueprint — dòng nguồn AI của thẻ xem trước (AC-D2.2) */
+  blueprintAt?: number | null;
   runSceneBlueprint?: () => void;
   cancelSceneBlueprint?: () => void;
   applyBlueprintToPanel?: () => void;
@@ -221,16 +225,19 @@ function formatAiTime(at: number): string {
 function AiSourceLine({
   at,
   sourceIds,
+  model,
 }: {
   at: number | null;
   sourceIds?: readonly string[];
+  /** Model thật từ phản hồi server (Phase 5E); thiếu thì dùng hằng dự phòng. */
+  model?: string | null;
 }) {
   if (at === null) return null;
   return (
     <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[8px] leading-tight text-white/35">
       <span className="inline-flex items-center gap-1">
         <Bot size={8} />
-        {AI_DRAWING_MODEL_LABEL}
+        {model && model.length > 0 ? model : AI_DRAWING_MODEL_LABEL}
       </span>
       <span className="inline-flex items-center gap-1">
         <Clock size={8} />
@@ -284,12 +291,14 @@ export function AiTab({
   ghostStrokesSummary,
   ghostAt,
   ghostSourceIds,
+  ghostModel,
   userDrawingPrompt,
   setUserDrawingPrompt,
   blueprint,
   blueprintLoading,
   blueprintError,
   blueprintApplied,
+  blueprintAt,
   runSceneBlueprint,
   cancelSceneBlueprint,
   applyBlueprintToPanel,
@@ -514,7 +523,13 @@ export function AiTab({
             applied={blueprintApplied === true}
             onApply={() => applyBlueprintToPanel?.()}
             onDismiss={() => dismissBlueprint?.()}
-            footer={<AiSourceLine at={ghostAt ?? null} sourceIds={ghostSourceIds} />}
+            footer={
+              <AiSourceLine
+                at={blueprintAt ?? null}
+                sourceIds={blueprint.sourceIds}
+                model={blueprint.model}
+              />
+            }
           />
         )}
 
@@ -566,7 +581,11 @@ export function AiTab({
               </p>
             )}
 
-            <AiSourceLine at={ghostAt ?? null} sourceIds={ghostSourceIds} />
+            <AiSourceLine
+              at={ghostAt ?? null}
+              sourceIds={ghostSourceIds}
+              model={ghostModel}
+            />
 
             {ghostOpacity !== undefined && setGhostOpacity && (
               <div className="flex items-center gap-2 pt-1 border-t border-purple-500/20">
@@ -892,7 +911,11 @@ export function AiTab({
                     </p>
                   )}
 
-                  <AiSourceLine at={storyAt} sourceIds={storyFlow.sourceIds} />
+                  <AiSourceLine
+                    at={storyAt}
+                    sourceIds={storyFlow.sourceIds}
+                    model={storyFlow.model}
+                  />
 
                   <button
                     onClick={applyStoryFlow}

@@ -9,6 +9,11 @@ export const AI_OVERLAY_OPACITY_MIN = 0.05;
 export const AI_OVERLAY_OPACITY_MAX = 0.3;
 export const MAX_AI_SOURCE_IDS = 8;
 export const MAX_AI_EXPLANATION_LENGTH = 400;
+/**
+ * Trần độ dài tên model trong phản hồi (Phase 5E). Tên model thật do provider điền
+ * (`gemini-flash-latest`, `gemini-2.5-flash`, …) nên 80 ký tự là thừa sức.
+ */
+export const MAX_AI_MODEL_LENGTH = 80;
 
 export type AiDrawingPrinciple =
   | "composition"
@@ -63,6 +68,12 @@ export interface AiDrawingResponseBase {
   task: AiDrawingTask;
   summary: string;
   sourceIds: string[];
+  /**
+   * Tên model **thật đã phục vụ** lần gọi (Phase 5E), do provider điền sau khi gọi thành
+   * công — kể cả khi đã rơi sang model dự phòng. Tùy chọn: bản ghi cũ và test dựng tay
+   * có thể thiếu, khi đó client hiện hằng `AI_DRAWING_MODEL_LABEL` của nó.
+   */
+  model?: string;
 }
 
 export interface AiCompositionRecommendation {
@@ -289,6 +300,7 @@ const RESPONSE_KEYS = new Set([
   "task",
   "summary",
   "sourceIds",
+  "model",
   "recommendations",
   "findings",
   "strokes",
@@ -304,6 +316,25 @@ const BASE_RESPONSE_KEYS = [
   "summary",
   "sourceIds",
 ] as const;
+
+/**
+ * Trường tùy chọn dùng chung cho mọi task: có thì phải đúng kiểu, thiếu thì bỏ qua.
+ * `requireTaskKeys` tự thêm chúng vào danh sách khoá bắt buộc khi chúng có mặt.
+ */
+const OPTIONAL_RESPONSE_KEYS = ["model"] as const;
+
+/**
+ * Như `requireExactKeys` nhưng cho phép thiếu trường tùy chọn. Nhờ vậy hợp đồng vẫn
+ * **chặt** (thừa trường lạ là lỗi) mà bản ghi cũ không mang `model` vẫn đọc được.
+ */
+function requireTaskKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  path: string,
+): void {
+  const present = OPTIONAL_RESPONSE_KEYS.filter((key) => key in value);
+  requireExactKeys(value, [...keys, ...present], path);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -917,8 +948,14 @@ export function parseAiDrawingResponse(
   const sourceIds = value.sourceIds;
   validateSourceIds(sourceIds, availableSourceIds);
 
+  const model = value.model;
+  if (model !== undefined) {
+    requireString(model, "model", MAX_AI_MODEL_LENGTH);
+  }
+  const modelField = model === undefined ? {} : { model };
+
   if (expectedTask === AiDrawingTask.CompositionGuidance) {
-    requireExactKeys(
+    requireTaskKeys(
       value,
       [...BASE_RESPONSE_KEYS, "recommendations"],
       "response",
@@ -930,12 +967,13 @@ export function parseAiDrawingResponse(
       task: AiDrawingTask.CompositionGuidance,
       summary,
       sourceIds,
+      ...modelField,
       recommendations,
     };
   }
 
   if (expectedTask === AiDrawingTask.DrawingReview) {
-    requireExactKeys(value, [...BASE_RESPONSE_KEYS, "findings"], "response");
+    requireTaskKeys(value, [...BASE_RESPONSE_KEYS, "findings"], "response");
     const findings = value.findings;
     validateFindings(findings);
     return {
@@ -943,13 +981,14 @@ export function parseAiDrawingResponse(
       task: AiDrawingTask.DrawingReview,
       summary,
       sourceIds,
+      ...modelField,
       findings,
     };
   }
 
   // Ghost stroke tasks: StrokeGuidance, CompositionOverlay, PoseGuidance
   if (GHOST_STROKE_TASKS.has(expectedTask)) {
-    requireExactKeys(value, [...BASE_RESPONSE_KEYS, "strokes"], "response");
+    requireTaskKeys(value, [...BASE_RESPONSE_KEYS, "strokes"], "response");
     const strokes = value.strokes;
     validateStrokes(strokes);
     return {
@@ -960,12 +999,13 @@ export function parseAiDrawingResponse(
         | AiDrawingTask.PoseGuidance,
       summary,
       sourceIds,
+      ...modelField,
       strokes,
     };
   }
 
   if (expectedTask === AiDrawingTask.PageStoryFlow) {
-    requireExactKeys(value, [...BASE_RESPONSE_KEYS, "flow", "panels"], "response");
+    requireTaskKeys(value, [...BASE_RESPONSE_KEYS, "flow", "panels"], "response");
     const flow = value.flow;
     requireString(flow, "flow", MAX_AI_FLOW_LENGTH);
     const panels = value.panels;
@@ -975,13 +1015,14 @@ export function parseAiDrawingResponse(
       task: AiDrawingTask.PageStoryFlow,
       summary,
       sourceIds,
+      ...modelField,
       flow,
       panels,
     };
   }
 
   if (expectedTask === AiDrawingTask.SceneBlueprint) {
-    requireExactKeys(
+    requireTaskKeys(
       value,
       [...BASE_RESPONSE_KEYS, "blueprint", "layers", "strokes"],
       "response",
@@ -1017,6 +1058,7 @@ export function parseAiDrawingResponse(
       task: AiDrawingTask.SceneBlueprint,
       summary,
       sourceIds,
+      ...modelField,
       blueprint,
       layers,
       strokes,

@@ -4,6 +4,7 @@ import {
   GatewayTimeoutException,
   Inject,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { plainToInstance } from "class-transformer";
@@ -20,6 +21,7 @@ import {
 } from "../contracts/ai-drawing-response.js";
 import { validateAiDrawingImage } from "../contracts/ai-drawing-image.validator.js";
 import {
+  AI_DRAWING_ERROR_CODES,
   AI_DRAWING_MODEL_PROFILE,
   AI_DRAWING_PROVIDER,
   AiDrawingModelProfileError,
@@ -27,9 +29,11 @@ import {
   AiDrawingProviderError,
   AiDrawingProviderTimeoutError,
   AiDrawingProviderTransientError,
+  AiDrawingProviderTruncatedError,
 } from "./ai-drawing-driver.js";
 import type { AiDrawingResponse } from "../contracts/ai-drawing-response.js";
 import type {
+  AiDrawingErrorCode,
   AiDrawingModelProfile,
   AiDrawingProvider,
   AiDrawingProviderRequest,
@@ -40,6 +44,7 @@ const MAX_PROVIDER_ATTEMPTS = 2;
 @Injectable()
 export class AiDrawingDriver {
   private readonly modelRegistry: AiDrawingModelRegistry;
+  private readonly logger = new Logger(AiDrawingDriver.name);
 
   constructor(
     @Inject(AI_DRAWING_PROVIDER)
@@ -95,9 +100,15 @@ export class AiDrawingDriver {
       );
     } catch (error) {
       if (error instanceof AiDrawingResponseValidationError) {
-        throw new BadGatewayException(
-          "AI provider returned a response that violates the drawing contract",
-        );
+        this.throwDrawingError({
+          code: AI_DRAWING_ERROR_CODES.invalidResponse,
+          status: 502,
+          message:
+            "AI provider returned a response that violates the drawing contract",
+          task: request.task,
+          modelId: profile.modelId,
+          detail: `reason="${error.message}"`,
+        });
       }
       throw error;
     }
@@ -120,12 +131,49 @@ export class AiDrawingDriver {
       return this.modelRegistry.select(task);
     } catch (error) {
       if (error instanceof AiDrawingModelProfileError) {
-        throw new ServiceUnavailableException(
-          "AI drawing is not available for this task",
-        );
+        this.throwDrawingError({
+          code: AI_DRAWING_ERROR_CODES.modelUnavailable,
+          status: 503,
+          message: "AI drawing is not available for this task",
+          task,
+          detail: `reason="${error.message}"`,
+        });
       }
       throw error;
     }
+  }
+
+  /**
+   * Ghi log lỗi thật ra terminal rồi ném exception mang **mã lỗi** cho client.
+   *
+   * `code` là thứ client dùng để chọn câu tiếng Việt; `message` giữ tiếng Anh cho log/nội
+   * bộ. Log kèm `code`, HTTP status, model và (nếu có) `finishReason` + số token để lần sau
+   * chẩn đoán bằng log thay vì đoán.
+   */
+  private throwDrawingError(input: {
+    code: AiDrawingErrorCode;
+    status: number;
+    message: string;
+    task: AiDrawingTask;
+    modelId?: string;
+    detail?: string;
+  }): never {
+    const body = {
+      statusCode: input.status,
+      code: input.code,
+      message: input.message,
+    };
+    this.logger.error(
+      `AI drawing failed: task=${input.task} code=${input.code} status=${input.status} model=${input.modelId ?? "-"}` +
+        (input.detail ? ` ${input.detail}` : ""),
+    );
+    if (input.status === 502) {
+      throw new BadGatewayException(body);
+    }
+    if (input.status === 503) {
+      throw new ServiceUnavailableException(body);
+    }
+    throw new GatewayTimeoutException(body);
   }
 
   private validateImageSize(
@@ -154,22 +202,54 @@ export class AiDrawingDriver {
           continue;
         }
         if (error instanceof AiDrawingProviderTimeoutError) {
-          throw new GatewayTimeoutException("AI provider request timed out");
+          this.throwDrawingError({
+            code: AI_DRAWING_ERROR_CODES.timeout,
+            status: 504,
+            message: "AI provider request timed out",
+            task: request.task,
+            modelId: request.modelId,
+          });
+        }
+        // Cắt ở trần token: gửi lại đúng prompt đó cũng bị cắt lại, nên không thử lại.
+        if (error instanceof AiDrawingProviderTruncatedError) {
+          this.throwDrawingError({
+            code: AI_DRAWING_ERROR_CODES.outputTruncated,
+            status: 502,
+            message: error.message,
+            task: request.task,
+            modelId: request.modelId,
+            detail: `finishReason=${error.finishReason} outputTokens=${error.outputTokens ?? "unknown"} textLength=${error.textLength}`,
+          });
         }
         if (error instanceof AiDrawingProviderTransientError) {
-          throw new ServiceUnavailableException(
-            "AI provider is temporarily unavailable",
-          );
+          this.throwDrawingError({
+            code: AI_DRAWING_ERROR_CODES.providerOverloaded,
+            status: 503,
+            message: "AI provider is temporarily unavailable",
+            task: request.task,
+            modelId: request.modelId,
+          });
         }
         if (error instanceof AiDrawingProviderError) {
-          throw new ServiceUnavailableException("AI provider request failed");
+          this.throwDrawingError({
+            code: AI_DRAWING_ERROR_CODES.providerRequestFailed,
+            status: 502,
+            message: "AI provider request failed",
+            task: request.task,
+            modelId: request.modelId,
+            detail: `reason="${error.message}"`,
+          });
         }
         throw error;
       }
     }
-    throw new ServiceUnavailableException(
-      "AI provider is temporarily unavailable",
-    );
+    this.throwDrawingError({
+      code: AI_DRAWING_ERROR_CODES.providerOverloaded,
+      status: 503,
+      message: "AI provider is temporarily unavailable",
+      task: request.task,
+      modelId: request.modelId,
+    });
   }
 
   private async generateWithTimeout(

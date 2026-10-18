@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  AI_DRAWING_ERROR_CODES,
   AI_DRAWING_MODEL_LABEL,
   AI_PANEL_CAMERAS,
   AI_STROKE_GROUPS,
   MAX_STORY_FLOW_PANELS,
   MIN_BLUEPRINT_LAYERS,
+  extractErrorMessage,
   isPageStoryFlowResponse,
   isSceneBlueprintResponse,
   selectStoryFlowPanelsForLayout,
@@ -275,5 +277,72 @@ describe("Hợp đồng scene_blueprint phía client (Phase 5B)", () => {
     const response = asRaw(blueprintResponse());
     response.task = "stroke_guidance";
     expect(isSceneBlueprintResponse(response)).toBe(false);
+  });
+});
+
+describe("Thông báo lỗi AI theo mã lỗi (Phase 5E)", () => {
+  it("có đúng sáu mã lỗi và khớp khoá hợp đồng phía server", () => {
+    expect(Object.values(AI_DRAWING_ERROR_CODES).sort()).toEqual([
+      "ai_invalid_response",
+      "ai_model_unavailable",
+      "ai_output_truncated",
+      "ai_provider_error",
+      "ai_provider_overloaded",
+      "ai_timeout",
+    ]);
+  });
+
+  it("đọc `code` trong body để nói đúng nguyên nhân, không gộp vào một câu 503", () => {
+    expect(
+      extractErrorMessage({ code: AI_DRAWING_ERROR_CODES.outputTruncated }, 502),
+    ).toMatch(/cắt giữa dòng/);
+    expect(
+      extractErrorMessage({ code: AI_DRAWING_ERROR_CODES.providerOverloaded }, 503),
+    ).toMatch(/quá tải/);
+    expect(
+      extractErrorMessage({ code: AI_DRAWING_ERROR_CODES.modelUnavailable }, 503),
+    ).toMatch(/đang tắt/);
+    expect(
+      extractErrorMessage(
+        { code: AI_DRAWING_ERROR_CODES.providerRequestFailed },
+        502,
+      ),
+    ).toMatch(/Không nhận được phản hồi dùng được/);
+    expect(
+      extractErrorMessage({ code: AI_DRAWING_ERROR_CODES.invalidResponse }, 502),
+    ).toMatch(/không đúng định dạng/);
+    expect(extractErrorMessage({ code: AI_DRAWING_ERROR_CODES.timeout }, 504)).toMatch(
+      /quá lâu/,
+    );
+  });
+
+  it("không hiện chuỗi kỹ thuật tiếng Anh của server khi có mã lỗi", () => {
+    const message = extractErrorMessage(
+      {
+        statusCode: 502,
+        code: AI_DRAWING_ERROR_CODES.outputTruncated,
+        message: "AI provider stopped before finishing the response",
+      },
+      502,
+    );
+    expect(message).not.toMatch(/provider|response/i);
+  });
+
+  it("vẫn theo `status` khi server chưa có mã (bản cũ)", () => {
+    expect(extractErrorMessage({ message: "unavailable" }, 503)).toMatch(
+      /chờ kích hoạt hoặc bảo trì/,
+    );
+    expect(extractErrorMessage(undefined, 504)).toMatch(/quá lâu/);
+    expect(extractErrorMessage(undefined, 429)).toMatch(/quá số lượt/);
+    expect(extractErrorMessage(undefined, 403)).toMatch(/đăng nhập/);
+  });
+
+  it("mã lỗi lạ vẫn quay về câu theo status, không hiện mã thô", () => {
+    expect(extractErrorMessage({ code: "ai_something_new" }, 503)).toMatch(
+      /chờ kích hoạt hoặc bảo trì/,
+    );
+    expect(extractErrorMessage({ code: "ai_something_new" }, 502)).toMatch(
+      /Không thể hoàn thành/,
+    );
   });
 });

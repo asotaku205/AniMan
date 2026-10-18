@@ -9,13 +9,16 @@ import sharp from "sharp";
 import { AiDrawingTask } from "../src/ai/contracts/ai-drawing-request.dto.js";
 import { AiDrawingModule } from "../src/ai/ai-drawing.module.js";
 import {
+  AI_DRAWING_ERROR_CODES,
   AiDrawingModelProfileError,
   AiDrawingModelRegistry,
   AiDrawingModelProfile,
   AiDrawingProvider,
   AiDrawingProviderError,
   AiDrawingProviderRequest,
+  AiDrawingProviderTimeoutError,
   AiDrawingProviderTransientError,
+  AiDrawingProviderTruncatedError,
   GEMINI_DRAWING_MODEL_PROFILE,
 } from "../src/ai/driver/ai-drawing-driver.js";
 import { AiDrawingDriver } from "../src/ai/driver/ai-drawing-driver.service.js";
@@ -364,5 +367,82 @@ describe("AI drawing driver", () => {
     await expect(programmingFailure.execute(validRequest)).rejects.toThrow(
       "unexpected internal failure",
     );
+  });
+
+  it("maps an upstream failure to a machine-readable error code", async () => {
+    const providerFailure = createDriver(async () => {
+      throw new AiDrawingProviderError("upstream key detail");
+    });
+
+    await expect(providerFailure.execute(validRequest)).rejects.toMatchObject({
+      response: { code: AI_DRAWING_ERROR_CODES.providerRequestFailed },
+    });
+  });
+
+  it("names the disabled-profile cause instead of a generic 503", async () => {
+    const driver = createDriver(async () => validResponse, {
+      ...enabledProfile,
+      enabled: false,
+    });
+
+    await expect(driver.execute(validRequest)).rejects.toMatchObject({
+      response: { code: AI_DRAWING_ERROR_CODES.modelUnavailable },
+    });
+  });
+
+  it("names provider overload after retries are exhausted", async () => {
+    const driver = createDriver(async () => {
+      throw new AiDrawingProviderTransientError();
+    });
+
+    await expect(driver.execute(validRequest)).rejects.toMatchObject({
+      response: { code: AI_DRAWING_ERROR_CODES.providerOverloaded },
+    });
+  });
+
+  it("names the timeout cause on 504", async () => {
+    const driver = createDriver(async () => {
+      throw new AiDrawingProviderTimeoutError();
+    });
+
+    await expect(driver.execute(validRequest)).rejects.toMatchObject({
+      response: { code: AI_DRAWING_ERROR_CODES.timeout },
+    });
+  });
+
+  it("names a contract violation on 502", async () => {
+    const driver = createDriver(async () => ({
+      ...validResponse,
+      generatedImage: "private-provider-payload",
+    }));
+
+    await expect(driver.execute(validRequest)).rejects.toMatchObject({
+      response: { code: AI_DRAWING_ERROR_CODES.invalidResponse },
+    });
+  });
+
+  it("does NOT retry a truncated output (same prompt would be cut again)", async () => {
+    let calls = 0;
+    const driver = createDriver(async () => {
+      calls += 1;
+      throw new AiDrawingProviderTruncatedError("MAX_TOKENS", 6871, 16_779);
+    });
+
+    await expect(driver.execute(validRequest)).rejects.toMatchObject({
+      response: { code: AI_DRAWING_ERROR_CODES.outputTruncated },
+    });
+    expect(calls).toBe(1);
+  });
+
+  it("passes the model reported by the provider through to the client", async () => {
+    const driver = createDriver(async () => ({
+      ...validResponse,
+      model: "gemini-2.5-flash-fallback",
+    }));
+
+    await expect(driver.execute(validRequest)).resolves.toEqual({
+      ...validResponse,
+      model: "gemini-2.5-flash-fallback",
+    });
   });
 });

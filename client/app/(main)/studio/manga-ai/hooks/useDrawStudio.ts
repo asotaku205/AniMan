@@ -581,6 +581,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       }>;
       summary?: string;
       sourceIds?: string[];
+      /** Model **thật** đã phục vụ (Phase 5E); thiếu thì dùng hằng dự phòng. */
+      model?: string;
       blueprint?: PanelAiOverlay["blueprint"];
     }) => {
       setStacks((prev) => {
@@ -620,7 +622,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
               layers: aiLayerRows,
               ...(input.summary ? { summary: input.summary } : {}),
               generatedAt: Date.now(),
-              model: AI_DRAWING_MODEL_LABEL,
+              model: input.model ?? AI_DRAWING_MODEL_LABEL,
               ...(input.sourceIds && input.sourceIds.length > 0
                 ? { sourceIds: input.sourceIds }
                 : {}),
@@ -639,6 +641,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       strokes: AiStrokePath[];
       summary?: string;
       sourceIds?: string[];
+      model?: string;
     }) => {
       setPanelAiLayers({
         layers: [
@@ -646,6 +649,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         ],
         summary: input.summary,
         sourceIds: input.sourceIds,
+        model: input.model,
       });
     },
     [setPanelAiLayers],
@@ -663,6 +667,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         })),
         summary: blueprint.summary,
         sourceIds: blueprint.sourceIds,
+        model: blueprint.model,
         blueprint: blueprint.blueprint,
       });
     },
@@ -738,6 +743,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   /** Thời điểm + nguồn của nét gợi ý đang hiện — dòng nguồn AI (AC-D2.2) */
   const ghostAt = aiOverlay?.generatedAt ?? null;
   const ghostSourceIds = aiOverlay?.sourceIds ?? [];
+  /** Model thật đã phục vụ nét AI đang hiện (Phase 5E); null → tab AI dùng hằng dự phòng */
+  const ghostModel = aiOverlay?.model ?? null;
 
   // Bức tranh toàn cảnh (A-2, 5B.5) — kết quả xem trước, chưa áp vào khung
   const [blueprint, setBlueprint] = useState<AiSceneBlueprintResponse | null>(null);
@@ -745,6 +752,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   /** Đã áp blueprint vào lớp AI của khung chưa */
   const [blueprintApplied, setBlueprintApplied] = useState(false);
+  /**
+   * Thời điểm nhận blueprint — dòng nguồn AI của **thẻ xem trước** (AC-D2.2).
+   * Trước Phase 5E thẻ này mượn `ghostAt` của nét AI đang áp, nên khi chưa có nét AI
+   * nào thì thẻ trắng không có dòng nguồn, còn khi đã có thì hiện **sai giờ**.
+   */
+  const [blueprintAt, setBlueprintAt] = useState<number | null>(null);
   /**
    * Mô tả ý tưởng của người dùng (user prompt).
    * Khi hình vẽ chưa rõ ràng, người dùng nhập mô tả để AI
@@ -3493,6 +3506,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
             strokes: result.strokes,
             summary: result.summary,
             sourceIds: result.sourceIds,
+            model: result.model,
           });
           showToast("Nét gợi ý AI đã hiện trong lớp AI");
         }
@@ -3558,6 +3572,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setBlueprint(null);
     setBlueprintError(null);
     setBlueprintApplied(false);
+    setBlueprintAt(null);
     setBlueprintLoading(false);
     setSelectedComp(null);
     setActiveGuides([]);
@@ -3638,6 +3653,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       );
       if (abortCtrl.signal.aborted) return;
       setBlueprint(result);
+      setBlueprintAt(Date.now());
       setBlueprintApplied(false);
       showToast(
         `AI đã dựng toàn cảnh "${result.blueprint.title}" (${result.layers.length} lớp, ${result.strokes.length} nét)`,
@@ -3682,6 +3698,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setBlueprint(null);
     setBlueprintError(null);
     setBlueprintApplied(false);
+    setBlueprintAt(null);
   }, []);
 
   const enterPanel = useCallback(
@@ -3746,6 +3763,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setBlueprint(null);
     setBlueprintError(null);
     setBlueprintApplied(false);
+    setBlueprintAt(null);
     setBlueprintLoading(false);
     historyRef.current = [];
     futureRef.current = [];
@@ -3982,6 +4000,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     ghostStrokesSummary,
     ghostAt,
     ghostSourceIds,
+    ghostModel,
     userDrawingPrompt,
     setUserDrawingPrompt,
     // Bức tranh toàn cảnh (A-2 — 5B.5/5B.6)
@@ -3989,6 +4008,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     blueprintLoading,
     blueprintError,
     blueprintApplied,
+    /** Thời điểm sinh blueprint — dòng nguồn AI của thẻ xem trước (AC-D2.2) */
+    blueprintAt,
     runSceneBlueprint,
     cancelSceneBlueprint,
     applyBlueprintToPanel,

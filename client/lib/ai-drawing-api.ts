@@ -67,6 +67,8 @@ export interface AiDrawingReviewResponse {
   task: "drawing_review";
   summary: string;
   sourceIds: string[];
+  /** Model **thật đã phục vụ** (Phase 5E); thiếu thì client rơi về `AI_DRAWING_MODEL_LABEL`. */
+  model?: string;
   findings: AiDrawingFinding[];
 }
 
@@ -99,6 +101,8 @@ export interface AiGhostStrokeResponse {
   task: "stroke_guidance" | "composition_overlay" | "pose_guidance";
   summary: string;
   sourceIds: string[];
+  /** Model **thật đã phục vụ** (Phase 5E), có thể thiếu với server cũ. */
+  model?: string;
   strokes: AiStrokePath[];
 }
 
@@ -136,6 +140,8 @@ export interface AiPageStoryFlowResponse {
   task: "page_story_flow";
   summary: string;
   sourceIds: string[];
+  /** Model **thật đã phục vụ** (Phase 5E), có thể thiếu với server cũ. */
+  model?: string;
   /** Mạch truyện cả trang dạng "A → B → C". */
   flow: string;
   panels: AiPageStoryFlowPanelHint[];
@@ -167,6 +173,8 @@ export interface AiSceneBlueprintResponse {
   task: "scene_blueprint";
   summary: string;
   sourceIds: string[];
+  /** Model **thật đã phục vụ** (Phase 5E), có thể thiếu với server cũ. */
+  model?: string;
   blueprint: AiSceneBlueprintSpec;
   layers: AiBlueprintLayer[];
   /** Trải phẳng đúng bằng `layers[].strokes`. */
@@ -174,14 +182,57 @@ export interface AiSceneBlueprintResponse {
 }
 
 /**
- * Nhãn mô hình hiển thị ở dòng nguồn AI (AC-D2.2).
+ * Nhãn model hiển thị ở dòng nguồn AI (AC-D2.2).
  *
- * Phải khớp `modelId` của profile phía server
+ * Từ Phase 5E (18/10/2026), client ưu tiên trường `model` trong phản hồi server — đó là
+ * model **thật đã phục vụ** lần gọi đó (kể cả khi provider rơi sang model dự phòng).
+ * Hằng số này chỉ là **dự phòng** cho phản hồi thiếu `model` (bản server cũ, bản ghi cũ);
+ * nó phải khớp `modelId` của profile phía server
  * (`GEMINI_DRAWING_MODEL_PROFILE` trong `server/src/ai/driver/ai-drawing-driver.ts`).
- * Hợp đồng phản hồi không mang tên model, nên đây là hằng số client phản chiếu
- * cấu hình server; đổi model ở server thì sửa cả hai chỗ.
  */
 export const AI_DRAWING_MODEL_LABEL = "gemini-flash-latest";
+
+/**
+ * Mã lỗi AI mà server trả trong body lỗi (Phase 5E) — khớp
+ * `AI_DRAWING_ERROR_CODES` của `server/src/ai/driver/ai-drawing-driver.ts`.
+ *
+ * Dùng mã lỗi thay vì HTTP status vì nhiều nguyên nhân khác nhau cùng dùng 503/502:
+ * trước Phase 5E client gộp **mọi** lỗi 503 vào một câu "chờ kích hoạt hoặc bảo trì",
+ * nên khi nguyên nhân thật là output bị cắt thì thông báo nói sai.
+ */
+export const AI_DRAWING_ERROR_CODES = {
+  modelUnavailable: "ai_model_unavailable",
+  providerOverloaded: "ai_provider_overloaded",
+  providerRequestFailed: "ai_provider_error",
+  outputTruncated: "ai_output_truncated",
+  invalidResponse: "ai_invalid_response",
+  timeout: "ai_timeout",
+} as const;
+
+export type AiDrawingErrorCode =
+  (typeof AI_DRAWING_ERROR_CODES)[keyof typeof AI_DRAWING_ERROR_CODES];
+
+const AI_DRAWING_ERROR_MESSAGES: Record<AiDrawingErrorCode, string> = {
+  [AI_DRAWING_ERROR_CODES.modelUnavailable]:
+    "Mô hình AI cho tác vụ này đang tắt. Vui lòng báo quản trị viên.",
+  [AI_DRAWING_ERROR_CODES.providerOverloaded]:
+    "Máy chủ AI đang quá tải. Vui lòng thử lại sau ít phút.",
+  [AI_DRAWING_ERROR_CODES.providerRequestFailed]:
+    "Không nhận được phản hồi dùng được từ máy chủ AI. Vui lòng thử lại, nếu vẫn lỗi hãy báo quản trị viên.",
+  [AI_DRAWING_ERROR_CODES.outputTruncated]:
+    "AI viết quá dài nên phản hồi bị cắt giữa dòng. Hãy thử lại, hoặc mô tả ngắn gọn hơn.",
+  [AI_DRAWING_ERROR_CODES.invalidResponse]:
+    "AI trả về dữ liệu không đúng định dạng. Vui lòng thử lại.",
+  [AI_DRAWING_ERROR_CODES.timeout]:
+    "Thời gian phân tích của AI quá lâu. Vui lòng thử lại.",
+};
+
+function isKnownErrorCode(value: unknown): value is AiDrawingErrorCode {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(AI_DRAWING_ERROR_MESSAGES, value)
+  );
+}
 
 export interface AiDrawingRequestPayload {
   task: AiDrawingTask;
@@ -469,7 +520,23 @@ async function readPayload(response: Response): Promise<unknown> {
   }
 }
 
-function extractErrorMessage(payload: unknown, status: number): string {
+/**
+ * Chọn câu tiếng Việt cho một phản hồi lỗi của `/ai/drawing` (Phase 5E).
+ *
+ * Ưu tiên **mã lỗi** trong body (`code`) vì nó nói đúng nguyên nhân; mã lạ hoặc body cũ
+ * không có `code` thì rơi về theo HTTP status. Chỉ khi không nhận ra gì mới dùng tới
+ * `message` của server (chuỗi kỹ thuật tiếng Anh) — và đó là đường cuối.
+ *
+ * Xuất để test trực tiếp phần ánh xạ này mà không phải dựng fetch giả.
+ */
+export function extractErrorMessage(payload: unknown, status: number): string {
+  if (typeof payload === "object" && payload !== null) {
+    const code = (payload as Record<string, unknown>).code;
+    if (isKnownErrorCode(code)) {
+      return AI_DRAWING_ERROR_MESSAGES[code];
+    }
+  }
+
   if (status === 429) {
     return "Bạn đã gửi quá số lượt yêu cầu cho phép (tối đa 5 lượt/phút và 30 lượt/ngày). Vui lòng thử lại sau.";
   }

@@ -11,6 +11,30 @@ const MAX_AI_DRAWING_OUTPUT_TOKENS = 8192;
 export const AI_DRAWING_PROVIDER = Symbol("AI_DRAWING_PROVIDER");
 export const AI_DRAWING_MODEL_PROFILE = Symbol("AI_DRAWING_MODEL_PROFILE");
 
+/**
+ * Mã lỗi ổn định trả cho client (Phase 5E). Client chọn câu tiếng Việt theo `code`
+ * thay vì theo HTTP status, vì nhiều nguyên nhân khác nhau cùng dùng 503/502.
+ *
+ * Phải khớp `AI_DRAWING_ERROR_CODES` của client (`client/lib/ai-drawing-api.ts`).
+ */
+export const AI_DRAWING_ERROR_CODES = {
+  /** Profile model tắt hoặc không khai báo task này. */
+  modelUnavailable: "ai_model_unavailable",
+  /** Nhà cung cấp quá tải (429/503) sau khi đã thử lại. */
+  providerOverloaded: "ai_provider_overloaded",
+  /** Gọi nhà cung cấp thất bại vì lý do khác (khoá sai, 4xx/5xx khác, phản hồi rỗng). */
+  providerRequestFailed: "ai_provider_error",
+  /** Model viết dài quá trần token → output bị cắt ở `MAX_TOKENS`. */
+  outputTruncated: "ai_output_truncated",
+  /** Nhà cung cấp trả về thứ không khớp hợp đồng của ứng dụng. */
+  invalidResponse: "ai_invalid_response",
+  /** Quá thời gian chờ của profile. */
+  timeout: "ai_timeout",
+} as const;
+
+export type AiDrawingErrorCode =
+  (typeof AI_DRAWING_ERROR_CODES)[keyof typeof AI_DRAWING_ERROR_CODES];
+
 export interface AiDrawingModelProfile {
   readonly id: string;
   readonly provider: string;
@@ -77,6 +101,24 @@ export class AiDrawingProviderTimeoutError extends AiDrawingProviderError {
   constructor() {
     super("AI provider request timed out");
     this.name = "AiDrawingProviderTimeoutError";
+  }
+}
+
+/**
+ * Model bị cắt ở trần token (`finishReason: MAX_TOKENS`) nên phản hồi dở dang.
+ *
+ * Tách khỏi `AiDrawingProviderError` vì đây là nguyên nhân **đoán được** (trần output quá
+ * thấp so với yêu cầu) và **không nên thử lại**: gửi lại đúng prompt đó với đúng trần đó
+ * sẽ lại bị cắt. Mang theo số liệu để driver ghi log chẩn đoán.
+ */
+export class AiDrawingProviderTruncatedError extends AiDrawingProviderError {
+  constructor(
+    readonly finishReason: string,
+    readonly outputTokens: number | undefined,
+    readonly textLength: number,
+  ) {
+    super("AI provider stopped before finishing the response (output truncated)");
+    this.name = "AiDrawingProviderTruncatedError";
   }
 }
 
