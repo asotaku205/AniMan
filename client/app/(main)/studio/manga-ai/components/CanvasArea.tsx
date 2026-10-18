@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { GuideOverlay } from "./SvgComponent";
 import { CompThumb } from "./SvgComponent";
-import { AiGhostStrokeOverlay } from "./AiGhostStrokeOverlay";
+import { AiGhostStrokeOverlay, type AiOverlayLayerView } from "./AiGhostStrokeOverlay";
 import {
   SCENE_TYPE_LABEL,
   COMP_SUGGESTIONS,
@@ -29,7 +29,7 @@ import {
   type LayoutDef,
 } from "../data";
 import type { SceneType } from "../data";
-import type { AiDrawingReviewResponse, AiStrokePath } from "@/lib/ai-drawing-api";
+import type { AiDrawingReviewResponse } from "@/lib/ai-drawing-api";
 
 type Props = {
   // Layout / panel state
@@ -60,8 +60,16 @@ type Props = {
   ghostType: "comp" | "pose" | null;
   ghostId: string | null;
   ghostOpacity: number;
-  ghostStrokes?: AiStrokePath[] | null;
-  setGhostStrokes?: (v: AiStrokePath[] | null) => void;
+  /** Các lớp AI đang hiện của khung — nét AI là vector, không bấm được (5C.1/5C.3) */
+  aiStrokeLayers?: readonly AiOverlayLayerView[];
+  /** Đè nét AI lên trên nét người dùng (mặc định tắt — bất biến §1.2) */
+  aiOverlayAbove?: boolean;
+  setAiOverlayAbove?: (v: boolean) => void;
+  /** Xoá nét AI + lớp AI của khung đang mở */
+  clearPanelAiOverlay?: () => void;
+  /** Áp nét AI vào lớp người dùng đang chọn = một bước hoàn tác (5C.2) */
+  applyAiToActiveLayer?: () => void;
+  canApplyAiToLayer?: boolean;
   ghostStrokesSummary?: string | null;
   drawingPlaceholder?: DrawingPlaceholderId | null;
   setDrawingPlaceholder?: (v: DrawingPlaceholderId | null) => void;
@@ -121,8 +129,12 @@ export function CanvasArea({
   ghostType,
   ghostId,
   ghostOpacity,
-  ghostStrokes,
-  setGhostStrokes,
+  aiStrokeLayers,
+  aiOverlayAbove,
+  setAiOverlayAbove,
+  clearPanelAiOverlay,
+  applyAiToActiveLayer,
+  canApplyAiToLayer,
   ghostStrokesSummary,
   drawingPlaceholder,
   setDrawingPlaceholder,
@@ -402,15 +414,19 @@ export function CanvasArea({
               </div>
             )}
 
-            {/* Dynamic AI Ghost Stroke Overlay (SVG mờ do AI phân tích bức vẽ sinh ra) */}
-            {aiConsentEligible && ghostStrokes && ghostStrokes.length > 0 && (
+            {/* Nét AI (vector) — nằm dưới nét người dùng, không nhận sự kiện (5C.3) */}
+            {aiConsentEligible && aiStrokeLayers && aiStrokeLayers.length > 0 && (
               <AiGhostStrokeOverlay
-                strokes={ghostStrokes}
+                layers={aiStrokeLayers}
                 canvasWidth={canvasRef.current?.width ?? 400}
                 canvasHeight={canvasRef.current?.height ?? 300}
                 ghostOpacity={ghostOpacity}
                 setGhostOpacity={setGhostOpacity}
-                onClear={() => setGhostStrokes?.(null)}
+                above={aiOverlayAbove === true}
+                setAbove={(v) => setAiOverlayAbove?.(v)}
+                onClear={() => clearPanelAiOverlay?.()}
+                onApplyToLayer={applyAiToActiveLayer}
+                canApplyToLayer={canApplyAiToLayer}
               />
             )}
 

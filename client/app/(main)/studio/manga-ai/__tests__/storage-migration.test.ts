@@ -100,7 +100,14 @@ describe("normalizePanelStacks — đọc bản ghi v2 (spec 02 §3.1)", () => {
         activeLayerId: "l2",
         pixels: { l2: "URL" },
         aiOverlay: {
-          strokes: [{ id: "s1" }],
+          layers: [
+            {
+              id: "ai-1",
+              group: "subject",
+              name: "Chủ thể",
+              strokes: [{ id: "s1" }],
+            },
+          ],
           summary: "gợi ý",
           generatedAt: 123,
           model: "gemini-flash-latest",
@@ -113,8 +120,28 @@ describe("normalizePanelStacks — đọc bản ghi v2 (spec 02 §3.1)", () => {
     expect(out.p1.layers[0].name).toBe("Ink (Đi nét)");
     expect(out.p1.activeLayerId).toBe("l2");
     expect(out.p1.pixels).toEqual({ l2: "URL" });
-    expect(out.p1.aiOverlay?.strokes).toHaveLength(1);
+    expect(out.p1.aiOverlay?.layers).toHaveLength(1);
+    expect(out.p1.aiOverlay?.layers[0].group).toBe("subject");
+    expect(out.p1.aiOverlay?.layers[0].strokes).toHaveLength(1);
     expect(out.p1.aiOverlay?.model).toBe("gemini-flash-latest");
+  });
+
+  it("bản ghi cũ (strokes phẳng) → gộp thành một lớp AI với group null", () => {
+    const out = normalizePanelStacks({
+      p1: {
+        panelId: "p1",
+        layers: [{ id: "l1", name: "A", visible: true, locked: false }],
+        aiOverlay: {
+          strokes: [{ id: "s1" }, { id: "s2" }],
+          generatedAt: 7,
+        },
+      },
+    });
+
+    expect(out.p1.aiOverlay?.layers).toHaveLength(1);
+    expect(out.p1.aiOverlay?.layers[0].id).toBe("ai-legacy");
+    expect(out.p1.aiOverlay?.layers[0].group).toBeNull();
+    expect(out.p1.aiOverlay?.layers[0].strokes).toHaveLength(2);
   });
 
   it("activeLayerId trỏ sai → sửa về layer đầu tiên; pixel mồ côi bị loại", () => {

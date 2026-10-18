@@ -1,6 +1,6 @@
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-import type { AiStrokePath } from "@/lib/ai-drawing-api";
+import type { AiStrokeGroup, AiStrokePath } from "@/lib/ai-drawing-api";
 
 export type StudioMode   = "projects" | "draw" | "storyboard" | "publish";
 export type SceneType    = "auto" | "action" | "dialogue" | "landscape" | "closeup" | "wide";
@@ -142,8 +142,44 @@ export function normalizeLayers(raw: unknown): LayerItem[] {
 }
 
 /**
+ * Một **lớp AI dạng vector** của một khung (5C.1) — không có canvas pixel (RC-5).
+ * `id` trùng id của `LayerItem kind:"ai"` tương ứng trong `layers`, nên bật/tắt và
+ * độ mờ của layer ở tab Layers điều khiển thẳng lớp này.
+ */
+export interface AiOverlayLayer {
+  id: string;
+  /** Nhóm nội dung khi lớp đến từ blueprint; `null` với gợi ý nét đơn lẻ. */
+  group: AiStrokeGroup | null;
+  /** Tên hiển thị ở tab Layers */
+  name: string;
+  /** Mô tả lớp của blueprint (5B.5) */
+  description?: string;
+  strokes: AiStrokePath[];
+}
+
+/** Toàn bộ nét AI (vector) của một khung — vẫn còn nguyên sau F5 (5C.7). */
+export interface PanelAiOverlay {
+  /** Các lớp AI theo **đúng thứ tự vẽ**: nền trước, hiệu ứng sau. */
+  layers: AiOverlayLayer[];
+  /** Tóm tắt của AI cho lần gợi ý này */
+  summary?: string;
+  generatedAt: number;
+  model?: string;
+  /** Id nguồn tri thức AI trích dẫn — dòng nguồn AI (AC-D2.2) */
+  sourceIds?: string[];
+  /** Blueprint toàn cảnh đã sinh ra bộ lớp này (5B.5/5B.6) */
+  blueprint?: {
+    title: string;
+    composition: string;
+    lighting: string;
+    camera: string;
+  };
+}
+
+/**
  * Ngăn xếp layer của **MỘT khung** (spec 02 §2.2) — mỗi panel có bộ layer riêng.
- * `layers` index 0 = lớp trên cùng (đầu danh sách UI).
+ * `layers` index 0 = lớp trên cùng (đầu danh sách UI); layer AI luôn nằm cuối
+ * (dưới nét người dùng) theo bất biến AI-DRAWING-OPERATIONS §1.2.
  */
 export interface PanelLayerStack {
   panelId: string;
@@ -155,12 +191,7 @@ export interface PanelLayerStack {
    */
   pixels: Record<string, string>; // dataURL (image/png)
   /** Nét AI dạng vector — vẫn còn nguyên sau F5. */
-  aiOverlay?: {
-    strokes: AiStrokePath[];
-    summary?: string;
-    generatedAt: number;
-    model?: string;
-  };
+  aiOverlay?: PanelAiOverlay;
 }
 
 /** Toàn bộ ngăn xếp của một trang: panelId → stack. */

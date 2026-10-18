@@ -43,8 +43,11 @@ import {
   AI_DRAWING_MODEL_LABEL,
   type AiPageStoryFlowPanelHint,
   type AiPageStoryFlowResponse,
-  type AiStrokePath,
+  type AiSceneBlueprintResponse,
 } from "@/lib/ai-drawing-api";
+import { AI_STROKE_GROUP_LABELS } from "../lib/aiStrokeGeometry";
+import type { AiOverlayLayerView } from "./AiGhostStrokeOverlay";
+import { BlueprintPreview } from "./BlueprintPreview";
 
 type Props = {
   sceneType: SceneType;
@@ -81,14 +84,27 @@ type Props = {
   ghostId: string | null;
   ghostOpacity?: number;
   setGhostOpacity?: (v: number) => void;
-  ghostStrokes?: AiStrokePath[] | null;
-  setGhostStrokes?: (v: AiStrokePath[] | null) => void;
+  /** Các lớp AI đang hiện của khung mở (5C.1) — nét AI là vector, không nằm trong canvas */
+  aiStrokeLayers?: readonly AiOverlayLayerView[];
+  /** Tổng số nét AI đang hiện (chip 5C.4) */
+  aiStrokeCount?: number;
+  /** Xoá nét AI + lớp AI của khung đang mở (không đụng nét người dùng) */
+  clearPanelAiOverlay?: () => void;
   ghostStrokesSummary?: string | null;
   /** Thời điểm + nguồn của nét gợi ý đang hiện (AC-D2.2) */
   ghostAt?: number | null;
   ghostSourceIds?: string[];
   userDrawingPrompt?: string;
   setUserDrawingPrompt?: (v: string) => void;
+  // Bức tranh toàn cảnh (A-2 — 5B.5/5B.6)
+  blueprint?: AiSceneBlueprintResponse | null;
+  blueprintLoading?: boolean;
+  blueprintError?: string | null;
+  blueprintApplied?: boolean;
+  runSceneBlueprint?: () => void;
+  cancelSceneBlueprint?: () => void;
+  applyBlueprintToPanel?: () => void;
+  dismissBlueprint?: () => void;
   showGuideSection: boolean;
   setShowGuideSection: React.Dispatch<React.SetStateAction<boolean>>;
   toggleGuide: (g: GuideId) => void;
@@ -262,13 +278,22 @@ export function AiTab({
   ghostId,
   ghostOpacity,
   setGhostOpacity,
-  ghostStrokes,
-  setGhostStrokes,
+  aiStrokeLayers,
+  aiStrokeCount,
+  clearPanelAiOverlay,
   ghostStrokesSummary,
   ghostAt,
   ghostSourceIds,
   userDrawingPrompt,
   setUserDrawingPrompt,
+  blueprint,
+  blueprintLoading,
+  blueprintError,
+  blueprintApplied,
+  runSceneBlueprint,
+  cancelSceneBlueprint,
+  applyBlueprintToPanel,
+  dismissBlueprint,
   showGuideSection,
   setShowGuideSection,
   toggleGuide,
@@ -435,28 +460,109 @@ export function AiTab({
                 <span>Gợi ý Dáng vẽ</span>
               </button>
             </div>
+
+            {/* Bức tranh toàn cảnh (A-2 — 5B.5): blueprint vector + mô tả, không phải ảnh render (C3) */}
+            <button
+              onClick={
+                blueprintLoading
+                  ? cancelSceneBlueprint
+                  : runSceneBlueprint
+              }
+              disabled={
+                !activePanel ||
+                (blueprintLoading
+                  ? false
+                  : isWorking || !userDrawingPrompt?.trim())
+              }
+              className={`w-full py-2 px-3 rounded-xl font-semibold text-[11px] flex items-center justify-center gap-2 transition-all border ${
+                blueprintLoading
+                  ? "bg-indigo-500/20 border-indigo-400/40 text-indigo-100"
+                  : "bg-gradient-to-r from-indigo-500/25 to-purple-600/25 hover:from-indigo-500/35 hover:to-purple-600/35 border-indigo-400/30 text-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              }`}
+              title={
+                !userDrawingPrompt?.trim()
+                  ? "Hãy mô tả ý tưởng cho toàn cảnh ở ô bên trên trước"
+                  : "AI dựng toàn cảnh thành 5-6 lớp nội dung, xem trước rồi mới áp vào khung"
+              }
+            >
+              {blueprintLoading ? (
+                <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                  <RefreshCw size={12} />
+                </motion.div>
+              ) : (
+                <Mountain size={12} className="text-indigo-300" />
+              )}
+              <span>
+                {blueprintLoading
+                  ? "AI đang dựng toàn cảnh... (bấm để dừng)"
+                  : "AI Sinh Toàn Cảnh Từ Ý Tưởng"}
+              </span>
+            </button>
+
+            {blueprintError && (
+              <p className="text-red-300 text-[9px] leading-relaxed bg-red-500/10 border border-red-500/25 rounded-xl px-2 py-1.5">
+                {blueprintError}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* 3. Thẻ Trạng Thái Ghost Strokes (khi đang hiện nét mờ) */}
-        {ghostStrokes && ghostStrokes.length > 0 && (
+        {/* 2b. Xem trước bức tranh toàn cảnh (5B.5) — chỉ vào khung khi người dùng bấm áp */}
+        {blueprint && (
+          <BlueprintPreview
+            blueprint={blueprint}
+            applied={blueprintApplied === true}
+            onApply={() => applyBlueprintToPanel?.()}
+            onDismiss={() => dismissBlueprint?.()}
+            footer={<AiSourceLine at={ghostAt ?? null} sourceIds={ghostSourceIds} />}
+          />
+        )}
+
+        {/* 3. Thẻ Trạng Thái Nét AI (các lớp AI của khung đang mở — 5C.1/5C.4) */}
+        {aiStrokeLayers && aiStrokeLayers.length > 0 && (
           <div className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-3 space-y-2 shadow-lg shadow-purple-900/10">
             <div className="flex items-center justify-between">
               <span className="text-purple-200 text-xs font-semibold flex items-center gap-1.5">
                 <CheckCircle2 size={13} className="text-emerald-400" />
-                Đang hiển thị {ghostStrokes.length} nét gợi ý AI
+                Đang hiển thị {aiStrokeCount ?? 0} nét AI
+                <span className="text-purple-300/70 font-normal">
+                  (không nằm trong canvas của bạn)
+                </span>
               </span>
               <button
-                onClick={() => setGhostStrokes?.(null)}
-                className="text-white/50 hover:text-white text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15 transition-colors font-medium"
+                onClick={() => clearPanelAiOverlay?.()}
+                className="text-white/50 hover:text-white text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15 transition-colors font-medium flex-shrink-0"
+                title="Xoá toàn bộ nét AI của khung này (nét của bạn giữ nguyên)"
               >
                 Ẩn nét
               </button>
             </div>
 
+            {/* Danh sách lớp AI: nhóm nội dung + số nét (độ mờ/bật tắt ở tab Layers) */}
+            <div className="space-y-1">
+              {aiStrokeLayers.map((layer) => (
+                <div
+                  key={layer.id}
+                  className="flex items-center gap-2 bg-white/[0.03] border border-white/5 rounded-xl px-2 py-1"
+                >
+                  <span className="text-[9px] font-mono text-purple-300/90 w-[62px] flex-shrink-0">
+                    {layer.group
+                      ? (AI_STROKE_GROUP_LABELS[layer.group] ?? layer.group)
+                      : "Gợi ý"}
+                  </span>
+                  <span className="text-white/70 text-[10px] truncate flex-1">
+                    {layer.name}
+                  </span>
+                  <span className="text-white/40 text-[9px] font-mono flex-shrink-0">
+                    {layer.strokes.length} nét
+                  </span>
+                </div>
+              ))}
+            </div>
+
             {ghostStrokesSummary && (
               <p className="text-purple-100 text-[10px] leading-relaxed italic bg-black/30 p-2.5 rounded-xl border border-white/5">
-                "{ghostStrokesSummary}"
+                &ldquo;{ghostStrokesSummary}&rdquo;
               </p>
             )}
 

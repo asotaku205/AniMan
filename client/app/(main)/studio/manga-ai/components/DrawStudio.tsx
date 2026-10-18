@@ -110,6 +110,9 @@ export function DrawStudio({
           saveDraft={s.saveDraft}
           exportCurrentPanel={s.exportCurrentPanel}
           exportFullPage={s.exportFullPage}
+          aiStrokeCount={s.aiStrokeCount}
+          exportAiStrokes={s.exportAiStrokes}
+          setExportAiStrokes={s.setExportAiStrokes}
           clearCanvas={s.clearCanvas}
           panelFullscreen={s.panelFullscreen}
           setPanelFullscreen={s.setPanelFullscreen}
@@ -158,8 +161,12 @@ export function DrawStudio({
           ghostType={s.ghostType}
           ghostId={s.ghostId}
           ghostOpacity={s.ghostOpacity}
-          ghostStrokes={s.ghostStrokes}
-          setGhostStrokes={s.setGhostStrokes}
+          aiStrokeLayers={s.aiStrokeLayers}
+          aiOverlayAbove={s.aiOverlayAbove}
+          setAiOverlayAbove={s.setAiOverlayAbove}
+          clearPanelAiOverlay={s.clearPanelAiOverlay}
+          applyAiToActiveLayer={s.applyAiToActiveLayer}
+          canApplyAiToLayer={s.canApplyAiToLayer}
           ghostStrokesSummary={s.ghostStrokesSummary}
           drawingPlaceholder={s.drawingPlaceholder}
           setDrawingPlaceholder={s.setDrawingPlaceholder}

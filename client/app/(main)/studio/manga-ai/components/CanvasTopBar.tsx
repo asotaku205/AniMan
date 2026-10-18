@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Save,
   Check,
+  Sparkles,
   X,
 } from "lucide-react";
 import { GUIDE_CONFIG, GUIDE_DOT, TOOL_NAMES } from "../hooks/useDrawStudio";
@@ -34,6 +35,11 @@ type Props = {
   saveDraft?: () => void;
   exportCurrentPanel?: () => void;
   exportFullPage?: () => void;
+  /** Số nét AI đang hiện của khung — > 0 mới hiện tuỳ chọn xuất kèm nét AI (5C.5) */
+  aiStrokeCount?: number;
+  /** Xuất kèm nét AI (mặc định tắt — C2: ảnh xuất không có nét AI) */
+  exportAiStrokes?: boolean;
+  setExportAiStrokes?: (v: boolean) => void;
   panelFullscreen: boolean;
   setPanelFullscreen: React.Dispatch<React.SetStateAction<boolean>>;
   activeGuides: GuideId[];
@@ -60,6 +66,9 @@ export function CanvasTopBar({
   saveDraft,
   exportCurrentPanel,
   exportFullPage,
+  aiStrokeCount = 0,
+  exportAiStrokes = false,
+  setExportAiStrokes,
   panelFullscreen,
   setPanelFullscreen,
   activeGuides,
@@ -109,6 +118,27 @@ export function CanvasTopBar({
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:bg-white/5 hover:text-white transition-all"
               >
                 <Download size={13} />
+              </button>
+            )}
+
+            {/* 5C.5: mặc định ảnh xuất KHÔNG kèm nét AI (C2) — bật khi muốn đối chiếu */}
+            {setExportAiStrokes && aiStrokeCount > 0 && (
+              <button
+                onClick={() => setExportAiStrokes(!exportAiStrokes)}
+                aria-pressed={exportAiStrokes}
+                title={
+                  exportAiStrokes
+                    ? `Ảnh xuất đang kèm ${aiStrokeCount} nét AI — bấm để tắt (mặc định không kèm)`
+                    : `Xuất ảnh kèm ${aiStrokeCount} nét AI đang hiện (mặc định không kèm)`
+                }
+                className={`h-7 px-2 rounded-lg flex items-center gap-1 text-[10px] font-semibold transition-all ${
+                  exportAiStrokes
+                    ? "bg-purple-500/25 text-purple-100 ring-1 ring-purple-400/40"
+                    : "text-white/40 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <Sparkles size={11} />
+                <span>AI</span>
               </button>
             )}
 
