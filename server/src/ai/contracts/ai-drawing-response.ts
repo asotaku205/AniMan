@@ -132,6 +132,24 @@ export const AI_STROKE_BASE_KEYS = [
 const STROKE_FILL_NONE = "none";
 const STROKE_FILL_PATTERN = /^#[0-9a-f]{6}$/;
 
+// ─── Scene blueprint (Phase 5B) ───────────────────────────────────────────────
+/** Blueprint phải có tối thiểu 5 lớp nội dung (BR-A2.1/AC-A2.1). */
+export const MIN_AI_BLUEPRINT_LAYERS = 5;
+/** Mỗi nhóm nội dung chỉ được một lớp ⇒ trần bằng số nhóm. */
+export const MAX_AI_BLUEPRINT_LAYERS = AI_STROKE_GROUPS.length;
+/** Mỗi lớp phải có tối thiểu 3 nét để đọc ra hình. */
+export const MIN_AI_BLUEPRINT_LAYER_STROKES = 3;
+/**
+ * Trần nét một lớp = trần nét chung chia cho số lớp tối thiểu, để blueprint
+ * đông nét nhất vẫn còn đủ 5 lớp trong ngân sách `MAX_AI_GHOST_STROKES`.
+ */
+export const MAX_AI_BLUEPRINT_LAYER_STROKES = Math.floor(
+  MAX_AI_GHOST_STROKES / MIN_AI_BLUEPRINT_LAYERS,
+);
+export const MAX_AI_BLUEPRINT_TITLE_LENGTH = 80;
+export const MAX_AI_BLUEPRINT_DESCRIPTION_LENGTH = 180;
+export const MAX_AI_BLUEPRINT_CAMERA_LENGTH = 120;
+
 /**
  * Một nét vẽ gợi ý do AI sinh ra — được render dưới dạng SVG mờ,
  * không ghi vào canvas của người dùng.
@@ -173,6 +191,42 @@ export interface AiGhostStrokeResponse extends AiDrawingResponseBase {
   strokes: AiStrokePath[];
 }
 
+// ─── Scene blueprint response (A-2, Phase 5B) ────────────────────────────────
+
+/** Phần "bức tranh toàn cảnh bằng lời" — mô tả chứ không phải ảnh (C3). */
+export interface AiSceneBlueprintSpec {
+  /** Tiêu đề ngắn cho toàn cảnh */
+  title: string;
+  /** Mô tả bố cục: chủ thể ở đâu, đường dẫn mắt, khoảng trống */
+  composition: string;
+  /** Mô tả ánh sáng: nguồn, hướng, độ tương phản */
+  lighting: string;
+  /** Góc máy và tiêu cự gợi ý */
+  camera: string;
+}
+
+/**
+ * Một lớp nội dung của blueprint. `group` trùng với nhóm của nét AI nên thứ tự
+ * lớp cũng là thứ tự vẽ (nền trước, hiệu ứng sau).
+ */
+export interface AiBlueprintLayer {
+  group: AiStrokeGroup;
+  /** Tên lớp hiển thị, ví dụ "Bối cảnh — thành phố về đêm" */
+  name: string;
+  /** Mô tả nội dung lớp bằng tiếng Việt */
+  description: string;
+  strokes: AiStrokePath[];
+}
+
+export interface AiSceneBlueprintResponse extends AiDrawingResponseBase {
+  task: AiDrawingTask.SceneBlueprint;
+  blueprint: AiSceneBlueprintSpec;
+  /** 5-6 lớp, mỗi nhóm chỉ một lần */
+  layers: AiBlueprintLayer[];
+  /** Trải phẳng đúng bằng `layers[].strokes` (để renderer cũ dùng được) */
+  strokes: AiStrokePath[];
+}
+
 // ─── Page story flow response (D-1) ─────────────────────────────────────────
 
 export const MAX_AI_STORY_FLOW_PANELS = 12;
@@ -210,7 +264,8 @@ export type AiDrawingResponse =
   | AiCompositionGuidanceResponse
   | AiDrawingReviewResponse
   | AiGhostStrokeResponse
-  | AiPageStoryFlowResponse;
+  | AiPageStoryFlowResponse
+  | AiSceneBlueprintResponse;
 
 export class AiDrawingResponseValidationError extends Error {
   constructor(message: string) {
@@ -239,6 +294,8 @@ const RESPONSE_KEYS = new Set([
   "strokes",
   "flow",
   "panels",
+  "blueprint",
+  "layers",
 ]);
 
 const BASE_RESPONSE_KEYS = [
@@ -566,8 +623,7 @@ function validateNormalizedPoint(value: unknown, path: string): void {
   requireUnitCoordinate(value.y, `${path}.y`);
 }
 
-function validateStrokePath(value: unknown, index: number): void {
-  const path = `strokes[${index}]`;
+function validateStrokePath(value: unknown, path: string): void {
   if (!isRecord(value)) {
     throw new AiDrawingResponseValidationError(`${path} must be an object`);
   }
@@ -657,7 +713,9 @@ function validateStrokes(value: unknown): asserts value is AiStrokePath[] {
       `strokes must be an array of at most ${MAX_AI_GHOST_STROKES} items`,
     );
   }
-  value.forEach(validateStrokePath);
+  value.forEach((stroke, index) =>
+    validateStrokePath(stroke, `strokes[${index}]`),
+  );
 }
 
 const GHOST_STROKE_TASKS = new Set<AiDrawingTask>([
@@ -726,6 +784,111 @@ function validateStoryFlowPanels(
     );
   }
   value.forEach(validateStoryFlowPanelHint);
+}
+
+// ─── Scene blueprint validation (A-2) ───────────────────────────────────────
+
+function validateBlueprintSpec(
+  value: unknown,
+): asserts value is AiSceneBlueprintSpec {
+  if (!isRecord(value)) {
+    throw new AiDrawingResponseValidationError(
+      "blueprint must be an object",
+    );
+  }
+  requireExactKeys(
+    value,
+    ["title", "composition", "lighting", "camera"],
+    "blueprint",
+  );
+  requireString(value.title, "blueprint.title", MAX_AI_BLUEPRINT_TITLE_LENGTH);
+  requireString(
+    value.composition,
+    "blueprint.composition",
+    MAX_AI_BLUEPRINT_DESCRIPTION_LENGTH,
+  );
+  requireString(
+    value.lighting,
+    "blueprint.lighting",
+    MAX_AI_BLUEPRINT_DESCRIPTION_LENGTH,
+  );
+  requireString(
+    value.camera,
+    "blueprint.camera",
+    MAX_AI_BLUEPRINT_CAMERA_LENGTH,
+  );
+}
+
+function validateBlueprintLayer(
+  value: unknown,
+  index: number,
+): asserts value is AiBlueprintLayer {
+  const path = `layers[${index}]`;
+  if (!isRecord(value)) {
+    throw new AiDrawingResponseValidationError(`${path} must be an object`);
+  }
+  requireExactKeys(value, ["group", "name", "description", "strokes"], path);
+
+  if (
+    typeof value.group !== "string" ||
+    !STROKE_GROUPS.has(value.group as AiStrokeGroup)
+  ) {
+    throw new AiDrawingResponseValidationError(
+      `${path}.group is not one of the supported stroke groups`,
+    );
+  }
+  requireString(value.name, `${path}.name`, MAX_AI_BLUEPRINT_TITLE_LENGTH);
+  requireString(
+    value.description,
+    `${path}.description`,
+    MAX_AI_BLUEPRINT_DESCRIPTION_LENGTH,
+  );
+
+  const layerGroup = value.group as AiStrokeGroup;
+  const strokes = value.strokes;
+  if (
+    !Array.isArray(strokes) ||
+    strokes.length < MIN_AI_BLUEPRINT_LAYER_STROKES ||
+    strokes.length > MAX_AI_BLUEPRINT_LAYER_STROKES
+  ) {
+    throw new AiDrawingResponseValidationError(
+      `${path}.strokes must contain between ${MIN_AI_BLUEPRINT_LAYER_STROKES} and ${MAX_AI_BLUEPRINT_LAYER_STROKES} items`,
+    );
+  }
+  strokes.forEach((stroke, strokeIndex) => {
+    validateStrokePath(stroke, `${path}.strokes[${strokeIndex}]`);
+    // Nét phải nằm đúng lớp của nó, nếu không thứ tự vẽ theo lớp sẽ nói dối.
+    if ((stroke as AiStrokePath).group !== layerGroup) {
+      throw new AiDrawingResponseValidationError(
+        `${path}.strokes[${strokeIndex}].group must match the layer group`,
+      );
+    }
+  });
+}
+
+function validateBlueprintLayers(
+  value: unknown,
+): asserts value is AiBlueprintLayer[] {
+  if (
+    !Array.isArray(value) ||
+    value.length < MIN_AI_BLUEPRINT_LAYERS ||
+    value.length > MAX_AI_BLUEPRINT_LAYERS
+  ) {
+    throw new AiDrawingResponseValidationError(
+      `layers must contain between ${MIN_AI_BLUEPRINT_LAYERS} and ${MAX_AI_BLUEPRINT_LAYERS} items`,
+    );
+  }
+
+  const seenGroups = new Set<string>();
+  value.forEach((layer, index) => {
+    validateBlueprintLayer(layer, index);
+    if (seenGroups.has(layer.group)) {
+      throw new AiDrawingResponseValidationError(
+        `layers[${index}].group is duplicated`,
+      );
+    }
+    seenGroups.add(layer.group);
+  });
 }
 
 export function parseAiDrawingResponse(
@@ -814,6 +977,49 @@ export function parseAiDrawingResponse(
       sourceIds,
       flow,
       panels,
+    };
+  }
+
+  if (expectedTask === AiDrawingTask.SceneBlueprint) {
+    requireExactKeys(
+      value,
+      [...BASE_RESPONSE_KEYS, "blueprint", "layers", "strokes"],
+      "response",
+    );
+    const blueprint = value.blueprint;
+    validateBlueprintSpec(blueprint);
+    const layers = value.layers;
+    validateBlueprintLayers(layers);
+    const strokes = value.strokes;
+    validateStrokes(strokes);
+
+    // `strokes` là bản trải phẳng của `layers[].strokes`; lệch nhau nghĩa là model
+    // trả hai nguồn sự thật khác nhau nên không thể tin bên nào.
+    const flattened = layers.flatMap((layer) => layer.strokes);
+    if (flattened.length !== strokes.length) {
+      throw new AiDrawingResponseValidationError(
+        "strokes must flatten every layer stroke",
+      );
+    }
+    if (JSON.stringify(flattened) !== JSON.stringify(strokes)) {
+      throw new AiDrawingResponseValidationError(
+        "strokes must match the layer strokes exactly",
+      );
+    }
+    if (flattened.length > MAX_AI_GHOST_STROKES) {
+      throw new AiDrawingResponseValidationError(
+        `strokes must be an array of at most ${MAX_AI_GHOST_STROKES} items`,
+      );
+    }
+
+    return {
+      schemaVersion: AI_DRAWING_RESPONSE_SCHEMA_VERSION,
+      task: AiDrawingTask.SceneBlueprint,
+      summary,
+      sourceIds,
+      blueprint,
+      layers,
+      strokes,
     };
   }
 

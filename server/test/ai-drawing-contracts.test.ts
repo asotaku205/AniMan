@@ -650,3 +650,202 @@ describe("AI page story flow response contract (D-1)", () => {
     ).toThrow(AiDrawingResponseValidationError);
   });
 });
+
+// ─── Scene blueprint (A-2, Phase 5B) ────────────────────────────────────────
+
+const BLUEPRINT_GROUPS = [
+  "background",
+  "midground",
+  "subject",
+  "effects",
+  "guide",
+] as const;
+
+function blueprintStroke(
+  group: string,
+  opacity = 0.5,
+): Record<string, unknown> {
+  return {
+    kind: "path",
+    points: [
+      { x: 0.1, y: 0.2 },
+      { x: 0.2, y: 0.3 },
+    ],
+    style: "composition",
+    group,
+    label: "nét gợi ý",
+    opacity,
+    strokeWidth: 0.005,
+  };
+}
+
+function validBlueprintResponse(): Record<string, unknown> {
+  const layers = BLUEPRINT_GROUPS.map((group, index) => ({
+    group,
+    name: `Lớp ${index + 1}`,
+    description: `Mô tả lớp ${index + 1}`,
+    strokes: [
+      blueprintStroke(group),
+      blueprintStroke(group),
+      blueprintStroke(group),
+    ],
+  }));
+
+  return {
+    schemaVersion: "1",
+    task: AiDrawingTask.SceneBlueprint,
+    summary: "Toàn cảnh sân thượng thành phố về đêm.",
+    sourceIds: [],
+    blueprint: {
+      title: "Sân thượng về đêm",
+      composition: "Chủ thể lệch phải, dẫn mắt theo dãy đèn ra chân trời.",
+      lighting: "Sáng chính từ bảng hiệu bên trái, tương phản mạnh tiền cảnh.",
+      camera: "Góc thấp, tiêu cự 35mm.",
+    },
+    layers,
+    strokes: layers.flatMap((layer) => layer.strokes),
+  };
+}
+
+describe("AI scene blueprint response contract (A-2)", () => {
+  it("accepts a valid blueprint with five layers in draw order", () => {
+    const parsed = parseAiDrawingResponse(
+      validBlueprintResponse(),
+      AiDrawingTask.SceneBlueprint,
+      new Set(),
+    );
+
+    expect(parsed.task).toBe(AiDrawingTask.SceneBlueprint);
+    const blueprint = parsed as {
+      layers: Array<{ group: string; strokes: unknown[] }>;
+      strokes: unknown[];
+      blueprint: { title: string };
+    };
+    expect(blueprint.layers).toHaveLength(5);
+    expect(blueprint.layers[0].group).toBe("background");
+    expect(blueprint.layers[4].group).toBe("guide");
+    expect(blueprint.strokes).toHaveLength(15);
+    expect(blueprint.blueprint.title).toBe("Sân thượng về đêm");
+  });
+
+  it("rejects a blueprint with fewer than five layers", () => {
+    const response = validBlueprintResponse() as {
+      layers: unknown[];
+      strokes: unknown[];
+    };
+    response.layers = response.layers.slice(0, 4);
+    response.strokes = (response.layers as Array<{ strokes: unknown[] }>)
+      .flatMap((layer) => layer.strokes);
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.SceneBlueprint, new Set()),
+    ).toThrow(/layers/);
+  });
+
+  it("rejects a blueprint that repeats a group", () => {
+    const response = validBlueprintResponse();
+    const layers = response.layers as Array<Record<string, unknown>>;
+    layers[4] = {
+      ...layers[4],
+      group: "midground",
+      strokes: [
+        blueprintStroke("midground"),
+        blueprintStroke("midground"),
+        blueprintStroke("midground"),
+      ],
+    };
+    response.strokes = layers.flatMap((layer) => layer.strokes as unknown[]);
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.SceneBlueprint, new Set()),
+    ).toThrow(/duplicated/);
+  });
+
+  it("rejects a layer too thin to read as a shape", () => {
+    const response = validBlueprintResponse();
+    const layers = response.layers as Array<Record<string, unknown>>;
+    layers[2] = { ...layers[2], strokes: [blueprintStroke("subject")] };
+    response.strokes = layers.flatMap(
+      (layer) => layer.strokes as unknown[],
+    );
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.SceneBlueprint, new Set()),
+    ).toThrow(/strokes/);
+  });
+
+  it("rejects a stroke that sits in the wrong layer", () => {
+    const response = validBlueprintResponse();
+    const layers = response.layers as Array<Record<string, unknown>>;
+    const subjectLayer = layers[2];
+    subjectLayer.strokes = [
+      blueprintStroke("subject"),
+      blueprintStroke("subject"),
+      blueprintStroke("guide"),
+    ];
+    response.strokes = layers.flatMap((layer) => layer.strokes as unknown[]);
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.SceneBlueprint, new Set()),
+    ).toThrow(/match the layer group/);
+  });
+
+  it("rejects a stroke list that does not flatten the layers", () => {
+    const response = validBlueprintResponse();
+    response.strokes = [
+      ...(response.strokes as unknown[]),
+      blueprintStroke("subject"),
+    ];
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.SceneBlueprint, new Set()),
+    ).toThrow(/flatten/);
+  });
+
+  it("rejects a blueprint whose stroke list describes different strokes", () => {
+    const response = validBlueprintResponse();
+    const strokes = response.strokes as Array<Record<string, unknown>>;
+    response.strokes = [...strokes.slice(0, -1), blueprintStroke("guide", 0.9)];
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.SceneBlueprint, new Set()),
+    ).toThrow(/exactly/);
+  });
+
+  it("rejects a blueprint that omits one of the four descriptions", () => {
+    const response = validBlueprintResponse();
+    const blueprint = response.blueprint as Record<string, unknown>;
+    delete blueprint.lighting;
+
+    expect(() =>
+      parseAiDrawingResponse(response, AiDrawingTask.SceneBlueprint, new Set()),
+    ).toThrow(/lighting/);
+  });
+
+  it("accepts an optional detail layer as the sixth layer", () => {
+    const response = validBlueprintResponse();
+    const layers = response.layers as Array<Record<string, unknown>>;
+    const detail = {
+      group: "detail",
+      name: "Chi tiết",
+      description: "Mảng tối và hoạ tiết trên tường gạch.",
+      strokes: [
+        blueprintStroke("detail"),
+        blueprintStroke("detail"),
+        blueprintStroke("detail"),
+      ],
+    };
+    response.layers = [...layers, detail];
+    response.strokes = (response.layers as Array<{ strokes: unknown[] }>)
+      .flatMap((layer) => layer.strokes);
+
+    const parsed = parseAiDrawingResponse(
+      response,
+      AiDrawingTask.SceneBlueprint,
+      new Set(),
+    ) as { layers: Array<{ group: string }> };
+
+    expect(parsed.layers).toHaveLength(6);
+    expect(parsed.layers[5].group).toBe("detail");
+  });
+});

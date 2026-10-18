@@ -19,6 +19,7 @@ export enum AiDrawingTask {
   CompositionOverlay = "composition_overlay",
   PoseGuidance = "pose_guidance",
   PageStoryFlow = "page_story_flow",
+  SceneBlueprint = "scene_blueprint",
 }
 
 /**

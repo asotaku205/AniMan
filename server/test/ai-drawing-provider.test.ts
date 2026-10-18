@@ -7,6 +7,7 @@ import { AiDrawingTask } from "../src/ai/contracts/ai-drawing-request.dto.js";
 import {
   AI_STROKE_OPACITY_MAX,
   AI_STROKE_OPACITY_MIN,
+  MAX_AI_BLUEPRINT_LAYERS,
   MAX_AI_GHOST_STROKES,
   MAX_AI_STROKE_LABEL_LENGTH,
   MAX_AI_STROKE_POINTS,
@@ -278,5 +279,181 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
     ) as Record<string, unknown>;
 
     expect(normalized.strokes).toEqual([{ kind: "line", style: "flow" }]);
+  });
+});
+
+// ─── Scene blueprint (Phase 5B) ─────────────────────────────────────────────
+
+const BLUEPRINT_ORDER = [
+  "background",
+  "midground",
+  "subject",
+  "effects",
+  "guide",
+] as const;
+
+function rawStroke(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: "line",
+    from: { x: 0.1, y: 0.1 },
+    to: { x: 0.8, y: 0.9 },
+    style: "flow",
+    opacity: 0.5,
+    strokeWidth: 0.005,
+    ...overrides,
+  };
+}
+
+function rawLayer(group: unknown, strokeCount = 3, extra: Record<string, unknown> = {}) {
+  return {
+    group,
+    name: `Lớp ${String(group)}`,
+    description: `Mô tả lớp ${String(group)}`,
+    strokes: Array.from({ length: strokeCount }, () => rawStroke()),
+    ...extra,
+  };
+}
+
+function blueprintResponse(layers: unknown[]): Record<string, unknown> {
+  return {
+    schemaVersion: "1",
+    task: AiDrawingTask.SceneBlueprint,
+    summary: "Toàn cảnh.",
+    sourceIds: [],
+    blueprint: {
+      title: "  Toàn cảnh   thành phố  ",
+      composition: "Chủ thể lệch phải.",
+      lighting: "Sáng từ trái.",
+      camera: "Góc thấp, 35mm.",
+    },
+    layers,
+    strokes: [],
+  };
+}
+
+describe("normalizeGeminiOutput — blueprint toàn cảnh (Phase 5B)", () => {
+  it("buộc nét mang group của lớp và dựng lại strokes từ layers", () => {
+    const normalized = normalizeGeminiOutput(
+      blueprintResponse(BLUEPRINT_ORDER.map((group) => rawLayer(group))),
+      providerRequest(AiDrawingTask.SceneBlueprint),
+    ) as Record<string, unknown>;
+
+    const layers = normalized.layers as Array<{
+      group: string;
+      strokes: Array<Record<string, unknown>>;
+    }>;
+    expect(layers).toHaveLength(5);
+    expect(layers.map((layer) => layer.group)).toEqual([...BLUEPRINT_ORDER]);
+    for (const layer of layers) {
+      expect(layer.strokes).toHaveLength(3);
+      // Nét model không khai group vẫn phải nằm đúng lớp của nó.
+      for (const stroke of layer.strokes) {
+        expect(stroke.group).toBe(layer.group);
+      }
+    }
+
+    const strokes = normalized.strokes as unknown[];
+    expect(strokes).toHaveLength(15);
+    expect((normalized.blueprint as Record<string, unknown>).title).toBe(
+      "Toàn cảnh thành phố",
+    );
+
+    // Kết quả chuẩn hoá phải qua được parser chặt.
+    expect(() =>
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.SceneBlueprint,
+        new Set(),
+      ),
+    ).not.toThrow();
+  });
+
+  it("bỏ lớp sai nhóm, lớp trùng nhóm và lớp quá thưa nét", () => {
+    const normalized = normalizeGeminiOutput(
+      blueprintResponse([
+        rawLayer("background"),
+        rawLayer("background"),
+        rawLayer("skyline"),
+        rawLayer("midground", 2),
+        rawLayer("subject"),
+        rawLayer("effects"),
+        rawLayer("guide"),
+      ]),
+      providerRequest(AiDrawingTask.SceneBlueprint),
+    ) as Record<string, unknown>;
+
+    const layers = normalized.layers as Array<{ group: string }>;
+    expect(layers.map((layer) => layer.group)).toEqual([
+      "background",
+      "subject",
+      "effects",
+      "guide",
+    ]);
+    expect(normalized.strokes).toHaveLength(12);
+  });
+
+  it("không bịa tên/mô tả: lớp thiếu mô tả bị bỏ khỏi blueprint", () => {
+    const layers = BLUEPRINT_ORDER.map((group) => rawLayer(group));
+    layers[3] = rawLayer("effects", 3, { description: "   " });
+
+    const normalized = normalizeGeminiOutput(
+      blueprintResponse(layers),
+      providerRequest(AiDrawingTask.SceneBlueprint),
+    ) as Record<string, unknown>;
+
+    const normalizedLayers = normalized.layers as Array<{ group: string }>;
+    expect(normalizedLayers.map((layer) => layer.group)).not.toContain(
+      "effects",
+    );
+  });
+
+  it("chia ngân sách nét để blueprint đông nét vẫn đủ 5 lớp", () => {
+    const normalized = normalizeGeminiOutput(
+      blueprintResponse(BLUEPRINT_ORDER.map((group) => rawLayer(group, 40))),
+      providerRequest(AiDrawingTask.SceneBlueprint),
+    ) as Record<string, unknown>;
+
+    const layers = normalized.layers as Array<{ strokes: unknown[] }>;
+    expect(layers).toHaveLength(MAX_AI_BLUEPRINT_LAYERS - 1);
+    expect(normalized.strokes).toHaveLength(MAX_AI_GHOST_STROKES);
+
+    expect(() =>
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.SceneBlueprint,
+        new Set(),
+      ),
+    ).not.toThrow();
+  });
+
+  it("bỏ blueprint khi model không trả đủ bốn mô tả", () => {
+    const response = blueprintResponse(
+      BLUEPRINT_ORDER.map((group) => rawLayer(group)),
+    );
+    delete (response.blueprint as Record<string, unknown>).lighting;
+
+    const normalized = normalizeGeminiOutput(
+      response,
+      providerRequest(AiDrawingTask.SceneBlueprint),
+    ) as Record<string, unknown>;
+
+    expect(normalized.blueprint).toBeUndefined();
+    expect(() =>
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.SceneBlueprint,
+        new Set(),
+      ),
+    ).toThrow();
+  });
+
+  it("bỏ layers khi không lớp nào dùng được thay vì trả blueprint rỗng", () => {
+    const normalized = normalizeGeminiOutput(
+      blueprintResponse([rawLayer("skyline"), rawLayer("background", 1)]),
+      providerRequest(AiDrawingTask.SceneBlueprint),
+    ) as Record<string, unknown>;
+
+    expect(normalized.layers).toBeUndefined();
+    expect(normalized.strokes).toBeUndefined();
   });
 });

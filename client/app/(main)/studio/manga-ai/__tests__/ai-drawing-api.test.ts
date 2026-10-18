@@ -4,10 +4,15 @@ import {
   AI_PANEL_CAMERAS,
   AI_STROKE_GROUPS,
   MAX_STORY_FLOW_PANELS,
+  MIN_BLUEPRINT_LAYERS,
   isPageStoryFlowResponse,
+  isSceneBlueprintResponse,
   selectStoryFlowPanelsForLayout,
+  type AiBlueprintLayer,
   type AiPageStoryFlowPanelHint,
   type AiPageStoryFlowResponse,
+  type AiSceneBlueprintResponse,
+  type AiStrokeGroup,
   type AiStrokePath,
 } from "@/lib/ai-drawing-api";
 
@@ -186,5 +191,89 @@ describe("Nét AI v2 phía client (Phase 5A)", () => {
     expect(stroke.group).toBe("effects");
     expect(stroke.label).toContain("bóng đổ");
     expect(stroke.closed).toBe(true);
+  });
+});
+
+describe("Hợp đồng scene_blueprint phía client (Phase 5B)", () => {
+  function stroke(group: AiStrokeGroup): AiStrokePath {
+    return {
+      kind: "line",
+      from: { x: 0.1, y: 0.1 },
+      to: { x: 0.8, y: 0.8 },
+      style: "composition",
+      group,
+      label: "nét",
+      opacity: 0.5,
+      strokeWidth: 0.005,
+    };
+  }
+
+  function blueprintResponse(): AiSceneBlueprintResponse {
+    const layers: AiBlueprintLayer[] = (
+      ["background", "midground", "subject", "effects", "guide"] as const
+    ).map((group, index) => ({
+      group,
+      name: `Lớp ${index + 1}`,
+      description: `Mô tả ${index + 1}`,
+      strokes: [stroke(group), stroke(group), stroke(group)],
+    }));
+
+    return {
+      schemaVersion: "1",
+      task: "scene_blueprint",
+      summary: "Toàn cảnh.",
+      sourceIds: [],
+      blueprint: {
+        title: "Toàn cảnh",
+        composition: "Chủ thể lệch phải.",
+        lighting: "Sáng từ trái.",
+        camera: "Góc thấp.",
+      },
+      layers,
+      strokes: layers.flatMap((layer) => layer.strokes),
+    };
+  }
+
+  function asRaw(response: AiSceneBlueprintResponse): Record<string, unknown> {
+    return response as unknown as Record<string, unknown>;
+  }
+
+  it("nhận phản hồi toàn cảnh hợp lệ", () => {
+    const response = blueprintResponse();
+    expect(isSceneBlueprintResponse(response)).toBe(true);
+    expect(response.layers).toHaveLength(MIN_BLUEPRINT_LAYERS);
+    expect(response.strokes).toHaveLength(15);
+  });
+
+  it("loại blueprint thiếu mô tả toàn cảnh", () => {
+    const response = asRaw(blueprintResponse());
+    response.blueprint = { title: "Thiếu" };
+    expect(isSceneBlueprintResponse(response)).toBe(false);
+  });
+
+  it("loại blueprint dưới năm lớp", () => {
+    const response = asRaw(blueprintResponse());
+    const layers = response.layers as unknown[];
+    response.layers = layers.slice(0, MIN_BLUEPRINT_LAYERS - 1);
+    expect(isSceneBlueprintResponse(response)).toBe(false);
+  });
+
+  it("loại lớp mang nhóm nội dung ngoài hợp đồng", () => {
+    const response = asRaw(blueprintResponse());
+    const layers = response.layers as Array<Record<string, unknown>>;
+    layers[2] = { ...layers[2], group: "skyline" };
+    expect(isSceneBlueprintResponse(response)).toBe(false);
+  });
+
+  it("loại khi strokes không trải phẳng đúng bằng layers", () => {
+    const response = asRaw(blueprintResponse());
+    response.strokes = (response.strokes as unknown[]).slice(0, -1);
+    expect(isSceneBlueprintResponse(response)).toBe(false);
+  });
+
+  it("loại task khác dù cấu trúc giống", () => {
+    const response = asRaw(blueprintResponse());
+    response.task = "stroke_guidance";
+    expect(isSceneBlueprintResponse(response)).toBe(false);
   });
 });

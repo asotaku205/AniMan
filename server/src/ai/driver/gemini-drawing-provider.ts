@@ -13,12 +13,18 @@ import {
   AI_STROKE_OPACITY_MIN,
   AI_STROKE_WIDTH_MAX,
   AI_STROKE_WIDTH_MIN,
+  MAX_AI_BLUEPRINT_CAMERA_LENGTH,
+  MAX_AI_BLUEPRINT_DESCRIPTION_LENGTH,
+  MAX_AI_BLUEPRINT_LAYERS,
+  MAX_AI_BLUEPRINT_LAYER_STROKES,
+  MAX_AI_BLUEPRINT_TITLE_LENGTH,
   MAX_AI_FLOW_LENGTH,
   MAX_AI_GHOST_STROKES,
   MAX_AI_PANEL_HINT_LENGTH,
   MAX_AI_STORY_FLOW_PANELS,
   MAX_AI_STROKE_LABEL_LENGTH,
   MAX_AI_STROKE_POINTS,
+  MIN_AI_BLUEPRINT_LAYER_STROKES,
   isValidStoryFlowPanelId,
 } from "../contracts/ai-drawing-response.js";
 
@@ -168,6 +174,13 @@ const ALLOWED_PRINCIPLES = new Set([
 
 const ALLOWED_STROKE_GROUPS = new Set<string>(AI_STROKE_GROUPS);
 
+/** Ba task trả về một mảng nét phẳng (không chia lớp). */
+const GHOST_STROKE_TASKS = new Set<string>([
+  "stroke_guidance",
+  "composition_overlay",
+  "pose_guidance",
+]);
+
 const STROKE_FILL_PATTERN = /^#[0-9a-f]{6}$/;
 
 /** Độ mờ mặc định cho nét AI khi model không khai (AC-A1.3: 0.55). */
@@ -193,6 +206,247 @@ function normalizeStrokeFill(value: unknown): string | undefined {
   const text = value.trim().toLowerCase();
   if (text === "none") return "none";
   return STROKE_FILL_PATTERN.test(text) ? text : undefined;
+}
+
+/**
+ * Chuẩn hoá một mảng nét thô: suy `kind` khi model bỏ trống, kẹp toạ độ và các
+ * tham số về giới hạn hợp đồng, điền `group`/`label`. Mỗi nét được **dựng lại**
+ * từ danh sách trường hợp lệ nên trường lạ (vd `color`) không lọt qua parser.
+ */
+function normalizeStrokes(
+  rawStrokesValue: unknown,
+  limit: number,
+): Array<Record<string, unknown>> {
+  const rawStrokes = Array.isArray(rawStrokesValue) ? rawStrokesValue : [];
+  const normalizedStrokes: Array<Record<string, unknown>> = [];
+
+  for (const stroke of rawStrokes) {
+    if (typeof stroke !== "object" || stroke === null) continue;
+    if (normalizedStrokes.length >= limit) break;
+
+    const s = stroke as Record<string, unknown>;
+    let kind = s.kind;
+    if (
+      kind !== "path" &&
+      kind !== "line" &&
+      kind !== "ellipse" &&
+      kind !== "rectangle"
+    ) {
+      if (Array.isArray(s.points) && s.points.length > 0) kind = "path";
+      else if (s.from && s.to) kind = "line";
+      else if (s.region) kind = "ellipse";
+      else kind = "path";
+    }
+
+    const style = ALLOWED_PRINCIPLES.has(s.style as string)
+      ? (s.style as string)
+      : "flow";
+    const group = ALLOWED_STROKE_GROUPS.has(s.group as string)
+      ? (s.group as string)
+      : "detail";
+    const label = normalizeStrokeLabel(s.label);
+    const opacity = clamp(
+      s.opacity,
+      AI_STROKE_OPACITY_MIN,
+      AI_STROKE_OPACITY_MAX,
+      DEFAULT_AI_STROKE_OPACITY,
+    );
+    const strokeWidth = clamp(
+      s.strokeWidth,
+      AI_STROKE_WIDTH_MIN,
+      AI_STROKE_WIDTH_MAX,
+      0.005,
+    );
+    const dashed = typeof s.dashed === "boolean" ? s.dashed : undefined;
+    const fill = normalizeStrokeFill(s.fill);
+    // Màu tô chỉ có nghĩa với hình khép kín: model quên `closed` thì tự khép.
+    const closed =
+      typeof s.closed === "boolean"
+        ? s.closed
+        : fill !== undefined && fill !== "none"
+          ? true
+          : undefined;
+
+    if (kind === "path") {
+      const rawPoints = Array.isArray(s.points) ? s.points : [];
+      const points: Array<{ x: number; y: number }> = [];
+      for (const pt of rawPoints) {
+        if (typeof pt !== "object" || pt === null) continue;
+        if (points.length >= MAX_AI_STROKE_POINTS) break;
+        const p = pt as Record<string, unknown>;
+        points.push({
+          x: clamp(p.x, 0, 1, 0.5),
+          y: clamp(p.y, 0, 1, 0.5),
+        });
+      }
+      if (points.length === 0) continue;
+      normalizedStrokes.push({
+        kind: "path",
+        points,
+        style,
+        group,
+        label,
+        opacity,
+        strokeWidth,
+        ...(dashed !== undefined ? { dashed } : {}),
+        ...(closed !== undefined ? { closed } : {}),
+        ...(fill !== undefined ? { fill } : {}),
+      });
+    } else if (kind === "line") {
+      if (
+        !s.from ||
+        !s.to ||
+        typeof s.from !== "object" ||
+        typeof s.to !== "object"
+      )
+        continue;
+      const fromRaw = s.from as Record<string, unknown>;
+      const toRaw = s.to as Record<string, unknown>;
+      normalizedStrokes.push({
+        kind: "line",
+        from: {
+          x: clamp(fromRaw.x, 0, 1, 0.1),
+          y: clamp(fromRaw.y, 0, 1, 0.1),
+        },
+        to: {
+          x: clamp(toRaw.x, 0, 1, 0.9),
+          y: clamp(toRaw.y, 0, 1, 0.9),
+        },
+        style,
+        group,
+        label,
+        opacity,
+        strokeWidth,
+        ...(dashed !== undefined ? { dashed } : {}),
+      });
+    } else {
+      if (!s.region || typeof s.region !== "object") continue;
+      const r = s.region as Record<string, unknown>;
+      const x = clamp(r.x, 0, 0.98, 0.1);
+      const y = clamp(r.y, 0, 0.98, 0.1);
+      const width = clamp(r.width, 0.01, 1 - x, 0.2);
+      const height = clamp(r.height, 0.01, 1 - y, 0.2);
+      normalizedStrokes.push({
+        kind: kind as "ellipse" | "rectangle",
+        region: { x, y, width, height },
+        style,
+        group,
+        label,
+        opacity,
+        strokeWidth,
+        ...(dashed !== undefined ? { dashed } : {}),
+        ...(fill !== undefined ? { fill } : {}),
+      });
+    }
+  }
+
+  return normalizedStrokes;
+}
+
+/**
+ * Chuỗi mô tả của blueprint: gộp khoảng trắng, cắt theo giới hạn hợp đồng.
+ * Trả `null` khi model không trả về gì dùng được — **không bịa** mô tả.
+ */
+function normalizeBlueprintText(
+  value: unknown,
+  maxLength: number,
+): string | null {
+  if (typeof value !== "string") return null;
+  const single = value.replace(/\s+/g, " ").trim();
+  if (single.length === 0) return null;
+  if (single.length <= maxLength) return single;
+  return `${single.slice(0, maxLength - 3)}...`;
+}
+
+/**
+ * Bốn mô tả của "bức tranh toàn cảnh bằng lời". Thiếu bất kỳ phần nào thì trả
+ * `null` để parser chặn (502) thay vì tự chế một mô tả trông như dữ liệu thật.
+ */
+function normalizeBlueprintSpec(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const title = normalizeBlueprintText(
+    raw.title,
+    MAX_AI_BLUEPRINT_TITLE_LENGTH,
+  );
+  const composition = normalizeBlueprintText(
+    raw.composition,
+    MAX_AI_BLUEPRINT_DESCRIPTION_LENGTH,
+  );
+  const lighting = normalizeBlueprintText(
+    raw.lighting,
+    MAX_AI_BLUEPRINT_DESCRIPTION_LENGTH,
+  );
+  const camera = normalizeBlueprintText(
+    raw.camera,
+    MAX_AI_BLUEPRINT_CAMERA_LENGTH,
+  );
+  if (
+    title === null ||
+    composition === null ||
+    lighting === null ||
+    camera === null
+  ) {
+    return null;
+  }
+  return { title, composition, lighting, camera };
+}
+
+/**
+ * Các lớp của blueprint theo đúng thứ tự vẽ (nền trước, hiệu ứng sau): bỏ lớp
+ * sai nhóm hoặc trùng nhóm, bỏ lớp thưa hơn `MIN_AI_BLUEPRINT_LAYER_STROKES` nét,
+ * và chia dần ngân sách `MAX_AI_GHOST_STROKES` cho các lớp phía sau.
+ */
+function normalizeBlueprintLayers(
+  value: unknown,
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  const layers: Array<Record<string, unknown>> = [];
+  const seenGroups = new Set<string>();
+  let strokeBudget = MAX_AI_GHOST_STROKES;
+
+  for (const rawLayer of value) {
+    if (layers.length >= MAX_AI_BLUEPRINT_LAYERS) break;
+    if (typeof rawLayer !== "object" || rawLayer === null) continue;
+    const layer = rawLayer as Record<string, unknown>;
+    const group = layer.group;
+    if (
+      typeof group !== "string" ||
+      !ALLOWED_STROKE_GROUPS.has(group) ||
+      seenGroups.has(group)
+    ) {
+      continue;
+    }
+
+    const name = normalizeBlueprintText(
+      layer.name,
+      MAX_AI_BLUEPRINT_TITLE_LENGTH,
+    );
+    const description = normalizeBlueprintText(
+      layer.description,
+      MAX_AI_BLUEPRINT_DESCRIPTION_LENGTH,
+    );
+    if (name === null || description === null) continue;
+
+    const strokes = normalizeStrokes(
+      layer.strokes,
+      Math.min(MAX_AI_BLUEPRINT_LAYER_STROKES, strokeBudget),
+    );
+    if (strokes.length < MIN_AI_BLUEPRINT_LAYER_STROKES) continue;
+
+    // Nét thuộc lớp nào thì mang group của lớp đó — hợp đồng bắt buộc hai bên khớp.
+    for (const stroke of strokes) stroke.group = group;
+
+    layers.push({ group, name, description, strokes });
+    seenGroups.add(group);
+    strokeBudget -= strokes.length;
+  }
+
+  return layers;
 }
 
 /**
@@ -230,136 +484,32 @@ export function normalizeGeminiOutput(
     obj.sourceIds = [];
   }
 
-  // Normalize ghost strokes
-  if (
-    request.task === "stroke_guidance" ||
-    request.task === "composition_overlay" ||
-    request.task === "pose_guidance"
-  ) {
-    const rawStrokes = Array.isArray(obj.strokes) ? obj.strokes : [];
-    const normalizedStrokes: Array<Record<string, unknown>> = [];
+  // ── Task nét đơn lẻ: chuẩn hoá thẳng mảng `strokes` ────────────────────────
+  if (GHOST_STROKE_TASKS.has(request.task)) {
+    obj.strokes = normalizeStrokes(obj.strokes, MAX_AI_GHOST_STROKES);
+    delete obj.recommendations;
+    delete obj.findings;
+  }
 
-    for (const stroke of rawStrokes) {
-      if (typeof stroke !== "object" || stroke === null) continue;
-      if (normalizedStrokes.length >= MAX_AI_GHOST_STROKES) break;
-
-      const s = stroke as Record<string, unknown>;
-      let kind = s.kind;
-      if (
-        kind !== "path" &&
-        kind !== "line" &&
-        kind !== "ellipse" &&
-        kind !== "rectangle"
-      ) {
-        if (Array.isArray(s.points) && s.points.length > 0) kind = "path";
-        else if (s.from && s.to) kind = "line";
-        else if (s.region) kind = "ellipse";
-        else kind = "path";
-      }
-
-      const style = ALLOWED_PRINCIPLES.has(s.style as string)
-        ? (s.style as string)
-        : "flow";
-      const group = ALLOWED_STROKE_GROUPS.has(s.group as string)
-        ? (s.group as string)
-        : "detail";
-      const label = normalizeStrokeLabel(s.label);
-      const opacity = clamp(
-        s.opacity,
-        AI_STROKE_OPACITY_MIN,
-        AI_STROKE_OPACITY_MAX,
-        DEFAULT_AI_STROKE_OPACITY,
+  // ── Blueprint toàn cảnh: chuẩn hoá theo từng lớp rồi trải phẳng ────────────
+  // `strokes` luôn được **dựng lại** từ `layers` nên hai trường không thể lệch nhau.
+  if (request.task === AiDrawingTask.SceneBlueprint) {
+    const normalizedLayers = normalizeBlueprintLayers(obj.layers);
+    const blueprint = normalizeBlueprintSpec(obj.blueprint);
+    if (normalizedLayers.length === 0) {
+      delete obj.layers;
+      delete obj.strokes;
+    } else {
+      obj.layers = normalizedLayers;
+      obj.strokes = normalizedLayers.flatMap(
+        (layer) => layer.strokes as Array<Record<string, unknown>>,
       );
-      const strokeWidth = clamp(
-        s.strokeWidth,
-        AI_STROKE_WIDTH_MIN,
-        AI_STROKE_WIDTH_MAX,
-        0.005,
-      );
-      const dashed = typeof s.dashed === "boolean" ? s.dashed : undefined;
-      const fill = normalizeStrokeFill(s.fill);
-      // Màu tô chỉ có nghĩa với hình khép kín: model quên `closed` thì tự khép.
-      const closed =
-        typeof s.closed === "boolean"
-          ? s.closed
-          : fill !== undefined && fill !== "none"
-            ? true
-            : undefined;
-
-      if (kind === "path") {
-        const rawPoints = Array.isArray(s.points) ? s.points : [];
-        const points: Array<{ x: number; y: number }> = [];
-        for (const pt of rawPoints) {
-          if (typeof pt !== "object" || pt === null) continue;
-          if (points.length >= MAX_AI_STROKE_POINTS) break;
-          const p = pt as Record<string, unknown>;
-          points.push({
-            x: clamp(p.x, 0, 1, 0.5),
-            y: clamp(p.y, 0, 1, 0.5),
-          });
-        }
-        if (points.length === 0) continue;
-        normalizedStrokes.push({
-          kind: "path",
-          points,
-          style,
-          group,
-          label,
-          opacity,
-          strokeWidth,
-          ...(dashed !== undefined ? { dashed } : {}),
-          ...(closed !== undefined ? { closed } : {}),
-          ...(fill !== undefined ? { fill } : {}),
-        });
-      } else if (kind === "line") {
-        if (
-          !s.from ||
-          !s.to ||
-          typeof s.from !== "object" ||
-          typeof s.to !== "object"
-        )
-          continue;
-        const fromRaw = s.from as Record<string, unknown>;
-        const toRaw = s.to as Record<string, unknown>;
-        normalizedStrokes.push({
-          kind: "line",
-          from: {
-            x: clamp(fromRaw.x, 0, 1, 0.1),
-            y: clamp(fromRaw.y, 0, 1, 0.1),
-          },
-          to: {
-            x: clamp(toRaw.x, 0, 1, 0.9),
-            y: clamp(toRaw.y, 0, 1, 0.9),
-          },
-          style,
-          group,
-          label,
-          opacity,
-          strokeWidth,
-          ...(dashed !== undefined ? { dashed } : {}),
-        });
-      } else {
-        if (!s.region || typeof s.region !== "object") continue;
-        const r = s.region as Record<string, unknown>;
-        const x = clamp(r.x, 0, 0.98, 0.1);
-        const y = clamp(r.y, 0, 0.98, 0.1);
-        const width = clamp(r.width, 0.01, 1 - x, 0.2);
-        const height = clamp(r.height, 0.01, 1 - y, 0.2);
-        normalizedStrokes.push({
-          kind: kind as "ellipse" | "rectangle",
-          region: { x, y, width, height },
-          style,
-          group,
-          label,
-          opacity,
-          strokeWidth,
-          ...(dashed !== undefined ? { dashed } : {}),
-          ...(fill !== undefined ? { fill } : {}),
-        });
-      }
     }
-
-    obj.strokes = normalizedStrokes;
+    if (blueprint === null) {
+      delete obj.blueprint;
+    } else {
+      obj.blueprint = blueprint;
+    }
     delete obj.recommendations;
     delete obj.findings;
   }

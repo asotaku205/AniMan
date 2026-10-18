@@ -6,7 +6,8 @@ export type AiDrawingTask =
   | "stroke_guidance"
   | "composition_overlay"
   | "pose_guidance"
-  | "page_story_flow";
+  | "page_story_flow"
+  | "scene_blueprint";
 
 export type AiDrawingToolHint =
   | "clean-lines"
@@ -138,6 +139,38 @@ export interface AiPageStoryFlowResponse {
   /** Mạch truyện cả trang dạng "A → B → C". */
   flow: string;
   panels: AiPageStoryFlowPanelHint[];
+}
+
+// ─── Bức tranh toàn cảnh (A-2, Phase 5B) ────────────────────────────────────
+
+/** Blueprint tối thiểu 5 lớp nội dung (BR-A2.1); khớp server. */
+export const MIN_BLUEPRINT_LAYERS = 5;
+
+/** Phần "toàn cảnh bằng lời" — mô tả chứ không phải ảnh (C3). */
+export interface AiSceneBlueprintSpec {
+  title: string;
+  composition: string;
+  lighting: string;
+  camera: string;
+}
+
+/** Một lớp nội dung của blueprint; `group` trùng nhóm nét nên cũng là thứ tự vẽ. */
+export interface AiBlueprintLayer {
+  group: AiStrokeGroup;
+  name: string;
+  description: string;
+  strokes: AiStrokePath[];
+}
+
+export interface AiSceneBlueprintResponse {
+  schemaVersion: "1";
+  task: "scene_blueprint";
+  summary: string;
+  sourceIds: string[];
+  blueprint: AiSceneBlueprintSpec;
+  layers: AiBlueprintLayer[];
+  /** Trải phẳng đúng bằng `layers[].strokes`. */
+  strokes: AiStrokePath[];
 }
 
 /**
@@ -351,6 +384,48 @@ export async function requestAiPageStoryFlow(
 }
 
 /**
+ * Yêu cầu AI dựng "bức tranh toàn cảnh" cho khung đang mở (A-2).
+ *
+ * Khác `page_story_flow`, task này cần ảnh khung (VD-1) để AI bám vào nét đã có,
+ * nên `prompt` là mô tả ý tưởng còn `image` là bắt buộc.
+ */
+export async function requestAiSceneBlueprint(
+  authenticatedFetch: AuthenticatedFetch,
+  input: { prompt: string; image: AiDrawingImagePayload },
+  signal?: AbortSignal,
+): Promise<AiSceneBlueprintResponse> {
+  const payload: AiDrawingRequestPayload = {
+    task: "scene_blueprint",
+    prompt: input.prompt.trim(),
+    image: input.image,
+  };
+
+  const response = await authenticatedFetch("/ai/drawing", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  const responseData: unknown = await readPayload(response);
+
+  if (!response.ok) {
+    const message = extractErrorMessage(responseData, response.status);
+    throw new AiDrawingApiError(message, response.status);
+  }
+
+  if (!isSceneBlueprintResponse(responseData)) {
+    throw new Error(
+      "Phản hồi toàn cảnh từ AI không đúng cấu trúc yêu cầu.",
+    );
+  }
+
+  return responseData;
+}
+
+/**
  * Đối chiếu gợi ý khung của AI với **layout đang mở** (VD-5): bỏ khung không tồn
  * tại, gộp khung trùng id (giữ gợi ý có `order` nhỏ nhất) và sắp theo thứ tự đọc.
  *
@@ -477,6 +552,77 @@ export function isPageStoryFlowResponse(
       cameras.has(hint.camera)
     );
   });
+}
+
+function isBlueprintSpec(value: unknown): value is AiSceneBlueprintSpec {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const spec = value as Record<string, unknown>;
+  return (
+    typeof spec.title === "string" &&
+    typeof spec.composition === "string" &&
+    typeof spec.lighting === "string" &&
+    typeof spec.camera === "string"
+  );
+}
+
+function isBlueprintLayer(
+  value: unknown,
+  groups: ReadonlySet<string>,
+): value is AiBlueprintLayer {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const layer = value as Record<string, unknown>;
+  return (
+    typeof layer.group === "string" &&
+    groups.has(layer.group) &&
+    typeof layer.name === "string" &&
+    typeof layer.description === "string" &&
+    Array.isArray(layer.strokes) &&
+    layer.strokes.length > 0
+  );
+}
+
+/**
+ * Kiểm tra phản hồi `scene_blueprint`. Xuất để test được hợp đồng này mà không
+ * phải dựng fetch giả.
+ */
+export function isSceneBlueprintResponse(
+  value: unknown,
+): value is AiSceneBlueprintResponse {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const rec = value as Record<string, unknown>;
+  if (
+    rec.schemaVersion !== "1" ||
+    rec.task !== "scene_blueprint" ||
+    typeof rec.summary !== "string" ||
+    !Array.isArray(rec.sourceIds) ||
+    !isBlueprintSpec(rec.blueprint) ||
+    !Array.isArray(rec.layers) ||
+    rec.layers.length < MIN_BLUEPRINT_LAYERS ||
+    !Array.isArray(rec.strokes)
+  ) {
+    return false;
+  }
+
+  const groups = new Set<string>(AI_STROKE_GROUPS);
+  const layers = rec.layers as unknown[];
+  if (!layers.every((layer) => isBlueprintLayer(layer, groups))) {
+    return false;
+  }
+
+  const blueprintLayers = layers as AiBlueprintLayer[];
+  const strokeCount = blueprintLayers.reduce(
+    (total, layer) => total + layer.strokes.length,
+    0,
+  );
+  // `strokes` phải đúng bằng phép trải phẳng của `layers`, nếu không thì UI
+  // không biết nét nào thuộc lớp nào.
+  return strokeCount === rec.strokes.length;
 }
 
 function isGhostStrokeResponse(value: unknown): value is AiGhostStrokeResponse {

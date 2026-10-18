@@ -138,6 +138,31 @@ describe("AI drawing prompt assembly", () => {
     expect(strokeAssembly.systemInstruction).not.toContain("0.08..0.22");
   });
 
+  it("chỉ dẫn blueprint toàn cảnh phải khớp hợp đồng scene_blueprint (Phase 5B)", () => {
+    const assembly = promptService.assemble(
+      makeRequest(
+        AiDrawingTask.SceneBlueprint,
+        "một sân thượng thành phố về đêm, cô gái đứng nhìn dãy đèn",
+      ),
+    );
+
+    expect(assembly.templateId).toBe("manga-scene-blueprint");
+    expect(assembly.templateVersion).toBe("1");
+    expect(assembly.systemInstruction).toContain('"scene_blueprint"');
+    // Ba trường của hợp đồng và bốn mô tả của toàn cảnh.
+    for (const field of ["blueprint", "layers", "strokes"]) {
+      expect(assembly.systemInstruction).toContain(field);
+    }
+    for (const field of ["title", "composition", "lighting", "camera"]) {
+      expect(assembly.systemInstruction).toContain(field);
+    }
+    // Năm nhóm bắt buộc + trần nét + thang độ đậm phải được nêu.
+    for (const group of ["background", "midground", "subject", "effects", "guide"]) {
+      expect(assembly.systemInstruction).toContain(group);
+    }
+    expect(assembly.systemInstruction).toContain("0.0015-0.025");
+  });
+
   it("has a registered prompt template for every task of the contract", () => {
     for (const task of Object.values(AiDrawingTask)) {
       expect(() => promptService.assemble(makeRequest(task))).not.toThrow();
