@@ -16,6 +16,7 @@ import {
   AiDrawingProviderError,
   AiDrawingProviderRequest,
   AiDrawingProviderTransientError,
+  GEMINI_DRAWING_MODEL_PROFILE,
 } from "../src/ai/driver/ai-drawing-driver.js";
 import { AiDrawingDriver } from "../src/ai/driver/ai-drawing-driver.service.js";
 import { AiDrawingPromptService } from "../src/ai/prompts/ai-drawing-prompt.service.js";
@@ -140,10 +141,35 @@ describe("AI drawing driver", () => {
           ...enabledProfile,
           limits: {
             ...enabledProfile.limits,
-            timeoutMs: 60_001,
+            timeoutMs: 120_001,
           },
         }),
     ).toThrow(AiDrawingModelProfileError);
+
+    expect(
+      () =>
+        new AiDrawingModelRegistry({
+          ...enabledProfile,
+          limits: {
+            ...enabledProfile.limits,
+            maxOutputTokens: 8193,
+          },
+        }),
+    ).toThrow(AiDrawingModelProfileError);
+  });
+
+  it("accepts the production profile with the raised output budget (Phase 5D)", () => {
+    expect(GEMINI_DRAWING_MODEL_PROFILE.limits.maxOutputTokens).toBe(8192);
+    expect(GEMINI_DRAWING_MODEL_PROFILE.limits.timeoutMs).toBe(90_000);
+
+    const registry = new AiDrawingModelRegistry(GEMINI_DRAWING_MODEL_PROFILE);
+
+    expect(registry.select(AiDrawingTask.StrokeGuidance)).toBe(
+      GEMINI_DRAWING_MODEL_PROFILE,
+    );
+    expect(registry.select(AiDrawingTask.SceneBlueprint)).toBe(
+      GEMINI_DRAWING_MODEL_PROFILE,
+    );
   });
 
   it("validates requests and parses provider output against the application contract", async () => {

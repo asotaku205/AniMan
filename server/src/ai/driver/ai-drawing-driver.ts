@@ -1,8 +1,12 @@
 import { AiDrawingTask } from "../contracts/ai-drawing-request.dto.js";
 import type { AiDrawingPromptEvidence } from "../prompts/ai-drawing-prompt.service.js";
 
-const MAX_AI_DRAWING_TIMEOUT_MS = 60_000;
-const MAX_AI_DRAWING_OUTPUT_TOKENS = 4096;
+// Trần hợp lệ của profile. `MAX_AI_DRAWING_OUTPUT_TOKENS` nâng 4096 → 8192 ngày
+// 18/10/2026 (Phase 5D): đo thật cho thấy trần 4096 làm model viết dài thì JSON bị cắt ở
+// `MAX_TOKENS` → parser báo không đọc được JSON → 503 nói sai nguyên nhân. Timeout nâng
+// theo vì ~260 token/s nghĩa là 8192 token output cần khoảng 35–50s.
+const MAX_AI_DRAWING_TIMEOUT_MS = 120_000;
+const MAX_AI_DRAWING_OUTPUT_TOKENS = 8192;
 
 export const AI_DRAWING_PROVIDER = Symbol("AI_DRAWING_PROVIDER");
 export const AI_DRAWING_MODEL_PROFILE = Symbol("AI_DRAWING_MODEL_PROFILE");
@@ -131,7 +135,7 @@ export const GEMINI_DRAWING_MODEL_PROFILE: AiDrawingModelProfile = {
   modelId: "gemini-flash-latest",
   description:
     "Google Gemini Flash (Latest) — vision model for structured composition guidance, stroke guidance, pose guidance, page story flow, scene blueprint and drawing review.",
-  version: "3",
+  version: "4",
   tasks: [
     AiDrawingTask.CompositionGuidance,
     AiDrawingTask.DrawingReview,
@@ -148,8 +152,8 @@ export const GEMINI_DRAWING_MODEL_PROFILE: AiDrawingModelProfile = {
   },
   limits: {
     maxImageBytes: 4 * 1024 * 1024,
-    maxOutputTokens: 4096,
-    timeoutMs: 45_000,
+    maxOutputTokens: 8192,
+    timeoutMs: 90_000,
   },
   enabled: true,
 };

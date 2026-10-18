@@ -152,18 +152,19 @@ export const AI_DRAWING_PROMPT_TEMPLATES: readonly AiDrawingPromptTemplate[] =
     },
     {
       id: "manga-scene-blueprint",
-      version: "1",
+      version: "2",
       task: AiDrawingTask.SceneBlueprint,
       instruction: [
         'Tác vụ: từ mô tả ý tưởng của người dùng, dựng "bức tranh toàn cảnh" cho MỘT khung manga dưới dạng blueprint: bố cục, ánh sáng và các lớp nội dung kèm nét vector. Đây là bản phác để người dùng vẽ theo, KHÔNG phải ảnh hoàn chỉnh.',
-        'Trả schemaVersion "1", task "scene_blueprint", summary, sourceIds [] và đúng ba trường: blueprint, layers, strokes.',
+        'Trả schemaVersion "1", task "scene_blueprint", summary, sourceIds [] và đúng hai trường ở cấp ngoài: blueprint và layers. KHÔNG trả trường "strokes" ở cấp ngoài (hệ thống tự nối nét của các lớp).',
         "blueprint gồm bốn mô tả tiếng Việt: title (tiêu đề ≤ 80 ký tự), composition (bố cục: chủ thể ở đâu, đường dẫn mắt, khoảng thở ≤ 180), lighting (nguồn sáng, hướng sáng, độ tương phản ≤ 180), camera (góc máy và tiêu cự gợi ý ≤ 120).",
         "layers: 5-6 lớp theo đúng thứ tự vẽ, mỗi nhóm chỉ một lần, bắt buộc có background, midground, subject, effects và guide (detail là tùy chọn). Mỗi lớp gồm group, name (tên tiếng Việt ≤ 80 ký tự), description (mô tả nội dung lớp bằng tiếng Việt ≤ 180 ký tự) và strokes (3-12 nét).",
-        "strokes là bản trải phẳng đúng bằng phép nối strokes của mọi lớp theo thứ tự lớp (tổng 24-45 nét, tối đa 60).",
+        "Mỗi lớp có 3-12 nét; tổng cả khung 24-45 nét (tối đa 60). Mỗi nét chỉ xuất hiện MỘT lần, bên trong lớp của nó: không chép lại danh sách nét lần thứ hai ở cấp ngoài.",
         "Trong một lớp, mọi nét phải mang đúng group của lớp đó. Mỗi nét gồm: kind (path/line/ellipse/rectangle), style (principle), group, label (nhãn tiếng Việt ≤ 60 ký tự), opacity, strokeWidth; dashed, closed và fill là tùy chọn. Path dùng 8-24 điểm {x,y} normalized 0..1; khép kín kèm fill '#rrggbb' khi cần mảng tối.",
         "Độ đậm theo vai trò: background 0.15-0.30, midground 0.30-0.50, subject 0.55-0.80, detail 0.40-0.60, effects 0.15-0.35, guide 0.15-0.25. strokeWidth 0.0015-0.025.",
         "Toàn cảnh phải đọc ra được: chủ thể rõ, có tiền cảnh/trung cảnh/hậu cảnh, một nguồn sáng nhất quán. KHÔNG tô kín cả khung, KHÔNG hoàn thiện tranh thay người dùng.",
         "principle chỉ được là: composition, proportion, color, flow, perspective, lighting hoặc shadow.",
+        "Trả JSON gọn: không thụt lề, không xuống dòng giữa các trường, để dành chỗ cho nét vẽ.",
       ].join("\n"),
     },
   ];

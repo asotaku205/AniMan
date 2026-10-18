@@ -368,6 +368,33 @@ describe("normalizeGeminiOutput — blueprint toàn cảnh (Phase 5B)", () => {
     ).not.toThrow();
   });
 
+  it("tự nối strokes khi model không trả mảng nét phẳng (Phase 5D)", () => {
+    const layers = BLUEPRINT_ORDER.map((group) => rawLayer(group));
+    const response = blueprintResponse(layers);
+    // Prompt v2 (Phase 5D) không xin mảng nét phẳng nữa: provider phải tự nối
+    // đúng bằng phép trải phẳng `layers[].strokes` thì parser mới nhận.
+    delete response.strokes;
+
+    const normalized = normalizeGeminiOutput(
+      response,
+      providerRequest(AiDrawingTask.SceneBlueprint),
+    ) as Record<string, unknown>;
+
+    const strokes = normalized.strokes as Array<{ group: string }>;
+    expect(strokes).toHaveLength(15);
+    expect(strokes.map((stroke) => stroke.group)).toEqual(
+      BLUEPRINT_ORDER.flatMap((group) => [group, group, group]),
+    );
+
+    expect(() =>
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.SceneBlueprint,
+        new Set(),
+      ),
+    ).not.toThrow();
+  });
+
   it("bỏ lớp sai nhóm, lớp trùng nhóm và lớp quá thưa nét", () => {
     const normalized = normalizeGeminiOutput(
       blueprintResponse([
@@ -391,7 +418,6 @@ describe("normalizeGeminiOutput — blueprint toàn cảnh (Phase 5B)", () => {
     ]);
     expect(normalized.strokes).toHaveLength(12);
   });
-
   it("không bịa tên/mô tả: lớp thiếu mô tả bị bỏ khỏi blueprint", () => {
     const layers = BLUEPRINT_ORDER.map((group) => rawLayer(group));
     layers[3] = rawLayer("effects", 3, { description: "   " });

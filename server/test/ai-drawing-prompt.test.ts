@@ -147,12 +147,15 @@ describe("AI drawing prompt assembly", () => {
     );
 
     expect(assembly.templateId).toBe("manga-scene-blueprint");
-    expect(assembly.templateVersion).toBe("1");
+    expect(assembly.templateVersion).toBe("2");
     expect(assembly.systemInstruction).toContain('"scene_blueprint"');
-    // Ba trường của hợp đồng và bốn mô tả của toàn cảnh.
-    for (const field of ["blueprint", "layers", "strokes"]) {
+    // Hai trường ở cấp ngoài và bốn mô tả của toàn cảnh.
+    for (const field of ["blueprint", "layers"]) {
       expect(assembly.systemInstruction).toContain(field);
     }
+    // Phase 5D: không bắt model chép lại mảng nét phẳng — provider tự nối từ layers,
+    // nên việc xin thêm chỉ tốn chỗ và dễ làm output bị cắt.
+    expect(assembly.systemInstruction).toContain('KHÔNG trả trường "strokes"');
     for (const field of ["title", "composition", "lighting", "camera"]) {
       expect(assembly.systemInstruction).toContain(field);
     }
