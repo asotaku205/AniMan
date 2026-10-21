@@ -147,7 +147,7 @@ describe("AI drawing prompt assembly", () => {
     );
 
     expect(assembly.templateId).toBe("manga-scene-blueprint");
-    expect(assembly.templateVersion).toBe("2");
+    expect(assembly.templateVersion).toBe("3");
     expect(assembly.systemInstruction).toContain('"scene_blueprint"');
     // Hai trường ở cấp ngoài và bốn mô tả của toàn cảnh.
     for (const field of ["blueprint", "layers"]) {
@@ -164,6 +164,14 @@ describe("AI drawing prompt assembly", () => {
       expect(assembly.systemInstruction).toContain(group);
     }
     expect(assembly.systemInstruction).toContain("0.0015-0.025");
+    // Phase 5F: một lần gọi toàn cảnh từng mất 106,6s vì mỗi nét xin 8–24 điểm.
+    // Cửa sổ mới phải hẹp lại thì mới kịp trần 90s, mà vẫn giữ sàn DoD 24 nét.
+    expect(assembly.systemInstruction).toContain("6-10 điểm");
+    expect(assembly.systemInstruction).toContain("3-6 nét");
+    expect(assembly.systemInstruction).toContain("24-30 nét");
+    expect(assembly.systemInstruction).not.toContain("8-24 điểm");
+    expect(assembly.systemInstruction).not.toContain("24-45 nét");
+    expect(assembly.systemInstruction).not.toContain("3-12 nét");
   });
 
   it("has a registered prompt template for every task of the contract", () => {
