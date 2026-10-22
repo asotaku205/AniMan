@@ -319,11 +319,11 @@ export const POSES: Record<PoseCategory, PoseItem[]> = {
 // ─── AI Tools Data ─────────────────────────────────────────────────────────────
 
 export const AI_TOOLS = [
-  { id: "clean-lines",   label: "Ink sạch nét",    desc: "Làm sạch nét vẽ tay",     dot: "bg-indigo-500" },
-  { id: "screentone",    label: "Tô screentone",    desc: "Thêm lưới tone manga",     dot: "bg-sky-500"    },
-  { id: "speech-bubble", label: "Tạo bubble thoại", desc: "Thêm hộp thoại tự động",  dot: "bg-pink-500"   },
-  { id: "speed-lines",   label: "Thêm speed lines", desc: "Hiệu ứng chuyển động",    dot: "bg-emerald-500"},
-  { id: "fix-comp",      label: "Sửa bố cục",       desc: "Tối ưu bố cục theo AI",   dot: "bg-amber-500"  },
+  { id: "clean-lines",   label: "Gợi ý ink sạch nét",  desc: "Nét mờ gợi ý để đi mực theo",   dot: "bg-indigo-500" },
+  { id: "screentone",    label: "Gợi ý screentone",    desc: "Nét mờ gợi ý vùng lưới tone",   dot: "bg-sky-500"    },
+  { id: "speech-bubble", label: "Gợi ý bubble thoại",  desc: "Nét mờ gợi ý vị trí hộp thoại", dot: "bg-pink-500"   },
+  { id: "speed-lines",   label: "Gợi ý speed lines",   desc: "Nét mờ gợi ý hiệu ứng chuyển động", dot: "bg-emerald-500" },
+  { id: "fix-comp",      label: "Gợi ý sửa bố cục",    desc: "Lớp phủ gợi ý tối ưu bố cục",   dot: "bg-amber-500"  },
 ];
 
 export const SCENE_TYPE_LABEL: Record<SceneType, string> = {

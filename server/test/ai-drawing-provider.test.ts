@@ -593,6 +593,56 @@ describe("normalizeReviewFindings — góp ý chấm tranh (Phase 5G)", () => {
     confidence: 0.7,
   };
 
+  it("giữ fix hợp lệ và kẹp về miền hợp đồng, bỏ fix sai dạng (Slice 4)", () => {
+    const normalized = normalizeGeminiOutput(
+      reviewResponse([
+        { ...validFinding, fix: { dx: 0.08, dy: -0.04, scale: 0.9 } },
+        { ...validFinding, fix: { dx: 2, dy: 0, scale: 9 } },
+        { ...validFinding, fix: { dx: "sang phải", dy: 0, scale: 1 } },
+      ]),
+      reviewRequest,
+    ) as Record<string, unknown>;
+
+    const findings = normalized.findings as Array<Record<string, unknown>>;
+    expect(findings).toHaveLength(3);
+    expect(findings[0].fix).toEqual({ dx: 0.08, dy: -0.04, scale: 0.9 });
+    expect(findings[1].fix).toEqual({ dx: 1, dy: 0, scale: 4 });
+    expect(findings[2]).not.toHaveProperty("fix");
+
+    expect(() =>
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.DrawingReview,
+        new Set(),
+      ),
+    ).not.toThrow();
+  });
+
+  it("giữ cờ cleanup hợp lệ, bỏ cờ sai dạng nhưng giữ finding (Slice 3)", () => {
+    const normalized = normalizeGeminiOutput(
+      reviewResponse([
+        { ...validFinding, cleanup: { overlapRisk: true } },
+        { ...validFinding, cleanup: { overlapRisk: "yes" } },
+        { ...validFinding, cleanup: null },
+      ]),
+      reviewRequest,
+    ) as Record<string, unknown>;
+
+    const findings = normalized.findings as Array<Record<string, unknown>>;
+    expect(findings).toHaveLength(3);
+    expect(findings[0].cleanup).toEqual({ overlapRisk: true });
+    expect(findings[1]).not.toHaveProperty("cleanup");
+    expect(findings[2]).not.toHaveProperty("cleanup");
+
+    expect(() =>
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.DrawingReview,
+        new Set(),
+      ),
+    ).not.toThrow();
+  });
+
   it("bỏ khoá lạ trong region và trong finding rồi parser vẫn nhận", () => {
     const normalized = normalizeGeminiOutput(
       reviewResponse([

@@ -83,6 +83,8 @@ export const AI_DRAWING_PROMPT_TEMPLATES: readonly AiDrawingPromptTemplate[] =
         "Tác vụ: đánh giá bản vẽ manga hiện có.",
         'Trả schemaVersion "1", task "drawing_review", summary, sourceIds và tối đa 8 findings.',
         "Mỗi finding nêu principle, vùng normalized region, vấn đề quan sát được, recommendation thực hành được, severity và confidence 0..1.",
+        "Nếu vấn đề là NÉT THỪA (nét phác trùng lặp, viền kép, nét lạc ngoài hình, vệt bẩn): thêm trường cleanup dạng {\"overlapRisk\": true|false} và thu region thật sát quanh đúng nét thừa đó. overlapRisk là true khi region cũng chứa nét quan trọng có thể bị tẩy nhầm. Finding không phải nét thừa thì KHÔNG thêm cleanup.",
+        "Nếu vấn đề là SAI VỊ TRÍ/TỈ LỆ của cả một cụm nét trong region (lệch chỗ, quá to/nhỏ) và cách sửa là dời/phóng cả cụm: thêm trường fix dạng {\"dx\": số, \"dy\": số, \"scale\": số} — dx/dy là độ dời normalized theo khung (dương = sang phải/xuống, trong -1..1, thường chỉ 0.02..0.2), scale là tỉ lệ quanh tâm vùng (1 = giữ nguyên, trong 0.25..4). Không chắc cả cụm nên dời cùng nhau thì KHÔNG thêm fix.",
         "Không coi nhận xét thẩm mỹ chủ quan là phán quyết, không tự sửa hay hoàn thiện ảnh.",
         "principle chỉ được là composition, proportion, color, flow, perspective, lighting hoặc shadow.",
       ].join("\n"),

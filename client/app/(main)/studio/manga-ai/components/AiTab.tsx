@@ -41,6 +41,7 @@ import {
 } from "../data";
 import {
   AI_DRAWING_MODEL_LABEL,
+  AI_SCENE_BLUEPRINT_ENABLED,
   type AiPageStoryFlowPanelHint,
   type AiPageStoryFlowResponse,
   type AiSceneBlueprintResponse,
@@ -470,7 +471,10 @@ export function AiTab({
               </button>
             </div>
 
-            {/* Bức tranh toàn cảnh (A-2 — 5B.5): blueprint vector + mô tả, không phải ảnh render (C3) */}
+            {/* Bức tranh toàn cảnh (A-2 — 5B.5): blueprint vector + mô tả, không phải ảnh render (C3).
+                Ẩn khỏi UI khi AI_SCENE_BLUEPRINT_ENABLED = false (bản demo — xem cờ trong ai-drawing-api.ts) */}
+            {AI_SCENE_BLUEPRINT_ENABLED && (
+              <>
             <button
               onClick={
                 blueprintLoading
@@ -513,11 +517,13 @@ export function AiTab({
                 {blueprintError}
               </p>
             )}
+              </>
+            )}
           </div>
         </div>
 
         {/* 2b. Xem trước bức tranh toàn cảnh (5B.5) — chỉ vào khung khi người dùng bấm áp */}
-        {blueprint && (
+        {AI_SCENE_BLUEPRINT_ENABLED && blueprint && (
           <BlueprintPreview
             blueprint={blueprint}
             applied={blueprintApplied === true}

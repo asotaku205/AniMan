@@ -40,8 +40,80 @@ export const AI_PRINCIPLE_COLORS: Record<AiDrawingPrinciple, string> = {
 export const MIN_AI_STROKE_PIXELS = 1;
 
 /**
+ * Dung sai rút gọn điểm (Douglas–Peucker) tính bằng **pixel của canvas đích**.
+ *
+ * Model trả điểm theo lưới tọa độ thô nên một nét "cong" thường là chuỗi đoạn
+ * thẳng ngắn răng cưa; fit Bézier trực tiếp lên chuỗi đó giữ lại răng cưa ở
+ * dạng sóng nhỏ. Rút gọn trước với dung sai 1.5px chỉ loại điểm lệch khỏi
+ * đường nối dưới 1.5px — nhỏ hơn bề rộng nét tối thiểu nhìn thấy được — nên
+ * hình dáng nét không đổi, chỉ mất nhiễu (Slice 2, hoàn thiện vẽ 22/10/2026).
+ */
+export const AI_GUIDE_SIMPLIFY_TOLERANCE_PX = 1.5;
+
+type NormPoint = { readonly x: number; readonly y: number };
+
+/** Khoảng cách vuông góc từ điểm tới đoạn thẳng, đo trong hệ pixel đích. */
+function perpendicularDistancePx(
+  p: NormPoint,
+  a: NormPoint,
+  b: NormPoint,
+  w: number,
+  h: number,
+): number {
+  const px = p.x * w;
+  const py = p.y * h;
+  const ax = a.x * w;
+  const ay = a.y * h;
+  const bx = b.x * w;
+  const by = b.y * h;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+  const cross = (px - ax) * dy - (py - ay) * dx;
+  return Math.abs(cross) / Math.sqrt(lenSq);
+}
+
+/**
+ * Rút gọn chuỗi điểm bằng Douglas–Peucker: giữ điểm đầu/cuối và mọi điểm lệch
+ * khỏi đường nối quá `tolerancePx` (pixel đích). Trả về **tập con của điểm
+ * gốc** (không nội suy điểm mới) nên nét giữ đúng vị trí model đã đặt.
+ * Chuỗi dưới 3 điểm trả nguyên.
+ */
+export function simplifyStrokePoints(
+  points: readonly NormPoint[],
+  w: number,
+  h: number,
+  tolerancePx: number = AI_GUIDE_SIMPLIFY_TOLERANCE_PX,
+): NormPoint[] {
+  if (points.length < 3) return [...points];
+  const keep = new Array<boolean>(points.length).fill(false);
+  keep[0] = true;
+  keep[points.length - 1] = true;
+  const stack: Array<[number, number]> = [[0, points.length - 1]];
+  while (stack.length > 0) {
+    const [start, end] = stack.pop()!;
+    let farthest = -1;
+    let farthestDist = tolerancePx;
+    for (let i = start + 1; i < end; i++) {
+      const dist = perpendicularDistancePx(points[i], points[start], points[end], w, h);
+      if (dist > farthestDist) {
+        farthestDist = dist;
+        farthest = i;
+      }
+    }
+    if (farthest >= 0) {
+      keep[farthest] = true;
+      stack.push([start, farthest], [farthest, end]);
+    }
+  }
+  return points.filter((_, index) => keep[index]);
+}
+
+/**
  * Mảng điểm normalized → đường cong mượt (Catmull-Rom → cubic Bézier) trong hệ
- * pixel của canvas đích.
+ * pixel của canvas đích. Chuỗi từ 3 điểm trở lên được rút gọn nhiễu trước khi
+ * fit (xem `simplifyStrokePoints`).
  */
 export function pointsToSmoothPath(
   points: readonly { readonly x: number; readonly y: number }[],
@@ -54,7 +126,8 @@ export function pointsToSmoothPath(
     return `M ${points[0].x * w} ${points[0].y * h} L ${points[1].x * w} ${points[1].y * h}`;
   }
 
-  const pts = points.map((p) => ({ x: p.x * w, y: p.y * h }));
+  const simplified = simplifyStrokePoints(points, w, h);
+  const pts = simplified.map((p) => ({ x: p.x * w, y: p.y * h }));
   let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
 
   for (let i = 0; i < pts.length - 1; i++) {

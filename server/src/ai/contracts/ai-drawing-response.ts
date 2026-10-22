@@ -94,6 +94,22 @@ export interface AiDrawingFinding {
   recommendation: string;
   severity: "low" | "medium" | "high";
   confidence: number;
+  /**
+   * Đánh dấu finding là **vùng nét thừa có thể tẩy** (Slice 3 — dọn nét thừa,
+   * 22/10/2026). Có mặt = `region` khoanh sát nét thừa; `overlapRisk` = true
+   * khi vùng còn chứa nét quan trọng dễ bị tẩy nhầm (client phải cảnh báo và
+   * chừa đường tự tẩy tay). Thiếu = finding góp ý thường, không tẩy được.
+   * AI chỉ đề xuất — người dùng bấm mới tẩy, luôn hoàn tác được.
+   */
+  cleanup?: { overlapRisk: boolean };
+  /**
+   * Phép chỉnh bố cục đề xuất cho nội dung trong `region` (Slice 4 — chỉnh
+   * bố cục, 22/10/2026): dời theo `dx`/`dy` (normalized theo khung, dương =
+   * sang phải/xuống) và phóng tỉ lệ `scale` quanh tâm vùng (1 = giữ nguyên).
+   * Client áp bằng máy vùng chọn sẵn có = đúng một bước hoàn tác; AI không
+   * tự di chuyển nét của người dùng.
+   */
+  fix?: { dx: number; dy: number; scale: number };
 }
 
 export interface AiDrawingReviewResponse extends AiDrawingResponseBase {
@@ -550,9 +566,52 @@ function validateFinding(
       "recommendation",
       "severity",
       "confidence",
+      ...("cleanup" in value ? ["cleanup"] : []),
+      ...("fix" in value ? ["fix"] : []),
     ],
     path,
   );
+  if ("fix" in value) {
+    const fix = value.fix;
+    if (!isRecord(fix)) {
+      throw new AiDrawingResponseValidationError(
+        `${path}.fix must be an object`,
+      );
+    }
+    requireExactKeys(fix, ["dx", "dy", "scale"], `${path}.fix`);
+    for (const axis of ["dx", "dy"] as const) {
+      const v = fix[axis];
+      if (typeof v !== "number" || !Number.isFinite(v) || v < -1 || v > 1) {
+        throw new AiDrawingResponseValidationError(
+          `${path}.fix.${axis} must be between -1 and 1`,
+        );
+      }
+    }
+    if (
+      typeof fix.scale !== "number" ||
+      !Number.isFinite(fix.scale) ||
+      fix.scale < 0.25 ||
+      fix.scale > 4
+    ) {
+      throw new AiDrawingResponseValidationError(
+        `${path}.fix.scale must be between 0.25 and 4`,
+      );
+    }
+  }
+  if ("cleanup" in value) {
+    const cleanup = value.cleanup;
+    if (!isRecord(cleanup)) {
+      throw new AiDrawingResponseValidationError(
+        `${path}.cleanup must be an object`,
+      );
+    }
+    requireExactKeys(cleanup, ["overlapRisk"], `${path}.cleanup`);
+    if (typeof cleanup.overlapRisk !== "boolean") {
+      throw new AiDrawingResponseValidationError(
+        `${path}.cleanup.overlapRisk must be a boolean`,
+      );
+    }
+  }
   requirePrinciple(value.principle, `${path}.principle`);
   validateRegion(value.region, `${path}.region`);
   requireString(value.issue, `${path}.issue`, MAX_AI_EXPLANATION_LENGTH);

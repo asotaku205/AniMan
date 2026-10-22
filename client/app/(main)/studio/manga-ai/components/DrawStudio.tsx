@@ -108,6 +108,7 @@ export function DrawStudio({
           saveDraft={s.saveDraft}
           exportCurrentPanel={s.exportCurrentPanel}
           exportFullPage={s.exportFullPage}
+          exportProjectPdf={s.exportProjectPdf}
           aiStrokeCount={s.aiStrokeCount}
           exportAiStrokes={s.exportAiStrokes}
           setExportAiStrokes={s.setExportAiStrokes}
@@ -188,6 +189,13 @@ export function DrawStudio({
           showAnalysis={s.showAnalysis}
           dismissAnalysis={s.dismissAnalysis}
           runAnalysis={s.runAnalysis}
+          onEraseStrokeRegion={s.eraseStrokeRegion}
+          onStartManualCleanup={s.startManualCleanup}
+          onApplyCompositionFix={s.applyCompositionFix}
+          bubbles={s.activeBubbles}
+          onAddBubble={s.addBubble}
+          onUpdateBubble={s.updateBubble}
+          onRemoveBubble={s.removeBubble}
           sceneType={s.sceneType}
           selectedComp={s.selectedComp}
           showPanelSuggestions={s.showPanelSuggestions}

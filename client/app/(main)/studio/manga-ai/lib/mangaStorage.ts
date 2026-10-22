@@ -8,6 +8,7 @@ import type {
 } from "../data";
 import { createUserLayer, normalizeLayers } from "../data";
 import type { AiStrokeGroup, AiStrokePath } from "@/lib/ai-drawing-api";
+import type { PanelBubbles } from "./bubbles";
 
 const DB_NAME = "animan_manga_studio_db";
 /**
@@ -38,6 +39,8 @@ export interface StoredPageDrawing {
   stacks?: PanelStacks;
   /** v1: panelId -> composite — vẫn ghi kèm để đọc ngược được (§3.2). */
   panels?: Record<string, string>;
+  /** Bong bóng thoại theo khung (Slice 5) — trường tuỳ chọn, bản ghi cũ không có thì coi như không bong bóng. */
+  bubbles?: PanelBubbles;
   layers?: LayerItem[];
   activeLayerId?: string;
   updatedAt: number;
@@ -392,14 +395,19 @@ export async function getPageStacksFromDB(
 ): Promise<{
   stacks: PanelStacks;
   legacyPanels: Record<string, string> | null;
+  bubbles: PanelBubbles;
 }> {
   const record = await getPageDrawingRecordFromDB(projectId, pageNumber);
-  if (!record) return { stacks: {}, legacyPanels: null };
+  if (!record) return { stacks: {}, legacyPanels: null, bubbles: {} };
   const stacks =
     record.schemaVersion === PAGE_DRAWING_SCHEMA_VERSION && record.stacks
       ? normalizePanelStacks(record.stacks)
       : migrateStoredPageToStacks(record);
-  return { stacks, legacyPanels: record.panels ?? null };
+  return {
+    stacks,
+    legacyPanels: record.panels ?? null,
+    bubbles: record.bubbles ?? {},
+  };
 }
 
 /**
@@ -413,6 +421,7 @@ export async function savePageDrawingToDB(
   stacks: PanelStacks,
   layoutId?: string,
   panels?: Record<string, string>,
+  bubbles?: PanelBubbles,
 ): Promise<void> {
   if (!projectId || !pageNumber) return;
   try {
@@ -426,6 +435,7 @@ export async function savePageDrawingToDB(
       layoutId,
       stacks,
       panels,
+      bubbles,
       updatedAt: Date.now(),
     };
 

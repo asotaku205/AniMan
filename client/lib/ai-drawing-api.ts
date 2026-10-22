@@ -60,6 +60,18 @@ export interface AiDrawingFinding {
   recommendation: string;
   severity: "low" | "medium" | "high";
   confidence: number;
+  /**
+   * Vùng nét thừa có thể tẩy (Slice 3 — khớp hợp đồng server). Có mặt =
+   * finding này là nét thừa và `region` khoanh sát vùng tẩy; `overlapRisk`
+   * = true khi vùng còn chứa nét quan trọng (UI phải cảnh báo, chừa tự tẩy tay).
+   */
+  cleanup?: { overlapRisk: boolean };
+  /**
+   * Phép chỉnh bố cục đề xuất cho nội dung trong `region` (Slice 4 — khớp
+   * hợp đồng server): dời `dx`/`dy` normalized (dương = phải/xuống), phóng
+   * `scale` quanh tâm vùng. Người dùng bấm áp dụng mới di chuyển nét.
+   */
+  fix?: { dx: number; dy: number; scale: number };
 }
 
 export interface AiDrawingReviewResponse {
@@ -191,6 +203,17 @@ export interface AiSceneBlueprintResponse {
  * (`GEMINI_DRAWING_MODEL_PROFILE` trong `server/src/ai/driver/ai-drawing-driver.ts`).
  */
 export const AI_DRAWING_MODEL_LABEL = "gemini-flash-latest";
+
+/**
+ * Cờ bật/tắt tính năng "Bức tranh toàn cảnh" (`scene_blueprint`) ở UI.
+ *
+ * Tắt cho bản demo đồ án (22/10/2026): lần đo runtime thật duy nhất mất 106,6s —
+ * vượt trần timeout 90s của driver — và prompt v3 chưa đo lại được lần nào vì
+ * Google trả 503 lặp lại (xem appendix-AC-STATUS, "Việc còn lại của Phase 6" #2).
+ * Code, contract và test của tính năng vẫn giữ nguyên; chỉ ẩn entry point ở
+ * `AiTab`. Bật lại (`true`) sau khi T-CHECK-74 đo đạt trong trần 90s.
+ */
+export const AI_SCENE_BLUEPRINT_ENABLED = false;
 
 /**
  * Mã lỗi AI mà server trả trong body lỗi (Phase 5E) — khớp

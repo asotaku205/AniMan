@@ -35,6 +35,8 @@ type Props = {
   saveDraft?: () => void;
   exportCurrentPanel?: () => void;
   exportFullPage?: () => void;
+  /** Xuất toàn bộ dự án thành PDF nhiều trang (Slice 6) */
+  exportProjectPdf?: () => void;
   /** Số nét AI đang hiện của khung — > 0 mới hiện tuỳ chọn xuất kèm nét AI (5C.5) */
   aiStrokeCount?: number;
   /** Xuất kèm nét AI (mặc định tắt — C2: ảnh xuất không có nét AI) */
@@ -66,6 +68,7 @@ export function CanvasTopBar({
   saveDraft,
   exportCurrentPanel,
   exportFullPage,
+  exportProjectPdf,
   aiStrokeCount = 0,
   exportAiStrokes = false,
   setExportAiStrokes,
@@ -238,6 +241,18 @@ export function CanvasTopBar({
             >
               <Download size={12} />
               <span>Xuất trang PNG</span>
+            </button>
+          )}
+
+          {/* Nút xuất toàn bộ dự án thành PDF nhiều trang (Slice 6) */}
+          {exportProjectPdf && (
+            <button
+              onClick={exportProjectPdf}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/30 text-rose-200 text-xs font-medium transition-all"
+              title="Xuất toàn bộ dự án thành một file PDF (mỗi trang truyện một trang PDF)"
+            >
+              <Download size={12} />
+              <span>Xuất PDF</span>
             </button>
           )}
 

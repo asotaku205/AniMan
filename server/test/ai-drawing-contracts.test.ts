@@ -166,6 +166,90 @@ describe("AI drawing response contract", () => {
     ).toEqual(validReviewResponse);
   });
 
+  it("accepts a finding carrying a stroke-cleanup flag (Slice 3)", () => {
+    const withCleanup = {
+      ...validReviewResponse,
+      findings: [
+        { ...validReviewResponse.findings[0], cleanup: { overlapRisk: true } },
+      ],
+    };
+    expect(
+      parseAiDrawingResponse(
+        withCleanup,
+        AiDrawingTask.DrawingReview,
+        new Set(),
+      ),
+    ).toEqual(withCleanup);
+  });
+
+  it("accepts a finding carrying a composition fix suggestion (Slice 4)", () => {
+    const withFix = {
+      ...validReviewResponse,
+      findings: [
+        {
+          ...validReviewResponse.findings[0],
+          fix: { dx: 0.08, dy: -0.04, scale: 0.9 },
+        },
+      ],
+    };
+    expect(
+      parseAiDrawingResponse(withFix, AiDrawingTask.DrawingReview, new Set()),
+    ).toEqual(withFix);
+  });
+
+  it("rejects an out-of-range composition fix (Slice 4)", () => {
+    const badScale = {
+      ...validReviewResponse,
+      findings: [
+        { ...validReviewResponse.findings[0], fix: { dx: 0, dy: 0, scale: 9 } },
+      ],
+    };
+    expect(() =>
+      parseAiDrawingResponse(badScale, AiDrawingTask.DrawingReview, new Set()),
+    ).toThrow();
+
+    const badAxis = {
+      ...validReviewResponse,
+      findings: [
+        {
+          ...validReviewResponse.findings[0],
+          fix: { dx: 1.5, dy: 0, scale: 1 },
+        },
+      ],
+    };
+    expect(() =>
+      parseAiDrawingResponse(badAxis, AiDrawingTask.DrawingReview, new Set()),
+    ).toThrow();
+  });
+
+  it("rejects a malformed stroke-cleanup flag (Slice 3)", () => {
+    const badFlag = {
+      ...validReviewResponse,
+      findings: [
+        {
+          ...validReviewResponse.findings[0],
+          cleanup: { overlapRisk: "yes" },
+        },
+      ],
+    };
+    expect(() =>
+      parseAiDrawingResponse(badFlag, AiDrawingTask.DrawingReview, new Set()),
+    ).toThrow();
+
+    const extraKey = {
+      ...validReviewResponse,
+      findings: [
+        {
+          ...validReviewResponse.findings[0],
+          cleanup: { overlapRisk: false, force: true },
+        },
+      ],
+    };
+    expect(() =>
+      parseAiDrawingResponse(extraKey, AiDrawingTask.DrawingReview, new Set()),
+    ).toThrow();
+  });
+
   it("rejects a response for a different task", () => {
     expect(() =>
       parseAiDrawingResponse(

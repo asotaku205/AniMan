@@ -621,6 +621,8 @@ export function normalizeReviewFindings(
     const recommendation = normalizeReviewText(finding.recommendation);
     if (issue === null || recommendation === null) continue;
 
+    const cleanup = normalizeCleanupFlag(finding.cleanup);
+    const fix = normalizeFixSuggestion(finding.fix);
     findings.push({
       principle: finding.principle,
       region,
@@ -628,9 +630,56 @@ export function normalizeReviewFindings(
       recommendation,
       severity: finding.severity,
       confidence: finding.confidence,
+      ...(cleanup ? { cleanup } : {}),
+      ...(fix ? { fix } : {}),
     });
   }
   return findings;
+}
+
+/**
+ * Phép chỉnh bố cục đề xuất của finding (Slice 4): giữ khi cả ba số đều hữu
+ * hạn, kẹp về đúng miền của hợp đồng (dx/dy ±1, scale 0.25..4) thay vì bỏ —
+ * model hay ước lượng hơi quá tay. Thiếu/sai kiểu thì bỏ `fix`, giữ finding.
+ */
+function normalizeFixSuggestion(
+  value: unknown,
+): { dx: number; dy: number; scale: number } | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  const { dx, dy, scale } = raw;
+  if (
+    typeof dx !== "number" || !Number.isFinite(dx) ||
+    typeof dy !== "number" || !Number.isFinite(dy) ||
+    typeof scale !== "number" || !Number.isFinite(scale)
+  ) {
+    return undefined;
+  }
+  const clamp = (v: number, min: number, max: number) =>
+    Math.min(max, Math.max(min, v));
+  return {
+    dx: clamp(dx, -1, 1),
+    dy: clamp(dy, -1, 1),
+    scale: clamp(scale, 0.25, 4),
+  };
+}
+
+/**
+ * Cờ dọn nét thừa của finding (Slice 3): chỉ giữ khi đúng dạng
+ * `{overlapRisk: boolean}`; dạng khác thì bỏ cờ (finding vẫn sống như góp ý
+ * thường) thay vì loại cả finding.
+ */
+function normalizeCleanupFlag(
+  value: unknown,
+): { overlapRisk: boolean } | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const overlapRisk = (value as Record<string, unknown>).overlapRisk;
+  if (typeof overlapRisk !== "boolean") return undefined;
+  return { overlapRisk };
 }
 
 /** Vùng lỗi `{x,y,width,height}` trong 0..1; nhận `w`/`h` làm bí danh. */

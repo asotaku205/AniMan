@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AiStrokePath } from "@/lib/ai-drawing-api";
 import {
+  AI_GUIDE_SIMPLIFY_TOLERANCE_PX,
   AI_STROKE_GROUP_LABELS,
   aiStrokeAlpha,
   aiStrokeColor,
@@ -8,6 +9,7 @@ import {
   aiStrokeShape,
   orderStrokesByGroup,
   pointsToSmoothPath,
+  simplifyStrokePoints,
 } from "../lib/aiStrokeGeometry";
 import { rasterizeAiStrokes } from "../lib/aiRasterize";
 
@@ -64,6 +66,60 @@ describe("pointsToSmoothPath — hình học nét AI (5C.3)", () => {
     expect(d.startsWith("M 0.0 0.0")).toBe(true);
     expect(d).toContain(" C ");
     expect(d.endsWith("200.0 0.0")).toBe(true);
+  });
+});
+
+describe("simplifyStrokePoints — rút gọn nhiễu Douglas–Peucker (Slice 2)", () => {
+  it("chuỗi dưới 3 điểm trả nguyên; điểm thẳng hàng bị loại, giữ đầu/cuối", () => {
+    expect(simplifyStrokePoints([{ x: 0, y: 0 }], 100, 100)).toHaveLength(1);
+    const collinear = [
+      { x: 0, y: 0 },
+      { x: 0.25, y: 0 },
+      { x: 0.5, y: 0 },
+      { x: 1, y: 0 },
+    ];
+    expect(simplifyStrokePoints(collinear, 100, 100)).toEqual([
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+    ]);
+  });
+
+  it("điểm lệch dưới dung sai (pixel) bị loại, lệch lớn được giữ", () => {
+    // Canvas 1000px: điểm giữa lệch 1px (< 1.5px) → loại; lệch 30px → giữ
+    const tiny = [
+      { x: 0, y: 0 },
+      { x: 0.5, y: 0.001 },
+      { x: 1, y: 0 },
+    ];
+    expect(simplifyStrokePoints(tiny, 1000, 1000)).toHaveLength(2);
+    const big = [
+      { x: 0, y: 0 },
+      { x: 0.5, y: 0.03 },
+      { x: 1, y: 0 },
+    ];
+    expect(simplifyStrokePoints(big, 1000, 1000)).toHaveLength(3);
+  });
+
+  it("dung sai mặc định là hằng số đã công bố và tôn trọng dung sai truyền vào", () => {
+    expect(AI_GUIDE_SIMPLIFY_TOLERANCE_PX).toBe(1.5);
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 0.5, y: 0.01 },
+      { x: 1, y: 0 },
+    ];
+    expect(simplifyStrokePoints(pts, 1000, 1000, 0.5)).toHaveLength(3);
+    expect(simplifyStrokePoints(pts, 1000, 1000, 20)).toHaveLength(2);
+  });
+
+  it("pointsToSmoothPath: nét dày đặc nhiễu cho ít đoạn cong hơn số điểm gốc", () => {
+    const noisy = Array.from({ length: 21 }, (_, i) => ({
+      x: i / 20,
+      y: 0.5 + (i % 2 === 0 ? 0.0005 : -0.0005),
+    }));
+    const d = pointsToSmoothPath(noisy, 1000, 1000);
+    const segments = (d.match(/ C /g) ?? []).length;
+    expect(segments).toBeLessThan(20);
+    expect(d.startsWith("M 0.0 500.5")).toBe(true);
   });
 });
 

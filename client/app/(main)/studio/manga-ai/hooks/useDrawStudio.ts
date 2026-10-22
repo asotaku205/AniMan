@@ -36,9 +36,15 @@ import {
   type AiSceneBlueprintResponse,
   type AiStrokeGroup,
   type AiStrokePath,
+  type AiDrawingFinding,
   type AiDrawingToolHint,
+  type NormalizedRegion,
 } from "@/lib/ai-drawing-api";
-import { getPageStacksFromDB, savePageDrawingToDB } from "../lib/mangaStorage";
+import {
+  getPageDrawingRecordFromDB,
+  getPageStacksFromDB,
+  savePageDrawingToDB,
+} from "../lib/mangaStorage";
 import { FLOOD_TOLERANCE, floodFillPixels, maskFromAlpha } from "../lib/floodFill";
 import { curveControlPoints } from "../lib/curve";
 import {
@@ -89,6 +95,7 @@ import {
 } from "../lib/layerOps";
 import {
   appendLassoPoint,
+  clampTransformScale,
   composeTransform,
   IDENTITY_TRANSFORM,
   invertSelection as toggleSelectionInvert,
@@ -106,6 +113,13 @@ import {
 import { blitSelectionMask } from "../lib/selectionBlit";
 import { aiStrokeShape } from "../lib/aiStrokeGeometry";
 import { rasterizeAiStrokes } from "../lib/aiRasterize";
+import { regionToPixelRect } from "../lib/strokeCleanup";
+import {
+  createBubble,
+  drawBubbles,
+  type PanelBubbles,
+  type SpeechBubble,
+} from "../lib/bubbles";
 import {
   adjustSize,
   clampSize,
@@ -512,6 +526,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   });
   const [activePanel, setActivePanel] = useState<string | null>(null);
   const [panelData, setPanelData] = useState<Record<string, string>>({});
+  /** Bong bóng thoại theo khung của trang đang mở (Slice 5) + bản ref cho commitSave. */
+  const [panelBubbles, setPanelBubbles] = useState<PanelBubbles>({});
+  const panelBubblesRef = useRef<PanelBubbles>({});
+  const setBubblesBoth = useCallback((next: PanelBubbles) => {
+    panelBubblesRef.current = next;
+    setPanelBubbles(next);
+  }, []);
 
   // Right panel
   const [rightTab, setRightTab] = useState<"ai" | "layout" | "layers">("ai");
@@ -1122,7 +1143,14 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     (data: Record<string, string>, targetPage: number) => {
       if (!projectId) return;
       const stacksToSave = encodeStacksPixels(stacksRef.current);
-      savePageDrawingToDB(projectId, targetPage, stacksToSave, layout.id, data);
+      savePageDrawingToDB(
+        projectId,
+        targetPage,
+        stacksToSave,
+        layout.id,
+        data,
+        panelBubblesRef.current,
+      );
       setIsSaved(true);
       if (onSavePageData) {
         onSavePageData(targetPage, layout.id, data, stacksToSave);
@@ -1252,7 +1280,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         height: display.height,
       },
     );
-  }, [layers, activePanel]);
+    // Bong bóng thoại (Slice 5): dữ liệu vector, vẽ chồng lên composite nên
+    // hiển thị, panelData và ảnh xuất đều có; KHÔNG nằm trong bitmap layer
+    // nên undo/xoá layer không đụng vào thoại.
+    const bubbles = panelBubbles[activePanel];
+    if (bubbles && bubbles.length > 0) {
+      const dctx = display.getContext("2d");
+      if (dctx) drawBubbles(dctx, bubbles, display.width, display.height);
+    }
+  }, [layers, activePanel, panelBubbles]);
 
   /**
    * Render + lưu bitmap phẳng của panel (`panelData[panelId]`) — trang xem trước
@@ -2108,6 +2144,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   useEffect(() => {
     if (!projectId) {
       setPanelData({});
+      setBubblesBoth({});
       setStacks({});
       layerCanvasesRef.current.clear();
       historyRef.current = [];
@@ -2117,19 +2154,25 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     let isCancelled = false;
     async function loadData() {
       try {
-        const { stacks: loadedStacks, legacyPanels } = await getPageStacksFromDB(
+        const {
+          stacks: loadedStacks,
+          legacyPanels,
+          bubbles: loadedBubbles,
+        } = await getPageStacksFromDB(
           projectId!,
           page,
         );
         if (isCancelled) return;
         const data = legacyPanels || {};
         setPanelData(data);
+        setBubblesBoth(loadedBubbles ?? {});
         setIsSaved(true);
         // Dữ liệu trang mới đã có → đồng bộ ngăn xếp + bitmap layer
         resyncLayersWithData(loadedStacks);
       } catch {
         if (!isCancelled) {
           setPanelData({});
+          setBubblesBoth({});
           resyncLayersWithData({});
         }
       }
@@ -2342,6 +2385,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       { background: "#ffffff", width: canvas.width, height: canvas.height },
     );
 
+    // Bong bóng thoại của khung cũng vào ảnh xuất (Slice 5)
+    const exportBubbles = panelBubbles[activePanel] ?? [];
+    if (exportBubbles.length > 0) {
+      const ectx = exportCanvas.getContext("2d");
+      if (ectx) {
+        drawBubbles(ectx, exportBubbles, exportCanvas.width, exportCanvas.height);
+      }
+    }
+
     const link = document.createElement("a");
     link.download = `manga-panel-${activePanel}.png`;
     link.href = exportCanvas.toDataURL("image/png");
@@ -2358,7 +2410,88 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     aiStrokeLayers,
     ghostOpacity,
     layers,
+    panelBubbles,
   ]);
+
+  /**
+   * Xuất **toàn bộ dự án thành PDF nhiều trang** (Slice 6 — xuất bản phẩm).
+   * Mỗi trang dựng canvas 1200×1600 như `exportFullPage` (nền trắng + ảnh
+   * composite từng khung); trang hiện tại lấy dữ liệu trong phiên, các trang
+   * khác đọc bản ghi IndexedDB (layout + composite + bong bóng thoại).
+   * jsPDF được nạp động để không phình bundle của studio.
+   */
+  const exportProjectPdf = useCallback(async () => {
+    if (!projectId) {
+      showToast("Hãy mở một dự án trước khi xuất PDF.");
+      return;
+    }
+    const loadImage = (src: string) =>
+      new Promise<HTMLImageElement | null>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+
+    const { jsPDF } = await import("jspdf");
+    const PAGE_W = 1200;
+    const PAGE_H = 1600;
+    const pdf = new jsPDF({ unit: "mm", format: [150, 200], orientation: "portrait" });
+    const pageNumbers = pages.length > 0 ? [...pages].sort((a, b) => a - b) : [page];
+    let firstPage = true;
+
+    for (const pn of pageNumbers) {
+      const canvas = document.createElement("canvas");
+      canvas.width = PAGE_W;
+      canvas.height = PAGE_H;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+
+      let panelsMap: Record<string, string> = {};
+      let bubblesMap: PanelBubbles = {};
+      let layoutForPage = layout;
+      if (pn === page) {
+        panelsMap = panelDataRef.current;
+        bubblesMap = panelBubblesRef.current;
+      } else {
+        const record = await getPageDrawingRecordFromDB(projectId, pn);
+        panelsMap = record?.panels ?? {};
+        bubblesMap = record?.bubbles ?? {};
+        layoutForPage =
+          LAYOUTS.find((l) => l.id === record?.layoutId) ?? layout;
+      }
+
+      for (const p of layoutForPage.panels) {
+        const px = (p.x / 100) * PAGE_W;
+        const py = (p.y / 100) * PAGE_H;
+        const pw = (p.w / 100) * PAGE_W;
+        const ph = (p.h / 100) * PAGE_H;
+        const src = panelsMap[p.id];
+        if (src) {
+          const img = await loadImage(src);
+          if (img) ctx.drawImage(img, px, py, pw, ph);
+        }
+        // Composite của trang khác có thể là bản lưu cũ chưa nướng bong bóng
+        // → vẽ chồng từ dữ liệu vector cho đủ.
+        const bs = bubblesMap[p.id];
+        if (bs && bs.length > 0 && pn !== page) {
+          ctx.save();
+          ctx.translate(px, py);
+          drawBubbles(ctx, bs, pw, ph);
+          ctx.restore();
+        }
+      }
+
+      if (!firstPage) pdf.addPage([150, 200], "portrait");
+      firstPage = false;
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 150, 200);
+    }
+
+    pdf.save("animan-truyen.pdf");
+    showToast(`Đã xuất PDF ${pageNumbers.length} trang!`);
+  }, [projectId, page, pages, layout, showToast]);
 
   // Xuất toàn bộ trang truyện thành ảnh hoàn chỉnh (PNG 1200x1600)
   const exportFullPage = useCallback(() => {
@@ -3870,6 +4003,158 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     showToast,
   ]);
 
+  /**
+   * Tẩy **một vùng nét thừa** AI đã khoanh trong `drawing_review` (Slice 3 —
+   * dọn nét thừa, hướng A đã chốt 22/10/2026). AI chỉ đề xuất vùng; hàm này
+   * chỉ chạy khi người dùng bấm tẩy cho đúng vùng đó. Tẩy bằng
+   * `destination-out` trên layer đang chọn, gộp thành **một bước hoàn tác**.
+   */
+  const eraseStrokeRegion = useCallback(
+    (region: NormalizedRegion): boolean => {
+      const reason = activeLayerBlockReason();
+      if (reason) {
+        showToast(reason);
+        return false;
+      }
+      const ctx = getCtx();
+      if (!ctx) {
+        showToast("Hãy mở một khung và chọn lớp của bạn trước khi tẩy nét thừa.");
+        return false;
+      }
+      const rect = regionToPixelRect(region, ctx.canvas.width, ctx.canvas.height);
+      if (rect.width === 0 || rect.height === 0) {
+        showToast("Vùng nét thừa không hợp lệ, không tẩy được.");
+        return false;
+      }
+      endFloat();
+      snapshot();
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.globalAlpha = 1;
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      ctx.restore();
+      compositeNow();
+      showToast("Đã tẩy vùng nét thừa (Ctrl+Z để hoàn tác).");
+      return true;
+    },
+    [activeLayerBlockReason, getCtx, endFloat, snapshot, compositeNow, showToast],
+  );
+
+  /**
+   * Tự tẩy tay (Slice 3): chuyển sang công cụ Tẩy; các vùng khoanh của bản
+   * review vẫn hiện trên khung để người dùng đối chiếu mà tẩy — đường thoát
+   * cho vùng `overlapRisk` không nên tẩy tự động cả vùng.
+   */
+  const startManualCleanup = useCallback(() => {
+    setTool("eraser");
+    showToast(
+      "Đã chuyển sang công cụ Tẩy — vùng nét thừa vẫn được khoanh để bạn tự tẩy.",
+    );
+  }, [setTool, showToast]);
+
+  /**
+   * Áp phép chỉnh bố cục AI đề xuất (`finding.fix`) vào nội dung trong
+   * `finding.region` trên layer đang chọn (Slice 4 — chỉnh bố cục). Dựng
+   * vùng chọn chữ nhật từ region rồi đi qua đúng máy biến đổi vùng chọn sẵn
+   * có (`transformSelectionBy`: cắt thành vật đang bay → biến đổi → chốt)
+   * nên toàn bộ thao tác là **một bước hoàn tác**. AI chỉ đề xuất số liệu;
+   * hàm này chỉ chạy khi người dùng bấm áp dụng.
+   */
+  const applyCompositionFix = useCallback(
+    (finding: AiDrawingFinding): boolean => {
+      if (!finding.fix) return false;
+      const reason = activeLayerBlockReason();
+      if (reason) {
+        showToast(reason);
+        return false;
+      }
+      const ctx = getCtx();
+      if (!ctx) {
+        showToast("Hãy mở một khung và chọn lớp của bạn trước khi chỉnh bố cục.");
+        return false;
+      }
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      const rect = regionToPixelRect(finding.region, w, h);
+      if (rect.width < 2 || rect.height < 2) {
+        showToast("Vùng cần chỉnh quá nhỏ, không áp dụng được.");
+        return false;
+      }
+      const sel = rectSelection(
+        { x: rect.x, y: rect.y },
+        { x: rect.x + rect.width, y: rect.y + rect.height },
+      );
+      commitSelection(sel);
+      transformSelectionBy({
+        dx: finding.fix.dx * w,
+        dy: finding.fix.dy * h,
+        scale: clampTransformScale(finding.fix.scale),
+      });
+      showToast("Đã áp gợi ý chỉnh bố cục (Ctrl+Z để hoàn tác).");
+      return true;
+    },
+    [
+      activeLayerBlockReason,
+      getCtx,
+      commitSelection,
+      transformSelectionBy,
+      showToast,
+    ],
+  );
+
+  // ── Bong bóng thoại (Slice 5) ──────────────────────────────────────────────
+  /** Bong bóng của khung đang mở. */
+  const activeBubbles: SpeechBubble[] = activePanel
+    ? (panelBubbles[activePanel] ?? [])
+    : [];
+
+  /** Thêm bong bóng thoại vào khung đang mở; trả về bong bóng mới (hoặc null). */
+  const addBubble = useCallback((): SpeechBubble | null => {
+    if (!activePanel) {
+      showToast("Hãy mở một khung tranh trước khi thêm bong bóng thoại.");
+      return null;
+    }
+    const bubble = createBubble(
+      `bubble-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    );
+    setBubblesBoth({
+      ...panelBubblesRef.current,
+      [activePanel]: [...(panelBubblesRef.current[activePanel] ?? []), bubble],
+    });
+    compositeNow();
+    return bubble;
+  }, [activePanel, setBubblesBoth, compositeNow, showToast]);
+
+  /** Cập nhật một bong bóng của khung đang mở (dời/đổi cỡ/sửa chữ/đuôi). */
+  const updateBubble = useCallback(
+    (id: string, patch: Partial<SpeechBubble>) => {
+      if (!activePanel) return;
+      const list = panelBubblesRef.current[activePanel] ?? [];
+      if (!list.some((b) => b.id === id)) return;
+      setBubblesBoth({
+        ...panelBubblesRef.current,
+        [activePanel]: list.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+      });
+      compositeNow();
+    },
+    [activePanel, setBubblesBoth, compositeNow],
+  );
+
+  /** Xoá một bong bóng của khung đang mở. */
+  const removeBubble = useCallback(
+    (id: string) => {
+      if (!activePanel) return;
+      const list = panelBubblesRef.current[activePanel] ?? [];
+      setBubblesBoth({
+        ...panelBubblesRef.current,
+        [activePanel]: list.filter((b) => b.id !== id),
+      });
+      compositeNow();
+      showToast("Đã xoá bong bóng thoại.");
+    },
+    [activePanel, setBubblesBoth, compositeNow, showToast],
+  );
+
   /** Có thể áp nét AI xuống lớp đang chọn không (nút trong lớp phủ bật/tắt theo). */
   const canApplyAiToLayer =
     activePanel !== null &&
@@ -3946,6 +4231,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     saveDraft,
     exportCurrentPanel,
     exportFullPage,
+    /** Xuất toàn bộ dự án thành PDF nhiều trang (Slice 6) */
+    exportProjectPdf,
     // AI
     sceneType,
     setSceneType,
@@ -3996,6 +4283,17 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     /** Áp nét AI xuống lớp người dùng đang chọn = một bước hoàn tác (5C.2) */
     applyAiToActiveLayer,
     canApplyAiToLayer,
+    /** Tẩy một vùng nét thừa AI khoanh = một bước hoàn tác (Slice 3) */
+    eraseStrokeRegion,
+    /** Chuyển sang tẩy tay theo vùng khoanh của review (Slice 3) */
+    startManualCleanup,
+    /** Áp phép chỉnh bố cục AI đề xuất = một bước hoàn tác (Slice 4) */
+    applyCompositionFix,
+    /** Bong bóng thoại của khung đang mở + thao tác thêm/sửa/xoá (Slice 5) */
+    activeBubbles,
+    addBubble,
+    updateBubble,
+    removeBubble,
     /** Tóm tắt + dòng nguồn AI của nét gợi ý (AC-D2.2) */
     ghostStrokesSummary,
     ghostAt,

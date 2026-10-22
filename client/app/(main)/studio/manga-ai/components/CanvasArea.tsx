@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   AlertCircle,
@@ -29,7 +29,18 @@ import {
   type LayoutDef,
 } from "../data";
 import type { SceneType } from "../data";
-import type { AiDrawingReviewResponse } from "@/lib/ai-drawing-api";
+import type {
+  AiDrawingFinding,
+  AiDrawingReviewResponse,
+  NormalizedRegion,
+} from "@/lib/ai-drawing-api";
+import { cleanupCandidates } from "../lib/strokeCleanup";
+import { describeFix } from "../lib/compositionFix";
+import {
+  moveBubble,
+  resizeBubble,
+  type SpeechBubble,
+} from "../lib/bubbles";
 
 type Props = {
   // Layout / panel state
@@ -94,6 +105,17 @@ type Props = {
   showAnalysis: boolean;
   dismissAnalysis?: () => void;
   runAnalysis: () => void;
+  /** Tẩy một vùng nét thừa AI khoanh (Slice 3 — dọn nét thừa) */
+  onEraseStrokeRegion?: (region: NormalizedRegion) => void;
+  /** Chuyển sang công cụ tẩy để tự tẩy tay theo vùng khoanh (Slice 3) */
+  onStartManualCleanup?: () => void;
+  /** Áp phép chỉnh bố cục AI đề xuất cho một finding (Slice 4) */
+  onApplyCompositionFix?: (finding: AiDrawingFinding) => void;
+  /** Bong bóng thoại của khung đang mở (Slice 5) — hình thật do composite vẽ, đây chỉ là tay nắm tương tác */
+  bubbles?: SpeechBubble[];
+  onAddBubble?: () => SpeechBubble | null;
+  onUpdateBubble?: (id: string, patch: Partial<SpeechBubble>) => void;
+  onRemoveBubble?: (id: string) => void;
   // Suggestion widget
   sceneType: SceneType;
   selectedComp: string | null;
@@ -157,6 +179,13 @@ export function CanvasArea({
   showAnalysis,
   dismissAnalysis,
   runAnalysis,
+  onEraseStrokeRegion,
+  onStartManualCleanup,
+  onApplyCompositionFix,
+  bubbles,
+  onAddBubble,
+  onUpdateBubble,
+  onRemoveBubble,
   sceneType,
   selectedComp,
   showPanelSuggestions,
@@ -168,6 +197,55 @@ export function CanvasArea({
   enterPanel,
   setPanelFullscreen,
 }: Props) {
+  // ── Bong bóng thoại (Slice 5): tay nắm tương tác trong suốt phủ đúng vị trí
+  // bong bóng; hình bong bóng thật do composite canvas vẽ ở dưới.
+  const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
+  const [editingBubbleId, setEditingBubbleId] = useState<string | null>(null);
+  const bubbleDragRef = useRef<{
+    id: string;
+    mode: "move" | "resize";
+    startX: number;
+    startY: number;
+    orig: SpeechBubble;
+  } | null>(null);
+
+  const onBubblePointerDown = (
+    e: React.PointerEvent,
+    bubble: SpeechBubble,
+    mode: "move" | "resize",
+  ) => {
+    e.stopPropagation();
+    setSelectedBubbleId(bubble.id);
+    bubbleDragRef.current = {
+      id: bubble.id,
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      orig: bubble,
+    };
+    const onMove = (ev: PointerEvent) => {
+      const drag = bubbleDragRef.current;
+      const host = canvasRef.current;
+      if (!drag || !host || !onUpdateBubble) return;
+      const dx = (ev.clientX - drag.startX) / (host.clientWidth || 1);
+      const dy = (ev.clientY - drag.startY) / (host.clientHeight || 1);
+      if (drag.mode === "move") {
+        const next = moveBubble(drag.orig, dx, dy);
+        onUpdateBubble(drag.id, { x: next.x, y: next.y });
+      } else {
+        const next = resizeBubble(drag.orig, drag.orig.w + dx, drag.orig.h + dy);
+        onUpdateBubble(drag.id, { w: next.w, h: next.h });
+      }
+    };
+    const onUp = () => {
+      bubbleDragRef.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
   return (
     <div
       className={`flex-1 bg-[#1a1226] flex items-center justify-center transition-all ${
@@ -320,6 +398,119 @@ export function CanvasArea({
               onPointerUp={up}
               onPointerLeave={up}
             />
+
+            {/* Bong bóng thoại (Slice 5) — tay nắm trong suốt: kéo để dời, góc
+                dưới-phải để đổi cỡ, nhấp đúp để sửa chữ. Hình bong bóng thật
+                nằm ở composite canvas phía dưới. */}
+            {activePanel && bubbles && (
+              <div className="absolute inset-0 z-40 pointer-events-none">
+                {onAddBubble && (
+                  <button
+                    onClick={() => {
+                      const created = onAddBubble();
+                      if (created) setSelectedBubbleId(created.id);
+                    }}
+                    className="pointer-events-auto absolute left-2 top-2 px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 border border-white/15 text-white/85 text-[10px] font-medium backdrop-blur-md transition-colors"
+                  >
+                    + Bong bóng thoại
+                  </button>
+                )}
+                {bubbles.map((bubble) => {
+                  const isSel = selectedBubbleId === bubble.id;
+                  const isEditing = editingBubbleId === bubble.id;
+                  return (
+                    <div
+                      key={bubble.id}
+                      className={`absolute pointer-events-auto ${
+                        isSel
+                          ? "outline outline-2 outline-dashed outline-pink-400/80"
+                          : "outline outline-1 outline-transparent hover:outline-white/30"
+                      }`}
+                      style={{
+                        left: `${bubble.x * 100}%`,
+                        top: `${bubble.y * 100}%`,
+                        width: `${bubble.w * 100}%`,
+                        height: `${bubble.h * 100}%`,
+                        borderRadius: "50%",
+                        cursor: "move",
+                      }}
+                      onPointerDown={(e) => onBubblePointerDown(e, bubble, "move")}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setEditingBubbleId(bubble.id);
+                      }}
+                    >
+                      {isEditing ? (
+                        <textarea
+                          autoFocus
+                          defaultValue={bubble.text}
+                          className="absolute inset-0 w-full h-full bg-white text-black text-[11px] rounded-[50%] text-center p-3 resize-none outline-none overflow-hidden"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onBlur={(e) => {
+                            onUpdateBubble?.(bubble.id, {
+                              text: e.currentTarget.value,
+                            });
+                            setEditingBubbleId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              onUpdateBubble?.(bubble.id, {
+                                text: e.currentTarget.value,
+                              });
+                              setEditingBubbleId(null);
+                            } else if (e.key === "Escape") {
+                              setEditingBubbleId(null);
+                            }
+                          }}
+                        />
+                      ) : (
+                        isSel && (
+                          <>
+                            <button
+                              aria-label="Xoá bong bóng"
+                              className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-rose-500 text-white text-[11px] leading-none flex items-center justify-center shadow"
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={() => {
+                                onRemoveBubble?.(bubble.id);
+                                setSelectedBubbleId(null);
+                              }}
+                            >
+                              ×
+                            </button>
+                            <button
+                              aria-label={bubble.tail ? "Tắt đuôi thoại" : "Bật đuôi thoại"}
+                              title={bubble.tail ? "Tắt đuôi thoại" : "Bật đuôi thoại"}
+                              className="absolute -top-2 -left-2 h-5 px-1.5 rounded-full bg-black/75 text-white text-[9px] flex items-center justify-center shadow"
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={() =>
+                                onUpdateBubble?.(bubble.id, {
+                                  tail: bubble.tail
+                                    ? null
+                                    : {
+                                        x: bubble.x + bubble.w / 2,
+                                        y: Math.min(1, bubble.y + bubble.h + 0.18),
+                                      },
+                                })
+                              }
+                            >
+                              đuôi
+                            </button>
+                            <div
+                              aria-label="Đổi kích thước bong bóng"
+                              className="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-pink-500 border-2 border-white shadow cursor-nwse-resize"
+                              onPointerDown={(e) =>
+                                onBubblePointerDown(e, bubble, "resize")
+                              }
+                            />
+                          </>
+                        )
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Chip điều khiển khung nhìn (3A — pan/zoom, BR-T06) */}
             <div className="absolute right-2 top-2 z-40 flex items-center gap-0.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-1.5 py-1 text-[10px] text-white/80">
@@ -744,6 +935,54 @@ export function CanvasArea({
                                 <span className="text-white/40">Gợi ý: </span>
                                 {f.recommendation}
                               </p>
+                              {f.fix && (
+                                <div
+                                  className="mt-1.5 pt-1.5 border-t border-white/5"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[8px] px-1.5 py-0.5 rounded-full border text-amber-300 bg-amber-500/10 border-amber-500/30 font-semibold">
+                                      Chỉnh bố cục
+                                    </span>
+                                    {onApplyCompositionFix && (
+                                      <button
+                                        onClick={() => onApplyCompositionFix(f)}
+                                        className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/35 border border-amber-500/40 text-amber-200 font-medium transition-colors"
+                                      >
+                                        Áp dụng chỉnh
+                                      </button>
+                                    )}
+                                  </div>
+                                  <p className="text-white/50 leading-relaxed text-[9px] mt-1">
+                                    Đề xuất: {describeFix(f.fix)} — chỉ áp lên lớp đang chọn, hoàn tác được.
+                                  </p>
+                                </div>
+                              )}
+                              {f.cleanup && (
+                                <div
+                                  className="mt-1.5 pt-1.5 border-t border-white/5"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[8px] px-1.5 py-0.5 rounded-full border text-rose-300 bg-rose-500/10 border-rose-500/30 font-semibold">
+                                      Nét thừa
+                                    </span>
+                                    {onEraseStrokeRegion && (
+                                      <button
+                                        onClick={() => onEraseStrokeRegion(f.region)}
+                                        className="text-[9px] px-2 py-0.5 rounded-full bg-rose-500/20 hover:bg-rose-500/35 border border-rose-500/40 text-rose-200 font-medium transition-colors"
+                                      >
+                                        Tẩy vùng này
+                                      </button>
+                                    )}
+                                  </div>
+                                  {f.cleanup.overlapRisk && (
+                                    <p className="text-amber-300/90 leading-relaxed text-[9px] mt-1">
+                                      ⚠ Vùng này có thể chồng nét quan trọng — cân nhắc tự tẩy tay thay vì tẩy cả vùng.
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -777,6 +1016,16 @@ export function CanvasArea({
                     >
                       Đánh giá lại
                     </button>
+                    {onStartManualCleanup &&
+                      cleanupCandidates(reviewResult.findings).length > 0 && (
+                        <button
+                          onClick={onStartManualCleanup}
+                          className="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-medium transition-colors"
+                          title="Chuyển sang công cụ Tẩy để tự tẩy theo vùng đã khoanh"
+                        >
+                          Tự tẩy tay
+                        </button>
+                      )}
                     {dismissAnalysis && (
                       <button
                         onClick={dismissAnalysis}
