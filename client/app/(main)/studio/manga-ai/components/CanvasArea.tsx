@@ -114,6 +114,8 @@ type Props = {
   /** Khối chữ dạng đối tượng của khung đang mở — hình thật do composite vẽ, đây chỉ là tay nắm tương tác */
   texts?: TextItem[];
   onUpdateTextItem?: (id: string, patch: Partial<TextItem>) => void;
+  /** Chốt thay đổi chữ (chụp panelData + lưu) khi kết thúc kéo/sửa */
+  onCommitTextItems?: () => void;
   onRemoveTextItem?: (id: string) => void;
   // Suggestion widget
   sceneType: SceneType;
@@ -183,6 +185,7 @@ export function CanvasArea({
   onApplyCompositionFix,
   texts,
   onUpdateTextItem,
+  onCommitTextItems,
   onRemoveTextItem,
   sceneType,
   selectedComp,
@@ -253,6 +256,7 @@ export function CanvasArea({
       textDragRef.current = null;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      onCommitTextItems?.();
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -454,6 +458,7 @@ export function CanvasArea({
                               text: e.currentTarget.value,
                             });
                             setEditingTextId(null);
+                            onCommitTextItems?.();
                           }}
                           onKeyDown={(e) => {
                             if (e.key === "Escape") setEditingTextId(null);
@@ -478,11 +483,12 @@ export function CanvasArea({
                                 aria-label="Giảm cỡ chữ"
                                 className="h-5 px-1.5 rounded-full bg-black/75 text-white text-[9px] flex items-center justify-center shadow"
                                 onPointerDown={(e) => e.stopPropagation()}
-                                onClick={() =>
+                                onClick={() => {
                                   onUpdateTextItem?.(item.id, {
                                     fontScale: Math.max(0.012, item.fontScale * 0.9),
-                                  })
-                                }
+                                  });
+                                  onCommitTextItems?.();
+                                }}
                               >
                                 A−
                               </button>
@@ -490,11 +496,12 @@ export function CanvasArea({
                                 aria-label="Tăng cỡ chữ"
                                 className="h-5 px-1.5 rounded-full bg-black/75 text-white text-[9px] flex items-center justify-center shadow"
                                 onPointerDown={(e) => e.stopPropagation()}
-                                onClick={() =>
+                                onClick={() => {
                                   onUpdateTextItem?.(item.id, {
                                     fontScale: Math.min(0.3, item.fontScale * 1.1),
-                                  })
-                                }
+                                  });
+                                  onCommitTextItems?.();
+                                }}
                               >
                                 A+
                               </button>

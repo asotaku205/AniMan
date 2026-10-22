@@ -1283,12 +1283,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     // Chữ dạng đối tượng: dữ liệu vector, vẽ chồng lên composite nên hiển
     // thị, panelData và ảnh xuất đều có; KHÔNG nằm trong bitmap layer nên
     // undo/xoá layer không đụng vào chữ, và chữ sửa/dời được sau khi điền.
-    const texts = panelTexts[activePanel];
+    // Đọc từ REF, không đọc state: hàm này được gọi ngay sau khi cập nhật
+    // chữ trong cùng một nhịp xử lý (điền/kéo/sửa), state lúc đó chưa kịp
+    // render lại — đọc state sẽ vẽ thiếu đúng khối chữ vừa thêm (chậm 1 nhịp).
+    const texts = panelTextsRef.current[activePanel];
     if (texts && texts.length > 0) {
       const dctx = display.getContext("2d");
       if (dctx) drawTextItems(dctx, texts, display.width, display.height);
     }
-  }, [layers, activePanel, panelTexts]);
+  }, [layers, activePanel]);
 
   /**
    * Render + lưu bitmap phẳng của panel (`panelData[panelId]`) — trang xem trước
@@ -4121,7 +4124,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     ? (panelTexts[activePanel] ?? [])
     : [];
 
-  /** Cập nhật một khối chữ của khung đang mở (dời/sửa chữ/đổi cỡ/màu). */
+  /**
+   * Cập nhật một khối chữ của khung đang mở (dời/sửa chữ/đổi cỡ/màu).
+   * Chỉ vẽ lại composite (nhẹ) để kéo/sửa mượt — KHÔNG gọi `compositeNow`
+   * ở đây: hàm đó mã hoá PNG + lên lịch lưu mỗi lần gọi, kéo chuột sẽ gọi
+   * hàng chục lần/giây và lag nặng. Nơi gọi phải chốt bằng
+   * `commitTextItems()` khi thao tác kết thúc (thả chuột, sửa xong).
+   */
   const updateTextItem = useCallback(
     (id: string, patch: Partial<TextItem>) => {
       if (!activePanel) return;
@@ -4131,10 +4140,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         ...panelTextsRef.current,
         [activePanel]: list.map((t) => (t.id === id ? { ...t, ...patch } : t)),
       });
-      compositeNow();
+      renderComposite();
     },
-    [activePanel, setTextsBoth, compositeNow],
+    [activePanel, setTextsBoth, renderComposite],
   );
+
+  /** Chốt thay đổi chữ: chụp panelData + lên lịch lưu (gọi khi kết thúc thao tác). */
+  const commitTextItems = useCallback(() => {
+    compositeNow();
+  }, [compositeNow]);
 
   /** Xoá một khối chữ của khung đang mở. */
   const removeTextItem = useCallback(
@@ -4288,6 +4302,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     /** Khối chữ dạng đối tượng của khung đang mở + sửa/xoá (thay bong bóng thoại) */
     activeTextItems,
     updateTextItem,
+    commitTextItems,
     removeTextItem,
     /** Tóm tắt + dòng nguồn AI của nét gợi ý (AC-D2.2) */
     ghostStrokesSummary,

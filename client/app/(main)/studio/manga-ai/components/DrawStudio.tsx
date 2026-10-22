@@ -194,6 +194,7 @@ export function DrawStudio({
           onApplyCompositionFix={s.applyCompositionFix}
           texts={s.activeTextItems}
           onUpdateTextItem={s.updateTextItem}
+          onCommitTextItems={s.commitTextItems}
           onRemoveTextItem={s.removeTextItem}
           sceneType={s.sceneType}
           selectedComp={s.selectedComp}
