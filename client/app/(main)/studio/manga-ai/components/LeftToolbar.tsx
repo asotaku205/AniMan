@@ -26,7 +26,6 @@ import {
   Check,
 } from "lucide-react";
 import { TOOL_NAMES, TOOL_SHORTCUTS } from "../hooks/useDrawStudio";
-import { MANGA_PALETTE, normalizeHex } from "../lib/toolSettings";
 import {
   clampSides,
   LINE_KINDS,
@@ -104,8 +103,6 @@ const SHAPE_ICONS: Record<ShapeKind, React.ReactNode> = {
 type Props = {
   tool: DrawTool;
   onToolChange: (t: DrawTool) => void;
-  color: string;
-  onColorChange: (c: string) => void;
   /** Disabled when no active panel */
   disabled: boolean;
   shapeType?: ShapeKind;
@@ -120,8 +117,6 @@ type Props = {
 export function LeftToolbar({
   tool,
   onToolChange,
-  color,
-  onColorChange,
   disabled,
   shapeType = "rect",
   onShapeTypeChange,
@@ -130,10 +125,6 @@ export function LeftToolbar({
   shapeSides = 5,
   onShapeSidesChange,
 }: Props) {
-  // Ô nhập HEX chỉ chốt màu khi hợp lệ (AC-T2.3). `hexDraft = null` nghĩa là
-  // đang không sửa → hiện màu hiện tại, nên không cần đồng bộ bằng effect.
-  const [hexDraft, setHexDraft] = useState<string | null>(null);
-  const hexValue = hexDraft ?? color;
   /**
    * Công cụ đang được rê chuột (kèm toạ độ nút) → hiện bảng hướng dẫn. Bảng được
    * render qua portal ra `document.body` và đặt `position: fixed` vì khung studio
@@ -153,19 +144,6 @@ export function LeftToolbar({
     });
   };
 
-  /** Chọn màu từ bảng/circle: bỏ bản nháp đang gõ dở để ô HEX theo màu mới. */
-  const pickColor = (c: string) => {
-    setHexDraft(null);
-    onColorChange(c);
-    setPaletteOpen(false);
-  };
-
-  const commitHex = () => {
-    const normalized = hexDraft === null ? null : normalizeHex(hexDraft);
-    if (normalized) onColorChange(normalized);
-    setHexDraft(null);
-  };
-
   /** Công cụ đang hiện bảng chọn kiểu (Hình: 6 kiểu; Đường/mũi tên: 2 kiểu). */
   const showShapePanel = tool === "shape" || tool === "line";
   const isLineTool = tool === "line";
@@ -181,8 +159,6 @@ export function LeftToolbar({
 
   /** Nút của từng công cụ → neo bảng chọn kiểu vào đúng nút (7.6). */
   const toolButtonRefs = useRef<Map<DrawTool, HTMLButtonElement>>(new Map());
-  /** Bảng màu mở/đóng (7.5) — chỉ một popover, đóng khi bấm ra ngoài. */
-  const [paletteOpen, setPaletteOpen] = useState(false);
 
   /**
    * Đặt bảng chọn kiểu cạnh nút công cụ đang dùng. Đo ngay trong ref callback
@@ -382,78 +358,7 @@ export function LeftToolbar({
           document.body,
         )}
 
-      <div className="mt-3 w-8 h-px bg-white/10" />
-
-      {/* Ô màu + bảng màu nhanh trong popover 28px (7.5) */}
-      <div className="relative mt-2">
-        <button
-          onClick={() => setPaletteOpen((v) => !v)}
-          disabled={disabled}
-          title="Chọn màu vẽ"
-          aria-label="Chọn màu vẽ"
-          aria-expanded={paletteOpen}
-          className="w-10 h-10 rounded-full border-2 border-white/20 shadow-md overflow-hidden relative disabled:cursor-not-allowed hover:border-white/40 transition-colors"
-          style={{ background: color }}
-        >
-          <span className="sr-only">Màu hiện tại {color}</span>
-        </button>
-
-        {paletteOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setPaletteOpen(false)}
-            />
-            <div className="absolute left-[52px] bottom-0 z-50 w-[168px] bg-[#0d0817]/97 border border-pink-500/25 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md">
-              <p className="text-[10px] uppercase tracking-wider text-white/45 font-semibold mb-2">
-                Màu nhanh
-              </p>
-              <div className="grid grid-cols-4 gap-1.5">
-                {MANGA_PALETTE.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => pickColor(c)}
-                    title={c}
-                    aria-label={`Màu ${c}`}
-                    className={`w-7 h-7 rounded-md border transition-transform hover:scale-105 ${
-                      color.toLowerCase() === c
-                        ? "border-pink-400 ring-1 ring-pink-400/60"
-                        : "border-white/15"
-                    }`}
-                    style={{ background: c }}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-2.5 pt-2.5 border-t border-white/10 flex items-center gap-2">
-                <label
-                  className="relative w-7 h-7 rounded-md border border-white/20 overflow-hidden cursor-pointer flex-shrink-0"
-                  title="Màu tuỳ chọn"
-                  style={{ background: color }}
-                >
-                  <input
-                    type="color"
-                    value={color}
-                    onChange={(e) => pickColor(e.target.value)}
-                    className="absolute -inset-2 opacity-0 cursor-pointer"
-                  />
-                </label>
-                <input
-                  value={hexValue}
-                  onChange={(e) => setHexDraft(e.target.value)}
-                  onBlur={commitHex}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitHex();
-                  }}
-                  placeholder="#RRGGBB"
-                  title="Nhập mã màu HEX rồi Enter"
-                  className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-md px-1.5 py-1 text-[10px] font-mono text-white/70 text-center focus:outline-none focus:border-pink-500/40"
-                />
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      {/* Màu vẽ đã chuyển sang thanh thuộc tính (7.8) — thanh trái chỉ còn công cụ. */}
     </div>
   );
 }

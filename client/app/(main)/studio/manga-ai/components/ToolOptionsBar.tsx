@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   FlipHorizontal,
   FlipVertical,
@@ -17,7 +17,7 @@ import type { DrawTool } from "../data";
 import type { ShapeKind } from "../lib/shape";
 import { dabAlpha, hardnessBlurRadius, smoothStroke } from "../lib/stroke";
 import type { ToolSettings } from "../lib/toolSettings";
-import { EFFECT_MODES, effectModeLabel, SIZE_PRESETS } from "../lib/toolSettings";
+import { EFFECT_MODES, effectModeLabel, MANGA_PALETTE, normalizeHex, SIZE_PRESETS } from "../lib/toolSettings";
 import {
   GRADIENT_ENDS,
   GRADIENT_SHAPES,
@@ -33,6 +33,8 @@ type Props = {
   settings: ToolSettings;
   onSettingsChange: (patch: Partial<ToolSettings>) => void;
   color: string;
+  /** Đổi màu vẽ ngay trong thanh thuộc tính (7.8). */
+  onColorChange: (color: string) => void;
   disabled: boolean;
   /** Kiểu hình / kiểu đường đang chọn (dùng chung công cụ Hình và Đường — 3D). */
   shapeType: ShapeKind;
@@ -51,6 +53,115 @@ type Props = {
 
 const PREVIEW_W = 168;
 const PREVIEW_H = 36;
+
+/**
+ * Chọn màu ngay trong thanh thuộc tính (7.8): nút màu + mã HEX, popover chứa
+ * 16 màu manga, ô HEX và màu tuỳ chọn. Màu là thuộc tính của nét nên đứng cạnh
+ * Cỡ/Độ mờ; để trong popover cho thanh không cao thêm.
+ */
+function ColorControl({
+  color,
+  disabled,
+  onChange,
+}: {
+  color: string;
+  disabled: boolean;
+  onChange: (color: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  /** Bản nháp HEX đang gõ; null = đang hiện màu thật. */
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? color;
+
+  const commit = () => {
+    const normalized = draft === null ? null : normalizeHex(draft);
+    if (normalized) onChange(normalized);
+    setDraft(null);
+  };
+
+  return (
+    <div className="relative flex-shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        title={`Màu vẽ ${color} — bấm để chọn màu`}
+        aria-label="Chọn màu vẽ"
+        aria-expanded={open}
+        className="flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 px-1.5 py-1 transition-colors"
+      >
+        <span
+          className="w-6 h-6 rounded-full border-2 border-white/25 shadow-sm"
+          style={{ background: color }}
+        />
+        <span className="text-[10px] font-mono text-white/60 uppercase">
+          {color}
+        </span>
+      </button>
+
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute left-0 top-full mt-2 z-50 w-[196px] bg-[#0d0817] border border-pink-500/25 rounded-2xl p-2.5 shadow-2xl">
+            <p className="text-[10px] uppercase tracking-wider text-white/45 font-semibold mb-2">
+              Màu nhanh
+            </p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {MANGA_PALETTE.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => {
+                    onChange(c);
+                    setDraft(null);
+                    setOpen(false);
+                  }}
+                  title={c}
+                  aria-label={`Màu ${c}`}
+                  className={`w-7 h-7 rounded-md border transition-transform hover:scale-105 ${
+                    color.toLowerCase() === c
+                      ? "border-pink-400 ring-1 ring-pink-400/60"
+                      : "border-white/15"
+                  }`}
+                  style={{ background: c }}
+                />
+              ))}
+            </div>
+
+            <div className="mt-2.5 pt-2.5 border-t border-white/10 flex items-center gap-2">
+              <label
+                className="relative w-7 h-7 rounded-md border border-white/20 overflow-hidden cursor-pointer flex-shrink-0"
+                title="Màu tuỳ chọn"
+                style={{ background: color }}
+              >
+                <input
+                  type="color"
+                  value={color}
+                  onChange={(e) => onChange(e.target.value)}
+                  className="absolute -inset-2 opacity-0 cursor-pointer"
+                />
+              </label>
+              <input
+                value={value}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit();
+                }}
+                placeholder="#RRGGBB"
+                title="Nhập mã màu HEX rồi Enter"
+                className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-md px-1.5 py-1 text-[10px] font-mono text-white/70 text-center uppercase focus:outline-none focus:border-pink-500/40"
+              />
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 /** Nhóm điều khiển: nhãn nhỏ + slider + giá trị (dùng chung cho mọi thuộc tính). */
 function Slider({
@@ -168,6 +279,7 @@ export function ToolOptionsBar({
   settings,
   onSettingsChange,
   color,
+  onColorChange,
   disabled,
   shapeType,
   onShapeTypeChange,
@@ -515,6 +627,9 @@ export function ToolOptionsBar({
           />
         </>
       )}
+
+      {/* Màu vẽ — đứng cùng Cỡ/Độ mờ vì là thuộc tính của nét (7.8) */}
+      <ColorControl color={color} disabled={disabled} onChange={onColorChange} />
 
       {/* Kích thước + preset (AC-T2.5) */}
       {showSize && (

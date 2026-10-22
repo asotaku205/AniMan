@@ -80,8 +80,6 @@ export function DrawStudio({
       <LeftToolbar
         tool={s.tool}
         onToolChange={s.setTool}
-        color={s.color}
-        onColorChange={s.setColor}
         disabled={!s.activePanel}
         shapeType={s.shapeType}
         onShapeTypeChange={s.setShapeType}
@@ -126,6 +124,7 @@ export function DrawStudio({
           settings={s.settings}
           onSettingsChange={s.updateSettings}
           color={s.color}
+          onColorChange={s.setColor}
           disabled={!s.activePanel}
           shapeType={s.shapeType}
           onShapeTypeChange={s.setShapeType}

@@ -120,7 +120,7 @@ export function RightPanel({ s }: Props) {
           onClick={() => setCollapsed(true)}
           title="Thu gọn panel để lấy chỗ cho canvas"
           aria-label="Thu gọn panel"
-          className="w-9 flex items-center justify-center text-white/30 hover:text-white hover:bg-white/5 transition-colors border-l border-white/5"
+          className="w-9 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/5 transition-colors border-l border-white/5"
         >
           <ChevronRight size={14} />
         </button>
