@@ -116,10 +116,20 @@ import { rasterizeAiStrokes } from "../lib/aiRasterize";
 import { regionToPixelRect } from "../lib/strokeCleanup";
 import {
   createTextItem,
+  DEFAULT_TEXT_STYLE,
   drawTextItems,
+  withTextStyleDefaults,
   type PanelTextItems,
   type TextItem,
+  type TextStyle,
 } from "../lib/textItems";
+import {
+  createBubbleShape,
+  drawBubbleShapes,
+  type BubbleShape,
+  type BubbleShapeKind,
+  type PanelBubbleShapes,
+} from "../lib/bubbleShapes";
 import {
   adjustSize,
   clampSize,
@@ -533,6 +543,19 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     panelTextsRef.current = next;
     setPanelTexts(next);
   }, []);
+  /** Hình bóng thoại mẫu theo khung của trang đang mở + bản ref cho commitSave. */
+  const [panelShapes, setPanelShapes] = useState<PanelBubbleShapes>({});
+  const panelShapesRef = useRef<PanelBubbleShapes>({});
+  const setShapesBoth = useCallback((next: PanelBubbleShapes) => {
+    panelShapesRef.current = next;
+    setPanelShapes(next);
+  }, []);
+  /**
+   * Style chữ hiện hành (chuẩn tool lớn: style vừa chỉnh cho khối chữ đang
+   * chọn sẽ thành mặc định cho khối chữ sắp điền tiếp).
+   */
+  const [currentTextStyle, setCurrentTextStyle] =
+    useState<TextStyle>(DEFAULT_TEXT_STYLE);
 
   // Right panel
   const [rightTab, setRightTab] = useState<"ai" | "layout" | "layers">("ai");
@@ -1150,6 +1173,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         layout.id,
         data,
         panelTextsRef.current,
+        panelShapesRef.current,
       );
       setIsSaved(true);
       if (onSavePageData) {
@@ -1280,6 +1304,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         height: display.height,
       },
     );
+    // Hình bóng mẫu vẽ TRƯỚC lớp chữ (cùng là dữ liệu vector theo khung).
+    const shapes = panelShapesRef.current[activePanel];
+    if (shapes && shapes.length > 0) {
+      const sctx = display.getContext("2d");
+      if (sctx) drawBubbleShapes(sctx, shapes, display.width, display.height);
+    }
     // Chữ dạng đối tượng: dữ liệu vector, vẽ chồng lên composite nên hiển
     // thị, panelData và ảnh xuất đều có; KHÔNG nằm trong bitmap layer nên
     // undo/xoá layer không đụng vào chữ, và chữ sửa/dời được sau khi điền.
@@ -2148,6 +2178,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     if (!projectId) {
       setPanelData({});
       setTextsBoth({});
+      setShapesBoth({});
       setStacks({});
       layerCanvasesRef.current.clear();
       historyRef.current = [];
@@ -2161,6 +2192,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
           stacks: loadedStacks,
           legacyPanels,
           texts: loadedTexts,
+          bubbleShapes: loadedShapes,
         } = await getPageStacksFromDB(
           projectId!,
           page,
@@ -2168,7 +2200,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         if (isCancelled) return;
         const data = legacyPanels || {};
         setPanelData(data);
-        setTextsBoth(loadedTexts ?? {});
+        // Bản ghi cũ có thể thiếu trường style của khối chữ → bổ sung mặc định
+        const normalizedTexts: PanelTextItems = {};
+        for (const [pid, list] of Object.entries(loadedTexts ?? {})) {
+          normalizedTexts[pid] = (list as TextItem[]).map((t) =>
+            withTextStyleDefaults(t),
+          );
+        }
+        setTextsBoth(normalizedTexts);
+        setShapesBoth(loadedShapes ?? {});
         setIsSaved(true);
         // Dữ liệu trang mới đã có → đồng bộ ngăn xếp + bitmap layer
         resyncLayersWithData(loadedStacks);
@@ -2176,6 +2216,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         if (!isCancelled) {
           setPanelData({});
           setTextsBoth({});
+          setShapesBoth({});
           resyncLayersWithData({});
         }
       }
@@ -2326,7 +2367,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         ty / artH,
         text.trim(),
         Math.max(14, size * 3.5) / artH,
-        color,
+        currentTextStyle,
       );
       setTextsBoth({
         ...panelTextsRef.current,
@@ -2337,7 +2378,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       setTextInputPos(null);
       showToast("Đã thêm chữ — kéo để dời, nhấp đúp vào chữ để sửa.");
     },
-    [activePanel, textInputPos, size, color, setTextsBoth, compositeNow, showToast],
+    [activePanel, textInputPos, size, currentTextStyle, setTextsBoth, compositeNow, showToast],
   );
 
   const cancelText = useCallback(() => {
@@ -2401,12 +2442,18 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       { background: "#ffffff", width: canvas.width, height: canvas.height },
     );
 
-    // Bong bóng thoại của khung cũng vào ảnh xuất (Slice 5)
+    // Hình bóng + khối chữ của khung cũng vào ảnh xuất (bóng trước, chữ sau)
+    const exportShapes = panelShapes[activePanel] ?? [];
     const exportTexts = panelTexts[activePanel] ?? [];
-    if (exportTexts.length > 0) {
+    if (exportShapes.length > 0 || exportTexts.length > 0) {
       const ectx = exportCanvas.getContext("2d");
       if (ectx) {
-        drawTextItems(ectx, exportTexts, exportCanvas.width, exportCanvas.height);
+        if (exportShapes.length > 0) {
+          drawBubbleShapes(ectx, exportShapes, exportCanvas.width, exportCanvas.height);
+        }
+        if (exportTexts.length > 0) {
+          drawTextItems(ectx, exportTexts, exportCanvas.width, exportCanvas.height);
+        }
       }
     }
 
@@ -2467,14 +2514,17 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
       let panelsMap: Record<string, string> = {};
       let textsMap: PanelTextItems = {};
+      let shapesMap: PanelBubbleShapes = {};
       let layoutForPage = layout;
       if (pn === page) {
         panelsMap = panelDataRef.current;
         textsMap = panelTextsRef.current;
+        shapesMap = panelShapesRef.current;
       } else {
         const record = await getPageDrawingRecordFromDB(projectId, pn);
         panelsMap = record?.panels ?? {};
         textsMap = record?.texts ?? {};
+        shapesMap = record?.bubbleShapes ?? {};
         layoutForPage =
           LAYOUTS.find((l) => l.id === record?.layoutId) ?? layout;
       }
@@ -2491,12 +2541,20 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         }
         // Composite của trang khác có thể là bản lưu cũ chưa nướng khối chữ
         // → vẽ chồng từ dữ liệu vector cho đủ.
-        const bs = textsMap[p.id];
-        if (bs && bs.length > 0 && pn !== page) {
-          ctx.save();
-          ctx.translate(px, py);
-          drawTextItems(ctx, bs, pw, ph);
-          ctx.restore();
+        if (pn !== page) {
+          const pageShapes = shapesMap[p.id];
+          const bs = textsMap[p.id];
+          if ((pageShapes && pageShapes.length > 0) || (bs && bs.length > 0)) {
+            ctx.save();
+            ctx.translate(px, py);
+            if (pageShapes && pageShapes.length > 0) {
+              drawBubbleShapes(ctx, pageShapes, pw, ph);
+            }
+            if (bs && bs.length > 0) {
+              drawTextItems(ctx, bs, pw, ph);
+            }
+            ctx.restore();
+          }
         }
       }
 
@@ -4140,9 +4198,91 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         ...panelTextsRef.current,
         [activePanel]: list.map((t) => (t.id === id ? { ...t, ...patch } : t)),
       });
+      // Style vừa chỉnh thành style hiện hành cho lần điền chữ tiếp theo
+      const stylePatch: Partial<TextStyle> = {};
+      for (const key of [
+        "fontId",
+        "fontWeight",
+        "italic",
+        "color",
+        "opacity",
+        "align",
+        "lineHeight",
+        "strokeScale",
+        "strokeColor",
+      ] as const) {
+        if (key in patch) {
+          (stylePatch as Record<string, unknown>)[key] = patch[key];
+        }
+      }
+      if (Object.keys(stylePatch).length > 0) {
+        setCurrentTextStyle((prev) => ({ ...prev, ...stylePatch }));
+      }
       renderComposite();
     },
     [activePanel, setTextsBoth, renderComposite],
+  );
+
+  // ── Hình bóng thoại mẫu ────────────────────────────────────────────────────
+  /** Các hình bóng của khung đang mở. */
+  const activeShapes: BubbleShape[] = activePanel
+    ? (panelShapes[activePanel] ?? [])
+    : [];
+
+  /** Thêm một hình bóng mẫu vào giữa khung đang mở. */
+  const addBubbleShape = useCallback(
+    (kind: BubbleShapeKind): BubbleShape | null => {
+      if (!activePanel) {
+        showToast("Hãy mở một khung tranh trước khi thêm bóng thoại.");
+        return null;
+      }
+      const shape = createBubbleShape(
+        `shape-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        kind,
+      );
+      setShapesBoth({
+        ...panelShapesRef.current,
+        [activePanel]: [...(panelShapesRef.current[activePanel] ?? []), shape],
+      });
+      compositeNow();
+      return shape;
+    },
+    [activePanel, setShapesBoth, compositeNow, showToast],
+  );
+
+  /** Cập nhật hình bóng (dời/đổi cỡ/kéo đuôi) — chỉ vẽ lại, chốt bằng commitBubbleShapes. */
+  const updateBubbleShape = useCallback(
+    (id: string, patch: Partial<BubbleShape>) => {
+      if (!activePanel) return;
+      const list = panelShapesRef.current[activePanel] ?? [];
+      if (!list.some((sh) => sh.id === id)) return;
+      setShapesBoth({
+        ...panelShapesRef.current,
+        [activePanel]: list.map((sh) => (sh.id === id ? { ...sh, ...patch } : sh)),
+      });
+      renderComposite();
+    },
+    [activePanel, setShapesBoth, renderComposite],
+  );
+
+  /** Chốt thay đổi hình bóng: chụp panelData + lên lịch lưu. */
+  const commitBubbleShapes = useCallback(() => {
+    compositeNow();
+  }, [compositeNow]);
+
+  /** Xoá một hình bóng của khung đang mở. */
+  const removeBubbleShape = useCallback(
+    (id: string) => {
+      if (!activePanel) return;
+      const list = panelShapesRef.current[activePanel] ?? [];
+      setShapesBoth({
+        ...panelShapesRef.current,
+        [activePanel]: list.filter((sh) => sh.id !== id),
+      });
+      compositeNow();
+      showToast("Đã xoá bóng thoại.");
+    },
+    [activePanel, setShapesBoth, compositeNow, showToast],
   );
 
   /** Chốt thay đổi chữ: chụp panelData + lên lịch lưu (gọi khi kết thúc thao tác). */
@@ -4304,6 +4444,14 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     updateTextItem,
     commitTextItems,
     removeTextItem,
+    /** Style chữ hiện hành (mặc định cho lần điền tiếp theo) */
+    currentTextStyle,
+    /** Hình bóng thoại mẫu của khung đang mở + thêm/sửa/xoá */
+    activeShapes,
+    addBubbleShape,
+    updateBubbleShape,
+    commitBubbleShapes,
+    removeBubbleShape,
     /** Tóm tắt + dòng nguồn AI của nét gợi ý (AC-D2.2) */
     ghostStrokesSummary,
     ghostAt,

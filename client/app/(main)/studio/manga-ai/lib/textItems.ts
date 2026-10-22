@@ -1,30 +1,100 @@
 /**
- * Chữ dạng **đối tượng** theo khung (thay bong bóng thoại tự động — Sơn chốt
- * 22/10/2026: bỏ bong bóng có sẵn, người dùng tự vẽ bóng bằng công cụ hình,
- * chữ thêm bằng công cụ Text và **sửa/dời được sau khi đã điền**).
+ * Chữ dạng **đối tượng** theo khung — tool chữ hoàn chỉnh theo chuẩn các hệ
+ * thống lớn (Clip Studio Paint / Photoshop): font, độ đậm (weight), nghiêng,
+ * màu, độ mờ, căn lề, giãn dòng và **viền nét** (outline) đều là thuộc tính
+ * của từng khối chữ, sửa/dời được sau khi điền. Người dùng tự vẽ bóng hoặc
+ * dùng hình bóng mẫu (`lib/bubbleShapes.ts`) rồi đặt chữ lên trên.
  *
- * Trước đây công cụ Text raster chữ thẳng vào bitmap layer: điền xong là
- * "chết", muốn sửa phải tẩy cả vùng. Nay mỗi đoạn chữ là một TextItem
- * (vị trí normalized + nội dung + cỡ chữ + màu), lưu kèm trang trong
- * IndexedDB, vẽ vào composite bằng `drawTextItems` (hiển thị + panelData +
- * ảnh xuất + PDF). Người dùng tự vẽ bóng thoại bằng công cụ ellipse rồi đặt
- * chữ này lên trên.
+ * Mỗi đoạn chữ là một TextItem lưu kèm trang trong IndexedDB, vẽ vào
+ * composite bằng `drawTextItems` (hiển thị + panelData + ảnh xuất + PDF).
+ * Các bản ghi cũ (trước khi có trường style) được `withTextStyleDefaults`
+ * bổ sung giá trị mặc định khi đọc.
  */
 
-export interface TextItem {
+/** Danh sách font để chọn — ưu tiên font có sẵn trên máy và hỗ trợ tiếng Việt tốt. */
+export const TEXT_FONT_OPTIONS = [
+  { id: "comic", label: "Comic (manga)", stack: '"Comic Sans MS", "Arial", sans-serif' },
+  { id: "arial", label: "Arial", stack: '"Arial", sans-serif' },
+  { id: "segoe", label: "Segoe UI", stack: '"Segoe UI", "Arial", sans-serif' },
+  { id: "tahoma", label: "Tahoma", stack: '"Tahoma", sans-serif' },
+  { id: "verdana", label: "Verdana", stack: '"Verdana", sans-serif' },
+  { id: "times", label: "Times New Roman", stack: '"Times New Roman", serif' },
+  { id: "georgia", label: "Georgia", stack: '"Georgia", serif' },
+  { id: "courier", label: "Courier New", stack: '"Courier New", monospace' },
+] as const;
+
+export type TextFontId = (typeof TEXT_FONT_OPTIONS)[number]["id"];
+
+/** Độ đậm nét chữ — "đậm nhạt" theo 4 nấc như các tool lớn. */
+export const TEXT_WEIGHT_OPTIONS = [
+  { value: 400, label: "Nhẹ" },
+  { value: 600, label: "Vừa" },
+  { value: 700, label: "Đậm" },
+  { value: 900, label: "Rất đậm" },
+] as const;
+
+export type TextAlign = "left" | "center" | "right";
+
+/** Phần style của một khối chữ — cũng là "style hiện hành" cho chữ sắp điền. */
+export interface TextStyle {
+  fontId: TextFontId;
+  fontWeight: number;
+  italic: boolean;
+  color: string;
+  /** 0..1 */
+  opacity: number;
+  align: TextAlign;
+  /** Giãn dòng theo bội số cỡ chữ (1 = sát, 1.25 mặc định, 1.6 thoáng). */
+  lineHeight: number;
+  /** Độ dày viền nét theo tỉ lệ cỡ chữ (0 = không viền, 0.25 = rất dày). */
+  strokeScale: number;
+  strokeColor: string;
+}
+
+export const DEFAULT_TEXT_STYLE: TextStyle = {
+  fontId: "comic",
+  fontWeight: 600,
+  italic: false,
+  color: "#111111",
+  opacity: 1,
+  align: "center",
+  lineHeight: 1.25,
+  strokeScale: 0,
+  strokeColor: "#ffffff",
+};
+
+export interface TextItem extends TextStyle {
   id: string;
   /** Điểm neo trái-trên của khối chữ, normalized 0..1 theo khung. */
   x: number;
   y: number;
+  /** Bề rộng khối chữ (normalized); ngắt dòng và căn lề theo bề rộng này. */
+  w: number;
   text: string;
   /** Cỡ chữ theo tỉ lệ chiều cao khung (px vẽ = fontScale × chiều cao canvas). */
   fontScale: number;
-  color: string;
 }
 
 export type PanelTextItems = Record<string, TextItem[]>;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/** Chuỗi font CSS đầy đủ cho canvas từ style + cỡ px. */
+export function textFontCss(style: TextStyle, fontPx: number): string {
+  const stack =
+    TEXT_FONT_OPTIONS.find((f) => f.id === style.fontId)?.stack ??
+    TEXT_FONT_OPTIONS[0].stack;
+  return `${style.italic ? "italic " : ""}${style.fontWeight} ${fontPx}px ${stack}`;
+}
+
+/** Bổ sung style mặc định cho khối chữ từ bản ghi cũ (thiếu trường style). */
+export function withTextStyleDefaults(raw: Partial<TextItem> & { id: string }): TextItem {
+  return {
+    ...DEFAULT_TEXT_STYLE,
+    w: 0.45,
+    ...raw,
+  } as TextItem;
+}
 
 export function createTextItem(
   id: string,
@@ -32,14 +102,27 @@ export function createTextItem(
   y: number,
   text: string,
   fontScale: number,
-  color: string,
+  style: TextStyle,
 ): TextItem {
-  return { id, x: clamp01(x), y: clamp01(y), text, fontScale, color };
+  return {
+    id,
+    x: clamp01(x),
+    y: clamp01(y),
+    w: 0.45,
+    text,
+    fontScale,
+    ...style,
+  };
 }
 
 /** Dời khối chữ, kẹp điểm neo trong khung. */
 export function moveTextItem(item: TextItem, dx: number, dy: number): TextItem {
   return { ...item, x: clamp01(item.x + dx), y: clamp01(item.y + dy) };
+}
+
+/** Đổi bề rộng khối chữ (tay nắm phải) — ảnh hưởng ngắt dòng + căn lề. */
+export function resizeTextItem(item: TextItem, w: number): TextItem {
+  return { ...item, w: Math.min(1 - item.x, Math.max(0.12, w)) };
 }
 
 /**
@@ -85,12 +168,12 @@ export function textItemBox(
 ): { w: number; h: number } {
   if (!(w > 0) || !(h > 0)) return { w: 0, h: 0 };
   const fontPx = Math.max(10, item.fontScale * h);
-  const maxWidth = Math.max(40, w - item.x * w);
+  const maxWidth = Math.max(40, item.w * w);
   const lines = wrapTextLines(item.text, maxWidth, measure);
   const widest = lines.reduce((m, line) => Math.max(m, measure(line)), 0);
   return {
-    w: Math.min(1, widest / w),
-    h: Math.min(1, (lines.length * fontPx * 1.25) / h),
+    w: Math.min(1, Math.max(item.w, widest / w)),
+    h: Math.min(1, (lines.length * fontPx * item.lineHeight) / h),
   };
 }
 
@@ -104,20 +187,33 @@ export function drawTextItems(
   if (!(w > 0) || !(h > 0)) return;
   ctx.save();
   ctx.textBaseline = "top";
-  ctx.textAlign = "left";
-  for (const item of items) {
+  for (const raw of items) {
+    const item = withTextStyleDefaults(raw);
     const fontPx = Math.max(10, item.fontScale * h);
-    ctx.font = `${fontPx}px "Comic Sans MS", "Arial", sans-serif`;
-    ctx.fillStyle = item.color;
-    const x = item.x * w;
-    const y = item.y * h;
-    const maxWidth = Math.max(40, w - x);
-    const lines = wrapTextLines(item.text, maxWidth, (s) =>
-      ctx.measureText(s).width,
-    );
-    const lineHeight = fontPx * 1.25;
+    ctx.font = textFontCss(item, fontPx);
+    const boxX = item.x * w;
+    const boxY = item.y * h;
+    const boxW = Math.max(40, item.w * w);
+    const lines = wrapTextLines(item.text, boxW, (s) => ctx.measureText(s).width);
+    const lineHeightPx = fontPx * item.lineHeight;
+    ctx.globalAlpha = clamp01(item.opacity);
     lines.forEach((line, i) => {
-      ctx.fillText(line, x, y + i * lineHeight);
+      const lineW = ctx.measureText(line).width;
+      const lx =
+        item.align === "center"
+          ? boxX + (boxW - lineW) / 2
+          : item.align === "right"
+            ? boxX + boxW - lineW
+            : boxX;
+      const ly = boxY + i * lineHeightPx;
+      if (item.strokeScale > 0) {
+        ctx.lineWidth = Math.max(1, item.strokeScale * fontPx);
+        ctx.strokeStyle = item.strokeColor;
+        ctx.lineJoin = "round";
+        ctx.strokeText(line, lx, ly);
+      }
+      ctx.fillStyle = item.color;
+      ctx.fillText(line, lx, ly);
     });
   }
   ctx.restore();

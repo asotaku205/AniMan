@@ -9,6 +9,7 @@ import type {
 import { createUserLayer, normalizeLayers } from "../data";
 import type { AiStrokeGroup, AiStrokePath } from "@/lib/ai-drawing-api";
 import type { PanelTextItems } from "./textItems";
+import type { PanelBubbleShapes } from "./bubbleShapes";
 
 const DB_NAME = "animan_manga_studio_db";
 /**
@@ -41,6 +42,8 @@ export interface StoredPageDrawing {
   panels?: Record<string, string>;
   /** Khối chữ dạng đối tượng theo khung (thay bong bóng thoại) — trường tuỳ chọn, bản ghi cũ không có thì coi như không có chữ. */
   texts?: PanelTextItems;
+  /** Hình bóng thoại mẫu theo khung — trường tuỳ chọn, bản ghi cũ không có thì coi như không có bóng. */
+  bubbleShapes?: PanelBubbleShapes;
   layers?: LayerItem[];
   activeLayerId?: string;
   updatedAt: number;
@@ -396,9 +399,10 @@ export async function getPageStacksFromDB(
   stacks: PanelStacks;
   legacyPanels: Record<string, string> | null;
   texts: PanelTextItems;
+  bubbleShapes: PanelBubbleShapes;
 }> {
   const record = await getPageDrawingRecordFromDB(projectId, pageNumber);
-  if (!record) return { stacks: {}, legacyPanels: null, texts: {} };
+  if (!record) return { stacks: {}, legacyPanels: null, texts: {}, bubbleShapes: {} };
   const stacks =
     record.schemaVersion === PAGE_DRAWING_SCHEMA_VERSION && record.stacks
       ? normalizePanelStacks(record.stacks)
@@ -407,6 +411,7 @@ export async function getPageStacksFromDB(
     stacks,
     legacyPanels: record.panels ?? null,
     texts: record.texts ?? {},
+    bubbleShapes: record.bubbleShapes ?? {},
   };
 }
 
@@ -422,6 +427,7 @@ export async function savePageDrawingToDB(
   layoutId?: string,
   panels?: Record<string, string>,
   texts?: PanelTextItems,
+  bubbleShapes?: PanelBubbleShapes,
 ): Promise<void> {
   if (!projectId || !pageNumber) return;
   try {
@@ -436,6 +442,7 @@ export async function savePageDrawingToDB(
       stacks,
       panels,
       texts,
+      bubbleShapes,
       updatedAt: Date.now(),
     };
 

@@ -196,6 +196,11 @@ export function DrawStudio({
           onUpdateTextItem={s.updateTextItem}
           onCommitTextItems={s.commitTextItems}
           onRemoveTextItem={s.removeTextItem}
+          shapes={s.activeShapes}
+          onAddShape={s.addBubbleShape}
+          onUpdateShape={s.updateBubbleShape}
+          onCommitShapes={s.commitBubbleShapes}
+          onRemoveShape={s.removeBubbleShape}
           sceneType={s.sceneType}
           selectedComp={s.selectedComp}
           showPanelSuggestions={s.showPanelSuggestions}

@@ -38,9 +38,21 @@ import { cleanupCandidates } from "../lib/strokeCleanup";
 import { describeFix } from "../lib/compositionFix";
 import {
   moveTextItem,
+  resizeTextItem,
+  TEXT_FONT_OPTIONS,
+  TEXT_WEIGHT_OPTIONS,
+  textFontCss,
   textItemBox,
   type TextItem,
+  type TextFontId,
 } from "../lib/textItems";
+import {
+  BUBBLE_SHAPE_OPTIONS,
+  moveBubbleShape,
+  resizeBubbleShape,
+  type BubbleShape,
+  type BubbleShapeKind,
+} from "../lib/bubbleShapes";
 
 type Props = {
   // Layout / panel state
@@ -117,6 +129,12 @@ type Props = {
   /** Chốt thay đổi chữ (chụp panelData + lưu) khi kết thúc kéo/sửa */
   onCommitTextItems?: () => void;
   onRemoveTextItem?: (id: string) => void;
+  /** Hình bóng thoại mẫu của khung đang mở + thao tác (hình thật do composite vẽ) */
+  shapes?: BubbleShape[];
+  onAddShape?: (kind: BubbleShapeKind) => BubbleShape | null;
+  onUpdateShape?: (id: string, patch: Partial<BubbleShape>) => void;
+  onCommitShapes?: () => void;
+  onRemoveShape?: (id: string) => void;
   // Suggestion widget
   sceneType: SceneType;
   selectedComp: string | null;
@@ -187,6 +205,11 @@ export function CanvasArea({
   onUpdateTextItem,
   onCommitTextItems,
   onRemoveTextItem,
+  shapes,
+  onAddShape,
+  onUpdateShape,
+  onCommitShapes,
+  onRemoveShape,
   sceneType,
   selectedComp,
   showPanelSuggestions,
@@ -204,9 +227,19 @@ export function CanvasArea({
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const textDragRef = useRef<{
     id: string;
+    mode: "move" | "width";
     startX: number;
     startY: number;
     orig: TextItem;
+  } | null>(null);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [showShapeMenu, setShowShapeMenu] = useState(false);
+  const shapeDragRef = useRef<{
+    id: string;
+    mode: "move" | "resize" | "tail";
+    startX: number;
+    startY: number;
+    orig: BubbleShape;
   } | null>(null);
   const measureCanvasRef = useRef<CanvasRenderingContext2D | null>(null);
 
@@ -222,7 +255,7 @@ export function CanvasArea({
     const mctx = measureCanvasRef.current;
     return (text: string) => {
       if (!mctx) return text.length * fontPx * 0.6;
-      mctx.font = `${fontPx}px "Comic Sans MS", "Arial", sans-serif`;
+      mctx.font = textFontCss(item, fontPx);
       return mctx.measureText(text).width;
     };
   };
@@ -234,11 +267,17 @@ export function CanvasArea({
     return textItemBox(item, hostW, hostH, measureForItem(item));
   };
 
-  const onTextPointerDown = (e: React.PointerEvent, item: TextItem) => {
+  const onTextPointerDown = (
+    e: React.PointerEvent,
+    item: TextItem,
+    mode: "move" | "width" = "move",
+  ) => {
     e.stopPropagation();
     setSelectedTextId(item.id);
+    setSelectedShapeId(null);
     textDragRef.current = {
       id: item.id,
+      mode,
       startX: e.clientX,
       startY: e.clientY,
       orig: item,
@@ -249,14 +288,68 @@ export function CanvasArea({
       if (!drag || !host || !onUpdateTextItem) return;
       const dx = (ev.clientX - drag.startX) / (host.clientWidth || 1);
       const dy = (ev.clientY - drag.startY) / (host.clientHeight || 1);
-      const next = moveTextItem(drag.orig, dx, dy);
-      onUpdateTextItem(drag.id, { x: next.x, y: next.y });
+      if (drag.mode === "width") {
+        const next = resizeTextItem(drag.orig, drag.orig.w + dx);
+        onUpdateTextItem(drag.id, { w: next.w });
+      } else {
+        const next = moveTextItem(drag.orig, dx, dy);
+        onUpdateTextItem(drag.id, { x: next.x, y: next.y });
+      }
     };
     const onUp = () => {
       textDragRef.current = null;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       onCommitTextItems?.();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const onShapePointerDown = (
+    e: React.PointerEvent,
+    shape: BubbleShape,
+    mode: "move" | "resize" | "tail",
+  ) => {
+    e.stopPropagation();
+    setSelectedShapeId(shape.id);
+    setSelectedTextId(null);
+    shapeDragRef.current = {
+      id: shape.id,
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      orig: shape,
+    };
+    const onMove = (ev: PointerEvent) => {
+      const drag = shapeDragRef.current;
+      const host = canvasRef.current;
+      if (!drag || !host || !onUpdateShape) return;
+      if (drag.mode === "tail") {
+        const rect = host.getBoundingClientRect();
+        onUpdateShape(drag.id, {
+          tail: {
+            x: Math.min(1, Math.max(0, (ev.clientX - rect.left) / (rect.width || 1))),
+            y: Math.min(1, Math.max(0, (ev.clientY - rect.top) / (rect.height || 1))),
+          },
+        });
+        return;
+      }
+      const dx = (ev.clientX - drag.startX) / (host.clientWidth || 1);
+      const dy = (ev.clientY - drag.startY) / (host.clientHeight || 1);
+      if (drag.mode === "resize") {
+        const next = resizeBubbleShape(drag.orig, drag.orig.w + dx, drag.orig.h + dy);
+        onUpdateShape(drag.id, { w: next.w, h: next.h });
+      } else {
+        const next = moveBubbleShape(drag.orig, dx, dy);
+        onUpdateShape(drag.id, { x: next.x, y: next.y, tail: next.tail });
+      }
+    };
+    const onUp = () => {
+      shapeDragRef.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      onCommitShapes?.();
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -415,13 +508,253 @@ export function CanvasArea({
               onPointerLeave={up}
             />
 
-            {/* Khối chữ dạng đối tượng — tay nắm trong suốt: kéo để dời,
-                nhấp đúp để sửa chữ, nút A−/A+ đổi cỡ. Hình chữ thật nằm ở
-                composite canvas phía dưới. Bong bóng thoại thì người dùng
-                tự vẽ bằng công cụ hình rồi đặt chữ lên trên. */}
-            {activePanel && texts && (
+            {/* Lớp tương tác cho hình bóng + khối chữ: tay nắm trong suốt phủ
+                đúng vị trí; hình thật nằm ở composite canvas phía dưới. */}
+            {activePanel && (texts || shapes) && (
               <div className="absolute inset-0 z-40 pointer-events-none">
-                {texts.map((item) => {
+                {/* Thêm hình bóng thoại mẫu */}
+                {onAddShape && (
+                  <div className="pointer-events-auto absolute left-2 top-2">
+                    <button
+                      onClick={() => setShowShapeMenu((v) => !v)}
+                      className="px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 border border-white/15 text-white/85 text-[10px] font-medium backdrop-blur-md transition-colors"
+                    >
+                      + Bóng thoại
+                    </button>
+                    {showShapeMenu && (
+                      <div className="mt-1.5 flex flex-col gap-1 bg-black/80 border border-white/10 rounded-xl p-1.5 backdrop-blur-md">
+                        {BUBBLE_SHAPE_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.kind}
+                            onClick={() => {
+                              const created = onAddShape(opt.kind);
+                              if (created) setSelectedShapeId(created.id);
+                              setShowShapeMenu(false);
+                            }}
+                            className="px-2.5 py-1 rounded-lg hover:bg-white/10 text-white/85 text-[10px] text-left transition-colors"
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Thanh công cụ chữ (chuẩn tool lớn) — hiện khi đang chọn một khối chữ */}
+                {(() => {
+                  const sel = texts?.find((t) => t.id === selectedTextId);
+                  if (!sel || !onUpdateTextItem) return null;
+                  const patchStyle = (patch: Partial<TextItem>, commit = true) => {
+                    onUpdateTextItem(sel.id, patch);
+                    if (commit) onCommitTextItems?.();
+                  };
+                  const selectCls =
+                    "bg-white/10 border border-white/15 rounded-md text-[10px] text-white/90 px-1 py-0.5 max-w-[104px]";
+                  return (
+                    <div className="pointer-events-auto absolute left-1/2 top-2 -translate-x-1/3 flex flex-wrap items-center gap-x-2 gap-y-1 bg-black/80 border border-white/10 rounded-xl px-2.5 py-1.5 backdrop-blur-md max-w-[92%]">
+                      <select
+                        aria-label="Font chữ"
+                        className={selectCls}
+                        value={sel.fontId}
+                        onChange={(e) =>
+                          patchStyle({ fontId: e.currentTarget.value as TextFontId })
+                        }
+                      >
+                        {TEXT_FONT_OPTIONS.map((f) => (
+                          <option key={f.id} value={f.id} className="text-black">
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        aria-label="Độ đậm"
+                        className={selectCls}
+                        value={sel.fontWeight}
+                        onChange={(e) =>
+                          patchStyle({ fontWeight: Number(e.currentTarget.value) })
+                        }
+                      >
+                        {TEXT_WEIGHT_OPTIONS.map((wOpt) => (
+                          <option key={wOpt.value} value={wOpt.value} className="text-black">
+                            {wOpt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        aria-label="Chữ nghiêng"
+                        aria-pressed={sel.italic}
+                        onClick={() => patchStyle({ italic: !sel.italic })}
+                        className={`w-6 h-6 rounded-md text-[11px] italic font-serif ${
+                          sel.italic
+                            ? "bg-pink-500/40 text-white"
+                            : "bg-white/10 text-white/70 hover:bg-white/20"
+                        }`}
+                      >
+                        I
+                      </button>
+                      <input
+                        type="color"
+                        aria-label="Màu chữ"
+                        value={sel.color}
+                        onChange={(e) => patchStyle({ color: e.currentTarget.value }, false)}
+                        onBlur={() => onCommitTextItems?.()}
+                        className="w-6 h-6 rounded-md bg-white/10 border border-white/15 p-0.5 cursor-pointer"
+                      />
+                      <label className="flex items-center gap-1 text-[9px] text-white/60">
+                        Mờ
+                        <input
+                          type="range"
+                          min={0.2}
+                          max={1}
+                          step={0.05}
+                          value={sel.opacity}
+                          onChange={(e) =>
+                            patchStyle({ opacity: Number(e.currentTarget.value) }, false)
+                          }
+                          onPointerUp={() => onCommitTextItems?.()}
+                          className="w-14 accent-pink-500"
+                        />
+                      </label>
+                      <div className="flex rounded-md overflow-hidden border border-white/15">
+                        {(["left", "center", "right"] as const).map((a) => (
+                          <button
+                            key={a}
+                            aria-label={`Căn ${a === "left" ? "trái" : a === "center" ? "giữa" : "phải"}`}
+                            onClick={() => patchStyle({ align: a })}
+                            className={`px-1.5 h-6 text-[9px] ${
+                              sel.align === a
+                                ? "bg-pink-500/40 text-white"
+                                : "bg-white/10 text-white/70 hover:bg-white/20"
+                            }`}
+                          >
+                            {a === "left" ? "Trái" : a === "center" ? "Giữa" : "Phải"}
+                          </button>
+                        ))}
+                      </div>
+                      <select
+                        aria-label="Giãn dòng"
+                        className={selectCls}
+                        value={sel.lineHeight}
+                        onChange={(e) =>
+                          patchStyle({ lineHeight: Number(e.currentTarget.value) })
+                        }
+                      >
+                        <option value={1} className="text-black">Dòng sát</option>
+                        <option value={1.25} className="text-black">Dòng vừa</option>
+                        <option value={1.6} className="text-black">Dòng thoáng</option>
+                      </select>
+                      <label className="flex items-center gap-1 text-[9px] text-white/60">
+                        Viền
+                        <input
+                          type="range"
+                          min={0}
+                          max={0.25}
+                          step={0.01}
+                          value={sel.strokeScale}
+                          onChange={(e) =>
+                            patchStyle({ strokeScale: Number(e.currentTarget.value) }, false)
+                          }
+                          onPointerUp={() => onCommitTextItems?.()}
+                          className="w-14 accent-pink-500"
+                        />
+                      </label>
+                      <input
+                        type="color"
+                        aria-label="Màu viền"
+                        value={sel.strokeColor}
+                        onChange={(e) =>
+                          patchStyle({ strokeColor: e.currentTarget.value }, false)
+                        }
+                        onBlur={() => onCommitTextItems?.()}
+                        className="w-6 h-6 rounded-md bg-white/10 border border-white/15 p-0.5 cursor-pointer"
+                      />
+                    </div>
+                  );
+                })()}
+
+                {/* Tay nắm hình bóng */}
+                {shapes?.map((shape) => {
+                  const isSel = selectedShapeId === shape.id;
+                  return (
+                    <div
+                      key={shape.id}
+                      className={`absolute pointer-events-auto ${
+                        isSel
+                          ? "outline outline-2 outline-dashed outline-sky-400/80"
+                          : "outline outline-1 outline-transparent hover:outline-white/30"
+                      }`}
+                      style={{
+                        left: `${shape.x * 100}%`,
+                        top: `${shape.y * 100}%`,
+                        width: `${shape.w * 100}%`,
+                        height: `${shape.h * 100}%`,
+                        borderRadius: shape.kind === "rect" ? "8px" : "50%",
+                        cursor: "move",
+                      }}
+                      onPointerDown={(e) => onShapePointerDown(e, shape, "move")}
+                      title="Kéo để dời bóng · chấm xanh ở đuôi để kéo đuôi"
+                    >
+                      {isSel && (
+                        <>
+                          <button
+                            aria-label="Xoá bóng thoại"
+                            className="absolute -top-2.5 -right-2.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[11px] leading-none flex items-center justify-center shadow z-10"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => {
+                              onRemoveShape?.(shape.id);
+                              setSelectedShapeId(null);
+                            }}
+                          >
+                            ×
+                          </button>
+                          <button
+                            aria-label={shape.tail ? "Tắt đuôi" : "Bật đuôi"}
+                            className="absolute -top-2.5 -left-2.5 h-5 px-1.5 rounded-full bg-black/75 text-white text-[9px] flex items-center justify-center shadow"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => {
+                              onUpdateShape?.(shape.id, {
+                                tail: shape.tail
+                                  ? null
+                                  : {
+                                      x: shape.x + shape.w / 2,
+                                      y: Math.min(1, shape.y + shape.h + 0.18),
+                                    },
+                              });
+                              onCommitShapes?.();
+                            }}
+                          >
+                            đuôi
+                          </button>
+                          <div
+                            aria-label="Đổi kích thước bóng"
+                            className="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-sky-500 border-2 border-white shadow cursor-nwse-resize"
+                            onPointerDown={(e) => onShapePointerDown(e, shape, "resize")}
+                          />
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {/* Tay nắm kéo đuôi bóng (điểm neo riêng ngoài thân bóng) */}
+                {shapes?.map((shape) =>
+                  shape.tail && selectedShapeId === shape.id ? (
+                    <div
+                      key={`${shape.id}-tail`}
+                      aria-label="Kéo đuôi bóng"
+                      className="absolute pointer-events-auto w-4 h-4 -ml-2 -mt-2 rounded-full bg-emerald-400 border-2 border-white shadow cursor-crosshair z-10"
+                      style={{
+                        left: `${shape.tail.x * 100}%`,
+                        top: `${shape.tail.y * 100}%`,
+                      }}
+                      onPointerDown={(e) => onShapePointerDown(e, shape, "tail")}
+                      title="Kéo để chỉnh hướng đuôi"
+                    />
+                  ) : null,
+                )}
+
+                {/* Tay nắm khối chữ */}
+                {texts?.map((item) => {
                   const isSel = selectedTextId === item.id;
                   const isEditing = editingTextId === item.id;
                   const box = boxForItem(item);
@@ -469,7 +802,7 @@ export function CanvasArea({
                           <>
                             <button
                               aria-label="Xoá khối chữ"
-                              className="absolute -top-2.5 -right-2.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[11px] leading-none flex items-center justify-center shadow"
+                              className="absolute -top-2.5 -right-2.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[11px] leading-none flex items-center justify-center shadow z-10"
                               onPointerDown={(e) => e.stopPropagation()}
                               onClick={() => {
                                 onRemoveTextItem?.(item.id);
@@ -506,6 +839,12 @@ export function CanvasArea({
                                 A+
                               </button>
                             </div>
+                            <div
+                              aria-label="Đổi bề rộng khối chữ"
+                              className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3.5 h-8 rounded-full bg-pink-500/85 border border-white/70 shadow cursor-ew-resize"
+                              onPointerDown={(e) => onTextPointerDown(e, item, "width")}
+                              title="Kéo để đổi bề rộng khối chữ (ngắt dòng/căn lề theo bề rộng này)"
+                            />
                           </>
                         )
                       )}
