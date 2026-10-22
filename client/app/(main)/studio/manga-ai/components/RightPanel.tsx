@@ -6,6 +6,8 @@ import {
   Bot,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Combine,
   Copy,
@@ -41,6 +43,8 @@ export function RightPanel({ s }: Props) {
   const [editingName, setEditingName] = useState("");
   /** Layer đang kéo-thả để sắp xếp */
   const [dragId, setDragId] = useState<string | null>(null);
+  /** Thu gọn panel thành ray 44px để lấy chỗ cho canvas (state cục bộ, không lưu). */
+  const [collapsed, setCollapsed] = useState(false);
 
   const userLayers = s.layers.filter((l) => l.kind !== "ai");
   const aiLayers = s.layers.filter((l) => l.kind === "ai");
@@ -51,24 +55,55 @@ export function RightPanel({ s }: Props) {
     return thumbById;
   }, [s.layers, s.panelData, s.activePanel, s.getLayerThumbnail]);
 
+  // AC-L2.8: tiêu đề tab hiện luôn số layer hiện tại / trần 12 (BR-L13).
+  const layerTabLabel =
+    s.layers.length > 0
+      ? `Layers ${s.layers.length}/${MAX_LAYERS_PER_PANEL}`
+      : "Layers";
+  const tabs: [RightTab, React.ReactNode, string][] = [
+    ["ai", <Bot size={13} />, "AI Gợi ý"],
+    ["layout", <Grid3x3 size={13} />, "Bố cục trang"],
+    ["layers", <Layers size={13} />, layerTabLabel],
+  ];
+
+  if (collapsed) {
+    return (
+      <div className="w-11 bg-[#120a1f] border-l border-white/5 flex flex-col items-center py-2 gap-1 flex-shrink-0">
+        <button
+          onClick={() => setCollapsed(false)}
+          title="Mở rộng panel"
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <div className="w-6 h-px bg-white/10 my-1" />
+        {tabs.map(([tab, icon, label]) => (
+          <button
+            key={tab}
+            onClick={() => {
+              s.setRightTab(tab);
+              setCollapsed(false);
+            }}
+            title={label}
+            aria-label={label}
+            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+              s.rightTab === tab
+                ? "bg-pink-500/20 text-pink-400"
+                : "text-white/40 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            {icon}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="w-[340px] bg-[#120a1f] border-l border-white/5 flex flex-col flex-shrink-0">
       {/* Tab bar */}
       <div className="flex border-b border-white/5 flex-shrink-0">
-        {(
-          [
-            ["ai", <Bot size={13} />, "AI Gợi ý"],
-            ["layout", <Grid3x3 size={13} />, "Bố cục trang"],
-            // AC-L2.8: tiêu đề tab hiện luôn số layer hiện tại / trần 12 (BR-L13).
-            [
-              "layers",
-              <Layers size={13} />,
-              s.layers.length > 0
-                ? `Layers ${s.layers.length}/${MAX_LAYERS_PER_PANEL}`
-                : "Layers",
-            ],
-          ] as [RightTab, React.ReactNode, string][]
-        ).map(([tab, icon, label]) => (
+        {tabs.map(([tab, icon, label]) => (
           <button
             key={tab}
             onClick={() => s.setRightTab(tab)}
@@ -81,6 +116,14 @@ export function RightPanel({ s }: Props) {
             {icon} {label}
           </button>
         ))}
+        <button
+          onClick={() => setCollapsed(true)}
+          title="Thu gọn panel để lấy chỗ cho canvas"
+          aria-label="Thu gọn panel"
+          className="w-9 flex items-center justify-center text-white/30 hover:text-white hover:bg-white/5 transition-colors border-l border-white/5"
+        >
+          <ChevronRight size={14} />
+        </button>
       </div>
 
       {/* AI Tab */}
@@ -352,7 +395,7 @@ export function RightPanel({ s }: Props) {
                                 e.stopPropagation();
                                 s.toggleLayerVisibility(layer.id);
                               }}
-                              className={`p-1 rounded-lg transition-colors ${
+                              className={`p-1.5 rounded-lg transition-colors ${
                                 layer.visible
                                   ? "text-white/60 hover:text-white"
                                   : "text-white/20 hover:text-white/40"
@@ -360,9 +403,9 @@ export function RightPanel({ s }: Props) {
                               title={layer.visible ? "Ẩn layer" : "Hiện layer"}
                             >
                               {layer.visible ? (
-                                <Eye size={13} />
+                                <Eye size={14} />
                               ) : (
-                                <EyeOff size={13} />
+                                <EyeOff size={14} />
                               )}
                             </button>
 
@@ -425,7 +468,7 @@ export function RightPanel({ s }: Props) {
                                   e.stopPropagation();
                                   s.toggleLayerLock(layer.id);
                                 }}
-                                className={`p-1 rounded-lg transition-colors ${
+                                className={`p-1.5 rounded-lg transition-colors ${
                                   layer.locked
                                     ? "text-amber-400"
                                     : "text-white/30 hover:text-white/60"
@@ -435,89 +478,12 @@ export function RightPanel({ s }: Props) {
                                 }
                               >
                                 {layer.locked ? (
-                                  <Lock size={12} />
+                                  <Lock size={14} />
                                 ) : (
-                                  <Unlock size={12} />
+                                  <Unlock size={14} />
                                 )}
                               </button>
                             )}
-
-                            {/* Reorder up/down (thứ tự AI cố định — ẩn) */}
-                            {!group.isAi && (
-                              <div className="flex flex-col gap-0.5">
-                                <button
-                                  disabled={li <= 0}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    s.reorderLayer(layer.id, "up");
-                                  }}
-                                  className="text-white/20 hover:text-white disabled:opacity-10 transition-colors"
-                                  title="Di chuyển lên trên"
-                                >
-                                  <ChevronUp size={10} />
-                                </button>
-                                <button
-                                  disabled={
-                                    li < 0 ||
-                                    li >= s.layers.length - 1 ||
-                                    s.layers[li + 1]?.kind === "ai"
-                                  }
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    s.reorderLayer(layer.id, "down");
-                                  }}
-                                  className="text-white/20 hover:text-white disabled:opacity-10 transition-colors"
-                                  title="Di chuyển xuống dưới"
-                                >
-                                  <ChevronDown size={10} />
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Duplicate + merge (chỉ layer người dùng) */}
-                            {!group.isAi && (
-                              <>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    s.duplicateLayer(layer.id);
-                                  }}
-                                  className="p-1 rounded-lg text-white/20 hover:text-white transition-colors"
-                                  title="Nhân bản layer"
-                                >
-                                  <Copy size={12} />
-                                </button>
-                                <button
-                                  disabled={
-                                    li >= s.layers.length - 1 ||
-                                    s.layers[li + 1]?.kind === "ai"
-                                  }
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    s.mergeLayerDown(layer.id);
-                                  }}
-                                  className="p-1 rounded-lg text-white/20 hover:text-white disabled:opacity-10 transition-colors"
-                                  title="Gộp xuống layer bên dưới"
-                                >
-                                  <Combine size={12} />
-                                </button>
-                              </>
-                            )}
-
-                            {/* Delete layer button — luôn giữ ≥1 layer vẽ được */}
-                            {!group.isAi &&
-                              canRemoveLayerInList(s.layers, layer.id) && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    s.removeLayer(layer.id);
-                                  }}
-                                  className="p-1 rounded-lg text-white/20 hover:text-rose-400 transition-colors"
-                                  title="Xóa layer"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              )}
                           </div>
 
                           {/* Opacity slider cho MỌI layer người dùng (task 2.3) */}
@@ -549,6 +515,63 @@ export function RightPanel({ s }: Props) {
                               <span className="text-[9px] font-mono text-white/60 w-6 text-right">
                                 {opacity}%
                               </span>
+                            </div>
+                          )}
+
+                          {/* Hành động phụ — chỉ mở ở layer đang chọn để hàng nào
+                              cũng thoáng; mỗi nút 28×28 thay cho icon 10–12px cũ. */}
+                          {!group.isAi && isActive && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex items-center justify-end gap-1 pt-1.5 border-t border-white/5"
+                            >
+                              <button
+                                disabled={li <= 0}
+                                onClick={() => s.reorderLayer(layer.id, "up")}
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:hover:bg-transparent transition-colors"
+                                title="Di chuyển lên trên"
+                              >
+                                <ChevronUp size={14} />
+                              </button>
+                              <button
+                                disabled={
+                                  li < 0 ||
+                                  li >= s.layers.length - 1 ||
+                                  s.layers[li + 1]?.kind === "ai"
+                                }
+                                onClick={() => s.reorderLayer(layer.id, "down")}
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:hover:bg-transparent transition-colors"
+                                title="Di chuyển xuống dưới"
+                              >
+                                <ChevronDown size={14} />
+                              </button>
+                              <button
+                                onClick={() => s.duplicateLayer(layer.id)}
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                                title="Nhân bản layer"
+                              >
+                                <Copy size={14} />
+                              </button>
+                              <button
+                                disabled={
+                                  li >= s.layers.length - 1 ||
+                                  s.layers[li + 1]?.kind === "ai"
+                                }
+                                onClick={() => s.mergeLayerDown(layer.id)}
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 disabled:hover:bg-transparent transition-colors"
+                                title="Gộp xuống layer bên dưới"
+                              >
+                                <Combine size={14} />
+                              </button>
+                              {canRemoveLayerInList(s.layers, layer.id) && (
+                                <button
+                                  onClick={() => s.removeLayer(layer.id)}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                  title="Xoá layer"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
                             </div>
                           )}
                         </motion.div>

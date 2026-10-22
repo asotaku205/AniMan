@@ -115,9 +115,9 @@ export function CanvasTopBar({
               <button
                 onClick={exportCurrentPanel}
                 title="Xuất ảnh khung tranh (PNG)"
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:bg-white/5 hover:text-white transition-all"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:bg-white/5 hover:text-white transition-all"
               >
-                <Download size={13} />
+                <Download size={14} />
               </button>
             )}
 
@@ -149,13 +149,13 @@ export function CanvasTopBar({
               onClick={undo}
               disabled={!canUndo}
               title="Hoàn tác (Ctrl+Z)"
-              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
                 canUndo
                   ? "text-white/70 hover:bg-white/5 hover:text-white"
                   : "text-white/20 cursor-not-allowed"
               }`}
             >
-              <RefreshCw size={13} className="scale-x-[-1]" />
+              <RefreshCw size={14} className="scale-x-[-1]" />
             </button>
 
             {/* Làm lại (Redo) */}
@@ -163,22 +163,22 @@ export function CanvasTopBar({
               onClick={redo}
               disabled={!canRedo}
               title="Làm lại (Ctrl+Y)"
-              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
                 canRedo
                   ? "text-white/70 hover:bg-white/5 hover:text-white"
                   : "text-white/20 cursor-not-allowed"
               }`}
             >
-              <RefreshCw size={13} />
+              <RefreshCw size={14} />
             </button>
 
             {/* Xóa sạch canvas */}
             <button
               onClick={clearCanvas}
               title="Xoá sạch canvas"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:bg-red-500/20 hover:text-red-400 transition-all"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:bg-red-500/20 hover:text-red-400 transition-all"
             >
-              <X size={13} />
+              <X size={14} />
             </button>
 
             <div className="w-px h-4 bg-white/10 self-center mx-0.5" />
@@ -189,16 +189,16 @@ export function CanvasTopBar({
               title={
                 panelFullscreen ? "Thu nhỏ (Esc)" : "Phóng to toàn màn hình"
               }
-              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
                 panelFullscreen
                   ? "bg-purple-500/30 text-purple-300"
                   : "text-white/40 hover:bg-white/5 hover:text-white"
               }`}
             >
               {panelFullscreen ? (
-                <Minimize2 size={13} />
+                <Minimize2 size={14} />
               ) : (
-                <Maximize2 size={13} />
+                <Maximize2 size={14} />
               )}
             </button>
           </div>

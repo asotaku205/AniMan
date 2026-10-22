@@ -60,7 +60,7 @@ function Slider({
   max,
   suffix = "%",
   onChange,
-  width = "w-24",
+  width = "w-28",
 }: {
   label: string;
   value: number;
@@ -72,7 +72,7 @@ function Slider({
 }) {
   return (
     <label className="flex items-center gap-1.5" title={label}>
-      <span className="text-[9px] uppercase tracking-wider text-white/40 font-semibold whitespace-nowrap">
+      <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold whitespace-nowrap">
         {label}
       </span>
       <input
@@ -83,7 +83,7 @@ function Slider({
         onChange={(e) => onChange(+e.target.value)}
         className={`${width} accent-pink-500 cursor-pointer`}
       />
-      <span className="text-[9px] font-mono text-white/60 w-9 text-right">
+      <span className="text-[10px] font-mono text-white/60 w-9 text-right">
         {value}
         {suffix}
       </span>
@@ -113,7 +113,7 @@ function Segmented<T extends string>({
           key={o.value}
           onClick={() => onChange(o.value)}
           title={o.hint ?? o.label}
-          className={`px-2 py-0.5 rounded-md text-[10px] whitespace-nowrap transition-colors ${
+          className={`px-2 py-1 rounded-md text-[11px] whitespace-nowrap transition-colors ${
             value === o.value
               ? "bg-pink-500/30 text-pink-300 ring-1 ring-pink-500/40"
               : "text-white/50 hover:text-white"
@@ -145,7 +145,7 @@ function IconButton({
       onClick={onClick}
       title={title}
       aria-disabled={dim ? true : undefined}
-      className={`px-1.5 py-1 rounded-md flex items-center justify-center transition-colors ${
+      className={`p-1.5 rounded-md flex items-center justify-center transition-colors ${
         active
           ? "bg-pink-500/30 text-pink-300 ring-1 ring-pink-500/40"
           : dim
@@ -288,7 +288,7 @@ export function ToolOptionsBar({
 
   return (
     <div
-      className={`h-12 bg-[#0d0817] border-b border-white/5 flex items-center gap-3 px-3 flex-shrink-0 overflow-x-auto scrollbar-none ${
+      className={`min-h-12 bg-[#0d0817] border-b border-white/5 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-1.5 flex-shrink-0 ${
         disabled ? "opacity-40 pointer-events-none" : ""
       }`}
     >
@@ -296,7 +296,7 @@ export function ToolOptionsBar({
       {showPreview && (
         <>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-[9px] uppercase tracking-wider text-white/30 font-semibold">
+            <span className="text-[10px] uppercase tracking-wider text-white/35 font-semibold">
               Nét mẫu
             </span>
             <canvas
@@ -310,7 +310,7 @@ export function ToolOptionsBar({
             />
           </div>
 
-          <div className="w-px h-7 bg-white/10 flex-shrink-0" />
+          <div className="w-px h-7 bg-white/10 flex-shrink-0 hidden 2xl:block" />
         </>
       )}
 
@@ -439,7 +439,7 @@ export function ToolOptionsBar({
       {/* Chuyển sắc (BRD T-1 #11): đầu kia màu gì và trải màu kiểu gì */}
       {tool === "gradient" && (
         <>
-          <span className="text-[9px] uppercase tracking-wider text-white/40 font-semibold whitespace-nowrap">
+          <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold whitespace-nowrap">
             Chuyển sắc
           </span>
           <Segmented
@@ -500,7 +500,7 @@ export function ToolOptionsBar({
       {/* Đối xứng (BRD T-1 #13): dùng được cho mọi công cụ vẽ nét */}
       {showSymmetry && (
         <>
-          <span className="text-[9px] uppercase tracking-wider text-white/40 font-semibold whitespace-nowrap">
+          <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold whitespace-nowrap">
             Đối xứng
           </span>
           <Segmented
@@ -534,7 +534,7 @@ export function ToolOptionsBar({
                 key={p}
                 onClick={() => onSettingsChange({ size: p })}
                 title={`Cỡ ${p}px`}
-                className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono transition-colors ${
+                className={`px-2 py-1 rounded-md text-[10px] font-mono transition-colors ${
                   settings.size === p
                     ? "bg-pink-500/30 text-pink-300 ring-1 ring-pink-500/40"
                     : "bg-white/5 text-white/50 hover:text-white"

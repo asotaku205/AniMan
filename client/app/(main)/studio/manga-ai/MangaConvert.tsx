@@ -37,7 +37,7 @@ export function MangaConverter() {
   }, [isLoaded, projects.length]);
 
   return (
-    <div className="flex flex-col h-screen bg-[#0b0612] overflow-hidden">
+    <div className="flex flex-col h-[calc(100dvh-4rem)] bg-[#0b0612] overflow-hidden">
       {/* Top Header Bar with Project Selector */}
       <StudioHeader
         mode={mode}

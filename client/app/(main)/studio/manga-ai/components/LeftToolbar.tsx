@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Pen,
@@ -157,6 +157,7 @@ export function LeftToolbar({
   const pickColor = (c: string) => {
     setHexDraft(null);
     onColorChange(c);
+    setPaletteOpen(false);
   };
 
   const commitHex = () => {
@@ -178,6 +179,25 @@ export function LeftToolbar({
   const showFillToggle =
     !isLineTool && shapeType !== "line" && shapeType !== "arrow";
 
+  /** Nút của từng công cụ → neo bảng chọn kiểu vào đúng nút (7.6). */
+  const toolButtonRefs = useRef<Map<DrawTool, HTMLButtonElement>>(new Map());
+  /** Bảng màu mở/đóng (7.5) — chỉ một popover, đóng khi bấm ra ngoài. */
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  /**
+   * Đặt bảng chọn kiểu cạnh nút công cụ đang dùng. Đo ngay trong ref callback
+   * (lúc panel vừa gắn) thay vì `useEffect` + state: không gây thêm vòng render,
+   * và vị trí đúng ngay frame đầu.
+   */
+  const positionShapePanel = (el: HTMLDivElement | null) => {
+    if (!el) return;
+    const button = toolButtonRefs.current.get(tool);
+    if (!button) return;
+    const r = button.getBoundingClientRect();
+    el.style.left = `${Math.min(r.right + 8, window.innerWidth - 152)}px`;
+    el.style.top = `${Math.max(8, Math.min(r.top, window.innerHeight - 228))}px`;
+  };
+
   return (
     <div
       className={`w-16 bg-[#120a1f] border-r border-white/5 flex flex-col items-center py-3 gap-1 flex-shrink-0 relative ${
@@ -197,7 +217,7 @@ export function LeftToolbar({
           <React.Fragment key={group.label}>
             <div className="flex items-center gap-0.5 my-0.5">
               {gi > 0 && <div className="w-4 h-px bg-white/10" />}
-              <span className="text-[7px] uppercase tracking-wider text-white/25 font-semibold">
+              <span className="text-[8px] uppercase tracking-wider text-white/30 font-semibold">
                 {group.label}
               </span>
               <div className="w-4 h-px bg-white/10" />
@@ -215,6 +235,10 @@ export function LeftToolbar({
                 onMouseLeave={() => setHovered(null)}
               >
                 <button
+                  ref={(el) => {
+                    if (el) toolButtonRefs.current.set(t, el);
+                    else toolButtonRefs.current.delete(t);
+                  }}
                   onClick={() => onToolChange(t)}
                   disabled={disabled}
                   aria-label={`${TOOL_NAMES[t]} (phím ${TOOL_SHORTCUTS[t]})`}
@@ -222,7 +246,7 @@ export function LeftToolbar({
                     openHelp(t, e.currentTarget.getBoundingClientRect())
                   }
                   onBlur={() => setHovered(null)}
-                  className={`w-10 h-9 rounded-xl flex items-center justify-center transition-all disabled:cursor-not-allowed relative ${
+                  className={`w-11 h-10 rounded-xl flex items-center justify-center transition-all disabled:cursor-not-allowed relative ${
                     tool === t
                       ? "bg-pink-500/30 text-pink-400 ring-1 ring-pink-500/50"
                       : "text-white/40 hover:bg-white/5 hover:text-white/80"
@@ -280,122 +304,156 @@ export function LeftToolbar({
           document.body,
         )}
 
-      {/* Sub-menu chọn loại hình / kiểu đường (BRD T-1 #6, #10) */}
-      {showShapePanel && !disabled && (
-        <div className="absolute left-16 top-24 z-50 bg-[#0d0817]/95 border border-purple-500/30 rounded-2xl p-2 shadow-2xl backdrop-blur-md flex flex-col gap-1.5 w-36">
-          <p className="text-[9px] uppercase tracking-wider text-white/40 font-semibold px-1">
-            {isLineTool ? "Kiểu đường" : "Loại hình"}
-          </p>
-          <div className="grid grid-cols-4 gap-1 bg-white/5 p-1 rounded-xl">
-            {(isLineTool ? LINE_KINDS : SHAPE_KINDS).map((kind) => (
+      {/* Sub-menu chọn loại hình / kiểu đường (BRD T-1 #6, #10) — neo vào nút
+          công cụ bằng `position: fixed` để không đè lên canvas (7.6). */}
+      {showShapePanel &&
+        !disabled &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            key={tool}
+            ref={positionShapePanel}
+            className="fixed z-50 bg-[#0d0817]/97 border border-purple-500/30 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md flex flex-col gap-2 w-36"
+            style={{ left: 0, top: 0 }}
+          >
+            <p className="text-[10px] uppercase tracking-wider text-white/45 font-semibold px-1">
+              {isLineTool ? "Kiểu đường" : "Loại hình"}
+            </p>
+            <div className="grid grid-cols-3 gap-1 bg-white/5 p-1 rounded-xl">
+              {(isLineTool ? LINE_KINDS : SHAPE_KINDS).map((kind) => (
+                <button
+                  key={kind}
+                  onClick={() => onShapeTypeChange?.(kind)}
+                  title={shapeLabel(kind)}
+                  aria-label={shapeLabel(kind)}
+                  className={`h-9 rounded-lg flex items-center justify-center transition-colors ${
+                    activeKind === kind
+                      ? "bg-purple-600 text-white"
+                      : "text-white/45 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  {SHAPE_ICONS[kind]}
+                </button>
+              ))}
+            </div>
+
+            {showFillToggle && (
               <button
-                key={kind}
-                onClick={() => onShapeTypeChange?.(kind)}
-                title={shapeLabel(kind)}
-                className={`p-1 rounded-lg flex items-center justify-center transition-colors ${
-                  activeKind === kind
-                    ? "bg-purple-600 text-white"
-                    : "text-white/40 hover:text-white"
+                onClick={() => onShapeFillChange?.(!shapeFill)}
+                className={`flex items-center justify-between px-2 py-2 rounded-lg text-[11px] transition-colors ${
+                  shapeFill
+                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                    : "bg-white/5 text-white/50 hover:text-white"
                 }`}
               >
-                {SHAPE_ICONS[kind]}
+                <span>Đổ đặc nền</span>
+                {shapeFill && <Check size={12} className="text-purple-400" />}
               </button>
-            ))}
-          </div>
+            )}
 
-          {showFillToggle && (
-            <button
-              onClick={() => onShapeFillChange?.(!shapeFill)}
-              className={`flex items-center justify-between px-2 py-1 rounded-lg text-[10px] transition-colors ${
-                shapeFill
-                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
-                  : "bg-white/5 text-white/40 hover:text-white"
-              }`}
-            >
-              <span>Đổ đặc nền</span>
-              {shapeFill && <Check size={11} className="text-purple-400" />}
-            </button>
-          )}
-
-          {showSides && (
-            <label
-              className="flex items-center gap-1 px-1"
-              title={
-                shapeType === "star"
-                  ? "Số cánh của ngôi sao"
-                  : "Số cạnh của đa giác"
-              }
-            >
-              <span className="text-[9px] text-white/40 whitespace-nowrap">
-                {shapeType === "star" ? "Số cánh" : "Số cạnh"}
-              </span>
-              <input
-                type="range"
-                min={SIDES_MIN}
-                max={SIDES_MAX}
-                value={shapeSides}
-                onChange={(e) => onShapeSidesChange?.(clampSides(+e.target.value))}
-                className="flex-1 w-full accent-purple-500 cursor-pointer"
-              />
-              <span className="text-[9px] font-mono text-white/60 w-4 text-right">
-                {shapeSides}
-              </span>
-            </label>
-          )}
-        </div>
-      )}
+            {showSides && (
+              <label
+                className="flex items-center gap-2 px-1 py-1"
+                title={
+                  shapeType === "star"
+                    ? "Số cánh của ngôi sao"
+                    : "Số cạnh của đa giác"
+                }
+              >
+                <span className="text-[10px] text-white/45 whitespace-nowrap">
+                  {shapeType === "star" ? "Số cánh" : "Số cạnh"}
+                </span>
+                <input
+                  type="range"
+                  min={SIDES_MIN}
+                  max={SIDES_MAX}
+                  value={shapeSides}
+                  onChange={(e) =>
+                    onShapeSidesChange?.(clampSides(+e.target.value))
+                  }
+                  className="flex-1 w-full accent-purple-500 cursor-pointer"
+                />
+                <span className="text-[10px] font-mono text-white/60 w-4 text-right">
+                  {shapeSides}
+                </span>
+              </label>
+            )}
+          </div>,
+          document.body,
+        )}
 
       <div className="mt-3 w-8 h-px bg-white/10" />
 
-      {/* Color picker */}
-      <div className="relative mt-2" title="Chọn màu vẽ">
-        <div className="w-8 h-8 rounded-full border-2 border-white/20 overflow-hidden cursor-pointer shadow-md">
-          <input
-            type="color"
-            value={color}
-            disabled={disabled}
-            onChange={(e) => pickColor(e.target.value)}
-            className="absolute -inset-1 opacity-0 cursor-pointer w-12 h-12"
-          />
-          <div
-            className="w-full h-full rounded-full"
-            style={{ background: color }}
-          />
-        </div>
-      </div>
+      {/* Ô màu + bảng màu nhanh trong popover 28px (7.5) */}
+      <div className="relative mt-2">
+        <button
+          onClick={() => setPaletteOpen((v) => !v)}
+          disabled={disabled}
+          title="Chọn màu vẽ"
+          aria-label="Chọn màu vẽ"
+          aria-expanded={paletteOpen}
+          className="w-10 h-10 rounded-full border-2 border-white/20 shadow-md overflow-hidden relative disabled:cursor-not-allowed hover:border-white/40 transition-colors"
+          style={{ background: color }}
+        >
+          <span className="sr-only">Màu hiện tại {color}</span>
+        </button>
 
-      {/* Bảng màu nhanh 16 màu manga (AC-T2.3) */}
-      <p className="text-white/30 text-[8px] tracking-widest mt-3">MÀU</p>
-      <div className="grid grid-cols-4 gap-1 mt-1.5">
-        {MANGA_PALETTE.map((c) => (
-          <button
-            key={c}
-            onClick={() => pickColor(c)}
-            disabled={disabled}
-            title={c}
-            className={`w-3.5 h-3.5 rounded-[4px] border transition-transform hover:scale-110 ${
-              color.toLowerCase() === c
-                ? "border-pink-400 ring-1 ring-pink-400/60"
-                : "border-white/15"
-            }`}
-            style={{ background: c }}
-          />
-        ))}
-      </div>
+        {paletteOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setPaletteOpen(false)}
+            />
+            <div className="absolute left-[52px] bottom-0 z-50 w-[168px] bg-[#0d0817]/97 border border-pink-500/25 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md">
+              <p className="text-[10px] uppercase tracking-wider text-white/45 font-semibold mb-2">
+                Màu nhanh
+              </p>
+              <div className="grid grid-cols-4 gap-1.5">
+                {MANGA_PALETTE.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => pickColor(c)}
+                    title={c}
+                    aria-label={`Màu ${c}`}
+                    className={`w-7 h-7 rounded-md border transition-transform hover:scale-105 ${
+                      color.toLowerCase() === c
+                        ? "border-pink-400 ring-1 ring-pink-400/60"
+                        : "border-white/15"
+                    }`}
+                    style={{ background: c }}
+                  />
+                ))}
+              </div>
 
-      {/* Nhập HEX tay (AC-T2.3) */}
-      <input
-        value={hexValue}
-        disabled={disabled}
-        onChange={(e) => setHexDraft(e.target.value)}
-        onBlur={commitHex}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commitHex();
-        }}
-        placeholder="#RRGGBB"
-        title="Nhập mã màu HEX rồi Enter"
-        className="mt-1.5 w-14 bg-white/5 border border-white/10 rounded-md px-1 py-0.5 text-[8px] font-mono text-white/70 text-center focus:outline-none focus:border-pink-500/40"
-      />
+              <div className="mt-2.5 pt-2.5 border-t border-white/10 flex items-center gap-2">
+                <label
+                  className="relative w-7 h-7 rounded-md border border-white/20 overflow-hidden cursor-pointer flex-shrink-0"
+                  title="Màu tuỳ chọn"
+                  style={{ background: color }}
+                >
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(e) => pickColor(e.target.value)}
+                    className="absolute -inset-2 opacity-0 cursor-pointer"
+                  />
+                </label>
+                <input
+                  value={hexValue}
+                  onChange={(e) => setHexDraft(e.target.value)}
+                  onBlur={commitHex}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitHex();
+                  }}
+                  placeholder="#RRGGBB"
+                  title="Nhập mã màu HEX rồi Enter"
+                  className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-md px-1.5 py-1 text-[10px] font-mono text-white/70 text-center focus:outline-none focus:border-pink-500/40"
+                />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
