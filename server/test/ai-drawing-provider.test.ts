@@ -570,3 +570,131 @@ describe("buildGeminiDrawingOutput — cắt output & tên model (Phase 5E)", ()
     ).toThrow(/could not be parsed as JSON/);
   });
 });
+
+describe("normalizeReviewFindings — góp ý chấm tranh (Phase 5G)", () => {
+  const reviewRequest = providerRequest(AiDrawingTask.DrawingReview);
+
+  function reviewResponse(findings: unknown[]): Record<string, unknown> {
+    return {
+      schemaVersion: "1",
+      task: AiDrawingTask.DrawingReview,
+      summary: "Chấm tranh.",
+      sourceIds: [],
+      findings,
+    };
+  }
+
+  const validFinding = {
+    principle: "proportion",
+    region: { x: 0.2, y: 0.3, width: 0.2, height: 0.4 },
+    issue: "Đầu hơi lớn so với thân.",
+    recommendation: "Thu nhỏ đầu khoảng 10%.",
+    severity: "medium",
+    confidence: 0.7,
+  };
+
+  it("bỏ khoá lạ trong region và trong finding rồi parser vẫn nhận", () => {
+    const normalized = normalizeGeminiOutput(
+      reviewResponse([
+        {
+          ...validFinding,
+          region: { ...validFinding.region, label: "vùng đầu" },
+          note: "model tự thêm",
+        },
+      ]),
+      reviewRequest,
+    ) as Record<string, unknown>;
+
+    const findings = normalized.findings as Array<Record<string, unknown>>;
+    expect(findings).toHaveLength(1);
+    expect(findings[0].region).toEqual({
+      x: 0.2,
+      y: 0.3,
+      width: 0.2,
+      height: 0.4,
+    });
+    expect(findings[0]).not.toHaveProperty("note");
+
+    expect(() =>
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.DrawingReview,
+        new Set(),
+      ),
+    ).not.toThrow();
+  });
+
+  it("nhận bí danh w/h cho vùng lỗi", () => {
+    const normalized = normalizeGeminiOutput(
+      reviewResponse([
+        {
+          ...validFinding,
+          region: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 },
+        },
+      ]),
+      reviewRequest,
+    ) as Record<string, unknown>;
+
+    const findings = normalized.findings as Array<Record<string, unknown>>;
+    expect(findings[0].region).toEqual({
+      x: 0.1,
+      y: 0.1,
+      width: 0.5,
+      height: 0.5,
+    });
+  });
+
+  it("bỏ finding có vùng không dựng được, giữ finding còn đọc được", () => {
+    const normalized = normalizeGeminiOutput(
+      reviewResponse([
+        validFinding,
+        { ...validFinding, region: { x: 0.1, y: 0.1 } },
+        { ...validFinding, region: "góc trên trái" },
+      ]),
+      reviewRequest,
+    ) as Record<string, unknown>;
+
+    expect(normalized.findings).toHaveLength(1);
+  });
+
+  it("không còn finding nào thì xoá findings để parser vẫn báo lỗi hợp đồng", () => {
+    const normalized = normalizeGeminiOutput(
+      reviewResponse([{ ...validFinding, region: { x: 2, y: 0, width: 0.1, height: 0.1 } }]),
+      reviewRequest,
+    ) as Record<string, unknown>;
+
+    expect(normalized).not.toHaveProperty("findings");
+    expect(() =>
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.DrawingReview,
+        new Set(),
+      ),
+    ).toThrow(/findings/);
+  });
+
+  it("cắt lời góp ý quá dài thay vì loại cả phản hồi", () => {
+    const normalized = normalizeGeminiOutput(
+      reviewResponse([
+        {
+          ...validFinding,
+          issue: "a".repeat(600),
+          recommendation: "b".repeat(600),
+        },
+      ]),
+      reviewRequest,
+    ) as Record<string, unknown>;
+
+    const findings = normalized.findings as Array<Record<string, unknown>>;
+    expect((findings[0].issue as string).length).toBe(400);
+    expect((findings[0].recommendation as string).length).toBe(400);
+
+    expect(() =>
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.DrawingReview,
+        new Set(),
+      ),
+    ).not.toThrow();
+  });
+});

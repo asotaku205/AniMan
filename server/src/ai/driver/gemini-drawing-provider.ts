@@ -19,6 +19,7 @@ import {
   MAX_AI_BLUEPRINT_LAYERS,
   MAX_AI_BLUEPRINT_LAYER_STROKES,
   MAX_AI_BLUEPRINT_TITLE_LENGTH,
+  MAX_AI_EXPLANATION_LENGTH,
   MAX_AI_FLOW_LENGTH,
   MAX_AI_GHOST_STROKES,
   MAX_AI_PANEL_HINT_LENGTH,
@@ -575,7 +576,111 @@ export function normalizeGeminiOutput(
     delete obj.findings;
   }
 
+  // ── Chấm tranh: dựng lại từng `finding` đúng hợp đồng ─────────────────────
+  // Đây là task duy nhất trước 5G không được chuẩn hoá, nên chỉ một khoá lạ
+  // trong `region` là cả phản hồi bị loại (log 22/10/2026). Không finding nào
+  // sống sót thì xoá `findings` để parser vẫn báo lỗi, không giả "không có lỗi".
+  if (request.task === AiDrawingTask.DrawingReview) {
+    const findings = normalizeReviewFindings(obj.findings);
+    if (findings.length === 0) {
+      delete obj.findings;
+    } else {
+      obj.findings = findings;
+    }
+    delete obj.strokes;
+    delete obj.recommendations;
+  }
+
   return obj;
+}
+
+/**
+ * Chuẩn hoá `findings` của `drawing_review` về đúng sáu khoá của hợp đồng.
+ *
+ * `region` là chỗ model hay thêm khoá (`label`, `note`) hoặc viết tắt `w`/`h`;
+ * hợp đồng lại đòi **đúng** `x, y, width, height` trong 0..1. Ở đây dựng lại
+ * vùng từ bốn số đọc được và bỏ phần thừa. Finding không dựng được vùng thì
+ * **bỏ finding đó** — hình học bịa còn tệ hơn không có góp ý.
+ *
+ * Xuất ra để test trực tiếp phần chuẩn hoá.
+ */
+export function normalizeReviewFindings(
+  value: unknown,
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+
+  const findings: Array<Record<string, unknown>> = [];
+  for (const rawFinding of value) {
+    if (typeof rawFinding !== "object" || rawFinding === null) continue;
+    const finding = rawFinding as Record<string, unknown>;
+
+    const region = normalizeRegion(finding.region);
+    if (region === null) continue;
+
+    const issue = normalizeReviewText(finding.issue);
+    const recommendation = normalizeReviewText(finding.recommendation);
+    if (issue === null || recommendation === null) continue;
+
+    findings.push({
+      principle: finding.principle,
+      region,
+      issue,
+      recommendation,
+      severity: finding.severity,
+      confidence: finding.confidence,
+    });
+  }
+  return findings;
+}
+
+/** Vùng lỗi `{x,y,width,height}` trong 0..1; nhận `w`/`h` làm bí danh. */
+function normalizeRegion(value: unknown): Record<string, number> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const region = value as Record<string, unknown>;
+  const x = region.x;
+  const y = region.y;
+  const width = region.width ?? region.w;
+  const height = region.height ?? region.h;
+
+  if (
+    !isUnitNumber(x) ||
+    !isUnitNumber(y) ||
+    !isUnitNumber(width) ||
+    !isUnitNumber(height)
+  ) {
+    return null;
+  }
+  // Cùng luật với parser: kích thước dương và nằm trong khung. Sai số dấu phẩy
+  // động được kẹp lại thay vì bỏ cả finding.
+  if (width <= 0 || height <= 0) return null;
+  const cleanX = Math.min(x, 1);
+  const cleanY = Math.min(y, 1);
+  const cleanWidth = Math.min(width, 1 - cleanX);
+  const cleanHeight = Math.min(height, 1 - cleanY);
+  if (cleanWidth <= 0 || cleanHeight <= 0) return null;
+
+  return { x: cleanX, y: cleanY, width: cleanWidth, height: cleanHeight };
+}
+
+function isUnitNumber(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 1
+  );
+}
+
+/** Lời góp ý dài quá trần bị cắt, thay vì loại cả phản hồi. */
+function normalizeReviewText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (text.length === 0) return null;
+  return text.length > MAX_AI_EXPLANATION_LENGTH
+    ? text.slice(0, MAX_AI_EXPLANATION_LENGTH)
+    : text;
 }
 
 /**
