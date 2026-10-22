@@ -192,10 +192,9 @@ export function DrawStudio({
           onEraseStrokeRegion={s.eraseStrokeRegion}
           onStartManualCleanup={s.startManualCleanup}
           onApplyCompositionFix={s.applyCompositionFix}
-          bubbles={s.activeBubbles}
-          onAddBubble={s.addBubble}
-          onUpdateBubble={s.updateBubble}
-          onRemoveBubble={s.removeBubble}
+          texts={s.activeTextItems}
+          onUpdateTextItem={s.updateTextItem}
+          onRemoveTextItem={s.removeTextItem}
           sceneType={s.sceneType}
           selectedComp={s.selectedComp}
           showPanelSuggestions={s.showPanelSuggestions}

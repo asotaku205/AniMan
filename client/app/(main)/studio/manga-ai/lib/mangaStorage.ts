@@ -8,7 +8,7 @@ import type {
 } from "../data";
 import { createUserLayer, normalizeLayers } from "../data";
 import type { AiStrokeGroup, AiStrokePath } from "@/lib/ai-drawing-api";
-import type { PanelBubbles } from "./bubbles";
+import type { PanelTextItems } from "./textItems";
 
 const DB_NAME = "animan_manga_studio_db";
 /**
@@ -39,8 +39,8 @@ export interface StoredPageDrawing {
   stacks?: PanelStacks;
   /** v1: panelId -> composite — vẫn ghi kèm để đọc ngược được (§3.2). */
   panels?: Record<string, string>;
-  /** Bong bóng thoại theo khung (Slice 5) — trường tuỳ chọn, bản ghi cũ không có thì coi như không bong bóng. */
-  bubbles?: PanelBubbles;
+  /** Khối chữ dạng đối tượng theo khung (thay bong bóng thoại) — trường tuỳ chọn, bản ghi cũ không có thì coi như không có chữ. */
+  texts?: PanelTextItems;
   layers?: LayerItem[];
   activeLayerId?: string;
   updatedAt: number;
@@ -395,10 +395,10 @@ export async function getPageStacksFromDB(
 ): Promise<{
   stacks: PanelStacks;
   legacyPanels: Record<string, string> | null;
-  bubbles: PanelBubbles;
+  texts: PanelTextItems;
 }> {
   const record = await getPageDrawingRecordFromDB(projectId, pageNumber);
-  if (!record) return { stacks: {}, legacyPanels: null, bubbles: {} };
+  if (!record) return { stacks: {}, legacyPanels: null, texts: {} };
   const stacks =
     record.schemaVersion === PAGE_DRAWING_SCHEMA_VERSION && record.stacks
       ? normalizePanelStacks(record.stacks)
@@ -406,7 +406,7 @@ export async function getPageStacksFromDB(
   return {
     stacks,
     legacyPanels: record.panels ?? null,
-    bubbles: record.bubbles ?? {},
+    texts: record.texts ?? {},
   };
 }
 
@@ -421,7 +421,7 @@ export async function savePageDrawingToDB(
   stacks: PanelStacks,
   layoutId?: string,
   panels?: Record<string, string>,
-  bubbles?: PanelBubbles,
+  texts?: PanelTextItems,
 ): Promise<void> {
   if (!projectId || !pageNumber) return;
   try {
@@ -435,7 +435,7 @@ export async function savePageDrawingToDB(
       layoutId,
       stacks,
       panels,
-      bubbles,
+      texts,
       updatedAt: Date.now(),
     };
 

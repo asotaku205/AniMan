@@ -115,11 +115,11 @@ import { aiStrokeShape } from "../lib/aiStrokeGeometry";
 import { rasterizeAiStrokes } from "../lib/aiRasterize";
 import { regionToPixelRect } from "../lib/strokeCleanup";
 import {
-  createBubble,
-  drawBubbles,
-  type PanelBubbles,
-  type SpeechBubble,
-} from "../lib/bubbles";
+  createTextItem,
+  drawTextItems,
+  type PanelTextItems,
+  type TextItem,
+} from "../lib/textItems";
 import {
   adjustSize,
   clampSize,
@@ -527,11 +527,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const [activePanel, setActivePanel] = useState<string | null>(null);
   const [panelData, setPanelData] = useState<Record<string, string>>({});
   /** Bong bóng thoại theo khung của trang đang mở (Slice 5) + bản ref cho commitSave. */
-  const [panelBubbles, setPanelBubbles] = useState<PanelBubbles>({});
-  const panelBubblesRef = useRef<PanelBubbles>({});
-  const setBubblesBoth = useCallback((next: PanelBubbles) => {
-    panelBubblesRef.current = next;
-    setPanelBubbles(next);
+  const [panelTexts, setPanelTexts] = useState<PanelTextItems>({});
+  const panelTextsRef = useRef<PanelTextItems>({});
+  const setTextsBoth = useCallback((next: PanelTextItems) => {
+    panelTextsRef.current = next;
+    setPanelTexts(next);
   }, []);
 
   // Right panel
@@ -1149,7 +1149,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         stacksToSave,
         layout.id,
         data,
-        panelBubblesRef.current,
+        panelTextsRef.current,
       );
       setIsSaved(true);
       if (onSavePageData) {
@@ -1280,15 +1280,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         height: display.height,
       },
     );
-    // Bong bóng thoại (Slice 5): dữ liệu vector, vẽ chồng lên composite nên
-    // hiển thị, panelData và ảnh xuất đều có; KHÔNG nằm trong bitmap layer
-    // nên undo/xoá layer không đụng vào thoại.
-    const bubbles = panelBubbles[activePanel];
-    if (bubbles && bubbles.length > 0) {
+    // Chữ dạng đối tượng: dữ liệu vector, vẽ chồng lên composite nên hiển
+    // thị, panelData và ảnh xuất đều có; KHÔNG nằm trong bitmap layer nên
+    // undo/xoá layer không đụng vào chữ, và chữ sửa/dời được sau khi điền.
+    const texts = panelTexts[activePanel];
+    if (texts && texts.length > 0) {
       const dctx = display.getContext("2d");
-      if (dctx) drawBubbles(dctx, bubbles, display.width, display.height);
+      if (dctx) drawTextItems(dctx, texts, display.width, display.height);
     }
-  }, [layers, activePanel, panelBubbles]);
+  }, [layers, activePanel, panelTexts]);
 
   /**
    * Render + lưu bitmap phẳng của panel (`panelData[panelId]`) — trang xem trước
@@ -2144,7 +2144,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   useEffect(() => {
     if (!projectId) {
       setPanelData({});
-      setBubblesBoth({});
+      setTextsBoth({});
       setStacks({});
       layerCanvasesRef.current.clear();
       historyRef.current = [];
@@ -2157,7 +2157,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         const {
           stacks: loadedStacks,
           legacyPanels,
-          bubbles: loadedBubbles,
+          texts: loadedTexts,
         } = await getPageStacksFromDB(
           projectId!,
           page,
@@ -2165,14 +2165,14 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         if (isCancelled) return;
         const data = legacyPanels || {};
         setPanelData(data);
-        setBubblesBoth(loadedBubbles ?? {});
+        setTextsBoth(loadedTexts ?? {});
         setIsSaved(true);
         // Dữ liệu trang mới đã có → đồng bộ ngăn xếp + bitmap layer
         resyncLayersWithData(loadedStacks);
       } catch {
         if (!isCancelled) {
           setPanelData({});
-          setBubblesBoth({});
+          setTextsBoth({});
           resyncLayersWithData({});
         }
       }
@@ -2292,36 +2292,49 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     activeLayerId,
   ]);
 
-  // Chèn chữ / lời thoại vào canvas
+  /**
+   * Chèn chữ / lời thoại — nay tạo **khối chữ dạng đối tượng** (không raster
+   * vào bitmap layer như trước) để sau khi điền vẫn sửa nội dung, dời chỗ và
+   * đổi cỡ được. Bong bóng thoại thì người dùng tự vẽ bằng công cụ hình rồi
+   * đặt khối chữ lên trên (Sơn chốt 22/10/2026).
+   */
   const insertText = useCallback(
     (text: string) => {
-      const canvas = canvasRef.current;
-      const ctx = getCtx();
-      if (!canvas || !ctx || !textInputPos || !text.trim()) {
+      if (!activePanel || !textInputPos || !text.trim()) {
         setShowTextInput(false);
         setTextInputPos(null);
         return;
       }
-      snapshot();
-      ctx.globalCompositeOperation = "source-over";
-      ctx.globalAlpha = settings.opacity / 100;
-      ctx.font = `${Math.max(14, size * 3.5)}px "Comic Sans MS", "Arial", sans-serif`;
-      ctx.fillStyle = color;
-      ctx.textBaseline = "middle";
       // textInputPos là screen px trong khung → đổi sang toạ độ artwork (3A)
       const { x: tx, y: ty } = screenToArtwork(
         viewportRef.current,
         textInputPos.x,
         textInputPos.y,
       );
-      ctx.fillText(text, tx, ty);
-      ctx.globalAlpha = 1;
+      const { artW, artH } = frameRef.current;
+      if (!(artW > 0) || !(artH > 0)) {
+        setShowTextInput(false);
+        setTextInputPos(null);
+        return;
+      }
+      const item = createTextItem(
+        `text-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        tx / artW,
+        ty / artH,
+        text.trim(),
+        Math.max(14, size * 3.5) / artH,
+        color,
+      );
+      setTextsBoth({
+        ...panelTextsRef.current,
+        [activePanel]: [...(panelTextsRef.current[activePanel] ?? []), item],
+      });
       compositeNow();
       setShowTextInput(false);
       setTextInputPos(null);
-      showToast("Đã thêm lời thoại!");
+      showToast("Đã thêm chữ — kéo để dời, nhấp đúp vào chữ để sửa.");
     },
-    [getCtx, textInputPos, size, color, settings.opacity, snapshot, compositeNow, showToast],
+    [activePanel, textInputPos, size, color, setTextsBoth, compositeNow, showToast],
   );
 
   const cancelText = useCallback(() => {
@@ -2386,11 +2399,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     );
 
     // Bong bóng thoại của khung cũng vào ảnh xuất (Slice 5)
-    const exportBubbles = panelBubbles[activePanel] ?? [];
-    if (exportBubbles.length > 0) {
+    const exportTexts = panelTexts[activePanel] ?? [];
+    if (exportTexts.length > 0) {
       const ectx = exportCanvas.getContext("2d");
       if (ectx) {
-        drawBubbles(ectx, exportBubbles, exportCanvas.width, exportCanvas.height);
+        drawTextItems(ectx, exportTexts, exportCanvas.width, exportCanvas.height);
       }
     }
 
@@ -2410,14 +2423,14 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     aiStrokeLayers,
     ghostOpacity,
     layers,
-    panelBubbles,
+    panelTexts,
   ]);
 
   /**
    * Xuất **toàn bộ dự án thành PDF nhiều trang** (Slice 6 — xuất bản phẩm).
    * Mỗi trang dựng canvas 1200×1600 như `exportFullPage` (nền trắng + ảnh
    * composite từng khung); trang hiện tại lấy dữ liệu trong phiên, các trang
-   * khác đọc bản ghi IndexedDB (layout + composite + bong bóng thoại).
+   * khác đọc bản ghi IndexedDB (layout + composite + khối chữ).
    * jsPDF được nạp động để không phình bundle của studio.
    */
   const exportProjectPdf = useCallback(async () => {
@@ -2450,15 +2463,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       ctx.fillRect(0, 0, PAGE_W, PAGE_H);
 
       let panelsMap: Record<string, string> = {};
-      let bubblesMap: PanelBubbles = {};
+      let textsMap: PanelTextItems = {};
       let layoutForPage = layout;
       if (pn === page) {
         panelsMap = panelDataRef.current;
-        bubblesMap = panelBubblesRef.current;
+        textsMap = panelTextsRef.current;
       } else {
         const record = await getPageDrawingRecordFromDB(projectId, pn);
         panelsMap = record?.panels ?? {};
-        bubblesMap = record?.bubbles ?? {};
+        textsMap = record?.texts ?? {};
         layoutForPage =
           LAYOUTS.find((l) => l.id === record?.layoutId) ?? layout;
       }
@@ -2473,13 +2486,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
           const img = await loadImage(src);
           if (img) ctx.drawImage(img, px, py, pw, ph);
         }
-        // Composite của trang khác có thể là bản lưu cũ chưa nướng bong bóng
+        // Composite của trang khác có thể là bản lưu cũ chưa nướng khối chữ
         // → vẽ chồng từ dữ liệu vector cho đủ.
-        const bs = bubblesMap[p.id];
+        const bs = textsMap[p.id];
         if (bs && bs.length > 0 && pn !== page) {
           ctx.save();
           ctx.translate(px, py);
-          drawBubbles(ctx, bs, pw, ph);
+          drawTextItems(ctx, bs, pw, ph);
           ctx.restore();
         }
       }
@@ -4102,57 +4115,40 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     ],
   );
 
-  // ── Bong bóng thoại (Slice 5) ──────────────────────────────────────────────
-  /** Bong bóng của khung đang mở. */
-  const activeBubbles: SpeechBubble[] = activePanel
-    ? (panelBubbles[activePanel] ?? [])
+  // ── Chữ dạng đối tượng (thay bong bóng thoại) ─────────────────────────────
+  /** Các khối chữ của khung đang mở. */
+  const activeTextItems: TextItem[] = activePanel
+    ? (panelTexts[activePanel] ?? [])
     : [];
 
-  /** Thêm bong bóng thoại vào khung đang mở; trả về bong bóng mới (hoặc null). */
-  const addBubble = useCallback((): SpeechBubble | null => {
-    if (!activePanel) {
-      showToast("Hãy mở một khung tranh trước khi thêm bong bóng thoại.");
-      return null;
-    }
-    const bubble = createBubble(
-      `bubble-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
-    );
-    setBubblesBoth({
-      ...panelBubblesRef.current,
-      [activePanel]: [...(panelBubblesRef.current[activePanel] ?? []), bubble],
-    });
-    compositeNow();
-    return bubble;
-  }, [activePanel, setBubblesBoth, compositeNow, showToast]);
-
-  /** Cập nhật một bong bóng của khung đang mở (dời/đổi cỡ/sửa chữ/đuôi). */
-  const updateBubble = useCallback(
-    (id: string, patch: Partial<SpeechBubble>) => {
+  /** Cập nhật một khối chữ của khung đang mở (dời/sửa chữ/đổi cỡ/màu). */
+  const updateTextItem = useCallback(
+    (id: string, patch: Partial<TextItem>) => {
       if (!activePanel) return;
-      const list = panelBubblesRef.current[activePanel] ?? [];
-      if (!list.some((b) => b.id === id)) return;
-      setBubblesBoth({
-        ...panelBubblesRef.current,
-        [activePanel]: list.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+      const list = panelTextsRef.current[activePanel] ?? [];
+      if (!list.some((t) => t.id === id)) return;
+      setTextsBoth({
+        ...panelTextsRef.current,
+        [activePanel]: list.map((t) => (t.id === id ? { ...t, ...patch } : t)),
       });
       compositeNow();
     },
-    [activePanel, setBubblesBoth, compositeNow],
+    [activePanel, setTextsBoth, compositeNow],
   );
 
-  /** Xoá một bong bóng của khung đang mở. */
-  const removeBubble = useCallback(
+  /** Xoá một khối chữ của khung đang mở. */
+  const removeTextItem = useCallback(
     (id: string) => {
       if (!activePanel) return;
-      const list = panelBubblesRef.current[activePanel] ?? [];
-      setBubblesBoth({
-        ...panelBubblesRef.current,
-        [activePanel]: list.filter((b) => b.id !== id),
+      const list = panelTextsRef.current[activePanel] ?? [];
+      setTextsBoth({
+        ...panelTextsRef.current,
+        [activePanel]: list.filter((t) => t.id !== id),
       });
       compositeNow();
-      showToast("Đã xoá bong bóng thoại.");
+      showToast("Đã xoá khối chữ.");
     },
-    [activePanel, setBubblesBoth, compositeNow, showToast],
+    [activePanel, setTextsBoth, compositeNow, showToast],
   );
 
   /** Có thể áp nét AI xuống lớp đang chọn không (nút trong lớp phủ bật/tắt theo). */
@@ -4289,11 +4285,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     startManualCleanup,
     /** Áp phép chỉnh bố cục AI đề xuất = một bước hoàn tác (Slice 4) */
     applyCompositionFix,
-    /** Bong bóng thoại của khung đang mở + thao tác thêm/sửa/xoá (Slice 5) */
-    activeBubbles,
-    addBubble,
-    updateBubble,
-    removeBubble,
+    /** Khối chữ dạng đối tượng của khung đang mở + sửa/xoá (thay bong bóng thoại) */
+    activeTextItems,
+    updateTextItem,
+    removeTextItem,
     /** Tóm tắt + dòng nguồn AI của nét gợi ý (AC-D2.2) */
     ghostStrokesSummary,
     ghostAt,

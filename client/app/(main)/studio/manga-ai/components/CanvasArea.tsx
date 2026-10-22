@@ -37,10 +37,10 @@ import type {
 import { cleanupCandidates } from "../lib/strokeCleanup";
 import { describeFix } from "../lib/compositionFix";
 import {
-  moveBubble,
-  resizeBubble,
-  type SpeechBubble,
-} from "../lib/bubbles";
+  moveTextItem,
+  textItemBox,
+  type TextItem,
+} from "../lib/textItems";
 
 type Props = {
   // Layout / panel state
@@ -111,11 +111,10 @@ type Props = {
   onStartManualCleanup?: () => void;
   /** Áp phép chỉnh bố cục AI đề xuất cho một finding (Slice 4) */
   onApplyCompositionFix?: (finding: AiDrawingFinding) => void;
-  /** Bong bóng thoại của khung đang mở (Slice 5) — hình thật do composite vẽ, đây chỉ là tay nắm tương tác */
-  bubbles?: SpeechBubble[];
-  onAddBubble?: () => SpeechBubble | null;
-  onUpdateBubble?: (id: string, patch: Partial<SpeechBubble>) => void;
-  onRemoveBubble?: (id: string) => void;
+  /** Khối chữ dạng đối tượng của khung đang mở — hình thật do composite vẽ, đây chỉ là tay nắm tương tác */
+  texts?: TextItem[];
+  onUpdateTextItem?: (id: string, patch: Partial<TextItem>) => void;
+  onRemoveTextItem?: (id: string) => void;
   // Suggestion widget
   sceneType: SceneType;
   selectedComp: string | null;
@@ -182,10 +181,9 @@ export function CanvasArea({
   onEraseStrokeRegion,
   onStartManualCleanup,
   onApplyCompositionFix,
-  bubbles,
-  onAddBubble,
-  onUpdateBubble,
-  onRemoveBubble,
+  texts,
+  onUpdateTextItem,
+  onRemoveTextItem,
   sceneType,
   selectedComp,
   showPanelSuggestions,
@@ -197,48 +195,62 @@ export function CanvasArea({
   enterPanel,
   setPanelFullscreen,
 }: Props) {
-  // ── Bong bóng thoại (Slice 5): tay nắm tương tác trong suốt phủ đúng vị trí
-  // bong bóng; hình bong bóng thật do composite canvas vẽ ở dưới.
-  const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
-  const [editingBubbleId, setEditingBubbleId] = useState<string | null>(null);
-  const bubbleDragRef = useRef<{
+  // ── Khối chữ dạng đối tượng: tay nắm trong suốt phủ đúng vị trí khối chữ;
+  // hình chữ thật do composite canvas vẽ ở dưới. Kéo để dời, nhấp đúp để sửa.
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const textDragRef = useRef<{
     id: string;
-    mode: "move" | "resize";
     startX: number;
     startY: number;
-    orig: SpeechBubble;
+    orig: TextItem;
   } | null>(null);
+  const measureCanvasRef = useRef<CanvasRenderingContext2D | null>(null);
 
-  const onBubblePointerDown = (
-    e: React.PointerEvent,
-    bubble: SpeechBubble,
-    mode: "move" | "resize",
-  ) => {
+  /** Hàm đo bề rộng chữ theo đúng font/cỡ của một khối chữ (cho hộp bao). */
+  const measureForItem = (item: TextItem) => {
+    const hostH = canvasRef.current?.clientHeight ?? 300;
+    const fontPx = Math.max(10, item.fontScale * hostH);
+    if (!measureCanvasRef.current) {
+      measureCanvasRef.current = document
+        .createElement("canvas")
+        .getContext("2d");
+    }
+    const mctx = measureCanvasRef.current;
+    return (text: string) => {
+      if (!mctx) return text.length * fontPx * 0.6;
+      mctx.font = `${fontPx}px "Comic Sans MS", "Arial", sans-serif`;
+      return mctx.measureText(text).width;
+    };
+  };
+
+  /** Hộp bao (normalized) của khối chữ theo kích thước hiển thị hiện tại. */
+  const boxForItem = (item: TextItem) => {
+    const hostW = canvasRef.current?.clientWidth ?? 400;
+    const hostH = canvasRef.current?.clientHeight ?? 300;
+    return textItemBox(item, hostW, hostH, measureForItem(item));
+  };
+
+  const onTextPointerDown = (e: React.PointerEvent, item: TextItem) => {
     e.stopPropagation();
-    setSelectedBubbleId(bubble.id);
-    bubbleDragRef.current = {
-      id: bubble.id,
-      mode,
+    setSelectedTextId(item.id);
+    textDragRef.current = {
+      id: item.id,
       startX: e.clientX,
       startY: e.clientY,
-      orig: bubble,
+      orig: item,
     };
     const onMove = (ev: PointerEvent) => {
-      const drag = bubbleDragRef.current;
+      const drag = textDragRef.current;
       const host = canvasRef.current;
-      if (!drag || !host || !onUpdateBubble) return;
+      if (!drag || !host || !onUpdateTextItem) return;
       const dx = (ev.clientX - drag.startX) / (host.clientWidth || 1);
       const dy = (ev.clientY - drag.startY) / (host.clientHeight || 1);
-      if (drag.mode === "move") {
-        const next = moveBubble(drag.orig, dx, dy);
-        onUpdateBubble(drag.id, { x: next.x, y: next.y });
-      } else {
-        const next = resizeBubble(drag.orig, drag.orig.w + dx, drag.orig.h + dy);
-        onUpdateBubble(drag.id, { w: next.w, h: next.h });
-      }
+      const next = moveTextItem(drag.orig, dx, dy);
+      onUpdateTextItem(drag.id, { x: next.x, y: next.y });
     };
     const onUp = () => {
-      bubbleDragRef.current = null;
+      textDragRef.current = null;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
@@ -399,110 +411,94 @@ export function CanvasArea({
               onPointerLeave={up}
             />
 
-            {/* Bong bóng thoại (Slice 5) — tay nắm trong suốt: kéo để dời, góc
-                dưới-phải để đổi cỡ, nhấp đúp để sửa chữ. Hình bong bóng thật
-                nằm ở composite canvas phía dưới. */}
-            {activePanel && bubbles && (
+            {/* Khối chữ dạng đối tượng — tay nắm trong suốt: kéo để dời,
+                nhấp đúp để sửa chữ, nút A−/A+ đổi cỡ. Hình chữ thật nằm ở
+                composite canvas phía dưới. Bong bóng thoại thì người dùng
+                tự vẽ bằng công cụ hình rồi đặt chữ lên trên. */}
+            {activePanel && texts && (
               <div className="absolute inset-0 z-40 pointer-events-none">
-                {onAddBubble && (
-                  <button
-                    onClick={() => {
-                      const created = onAddBubble();
-                      if (created) setSelectedBubbleId(created.id);
-                    }}
-                    className="pointer-events-auto absolute left-2 top-2 px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 border border-white/15 text-white/85 text-[10px] font-medium backdrop-blur-md transition-colors"
-                  >
-                    + Bong bóng thoại
-                  </button>
-                )}
-                {bubbles.map((bubble) => {
-                  const isSel = selectedBubbleId === bubble.id;
-                  const isEditing = editingBubbleId === bubble.id;
+                {texts.map((item) => {
+                  const isSel = selectedTextId === item.id;
+                  const isEditing = editingTextId === item.id;
+                  const box = boxForItem(item);
                   return (
                     <div
-                      key={bubble.id}
+                      key={item.id}
                       className={`absolute pointer-events-auto ${
                         isSel
                           ? "outline outline-2 outline-dashed outline-pink-400/80"
-                          : "outline outline-1 outline-transparent hover:outline-white/30"
+                          : "outline outline-1 outline-transparent hover:outline-white/40"
                       }`}
                       style={{
-                        left: `${bubble.x * 100}%`,
-                        top: `${bubble.y * 100}%`,
-                        width: `${bubble.w * 100}%`,
-                        height: `${bubble.h * 100}%`,
-                        borderRadius: "50%",
+                        left: `${item.x * 100}%`,
+                        top: `${item.y * 100}%`,
+                        width: `${Math.max(box.w * 100, 3)}%`,
+                        height: `${Math.max(box.h * 100, 2.5)}%`,
                         cursor: "move",
                       }}
-                      onPointerDown={(e) => onBubblePointerDown(e, bubble, "move")}
+                      onPointerDown={(e) => onTextPointerDown(e, item)}
                       onDoubleClick={(e) => {
                         e.stopPropagation();
-                        setEditingBubbleId(bubble.id);
+                        setEditingTextId(item.id);
                       }}
+                      title="Kéo để dời · nhấp đúp để sửa chữ"
                     >
                       {isEditing ? (
                         <textarea
                           autoFocus
-                          defaultValue={bubble.text}
-                          className="absolute inset-0 w-full h-full bg-white text-black text-[11px] rounded-[50%] text-center p-3 resize-none outline-none overflow-hidden"
+                          defaultValue={item.text}
+                          className="absolute left-0 top-0 min-w-[160px] min-h-[52px] bg-white text-black text-[12px] p-1.5 rounded-md resize outline-none shadow-xl"
                           onPointerDown={(e) => e.stopPropagation()}
                           onBlur={(e) => {
-                            onUpdateBubble?.(bubble.id, {
+                            onUpdateTextItem?.(item.id, {
                               text: e.currentTarget.value,
                             });
-                            setEditingBubbleId(null);
+                            setEditingTextId(null);
                           }}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              onUpdateBubble?.(bubble.id, {
-                                text: e.currentTarget.value,
-                              });
-                              setEditingBubbleId(null);
-                            } else if (e.key === "Escape") {
-                              setEditingBubbleId(null);
-                            }
+                            if (e.key === "Escape") setEditingTextId(null);
                           }}
                         />
                       ) : (
                         isSel && (
                           <>
                             <button
-                              aria-label="Xoá bong bóng"
-                              className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-rose-500 text-white text-[11px] leading-none flex items-center justify-center shadow"
+                              aria-label="Xoá khối chữ"
+                              className="absolute -top-2.5 -right-2.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[11px] leading-none flex items-center justify-center shadow"
                               onPointerDown={(e) => e.stopPropagation()}
                               onClick={() => {
-                                onRemoveBubble?.(bubble.id);
-                                setSelectedBubbleId(null);
+                                onRemoveTextItem?.(item.id);
+                                setSelectedTextId(null);
                               }}
                             >
                               ×
                             </button>
-                            <button
-                              aria-label={bubble.tail ? "Tắt đuôi thoại" : "Bật đuôi thoại"}
-                              title={bubble.tail ? "Tắt đuôi thoại" : "Bật đuôi thoại"}
-                              className="absolute -top-2 -left-2 h-5 px-1.5 rounded-full bg-black/75 text-white text-[9px] flex items-center justify-center shadow"
-                              onPointerDown={(e) => e.stopPropagation()}
-                              onClick={() =>
-                                onUpdateBubble?.(bubble.id, {
-                                  tail: bubble.tail
-                                    ? null
-                                    : {
-                                        x: bubble.x + bubble.w / 2,
-                                        y: Math.min(1, bubble.y + bubble.h + 0.18),
-                                      },
-                                })
-                              }
-                            >
-                              đuôi
-                            </button>
-                            <div
-                              aria-label="Đổi kích thước bong bóng"
-                              className="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-pink-500 border-2 border-white shadow cursor-nwse-resize"
-                              onPointerDown={(e) =>
-                                onBubblePointerDown(e, bubble, "resize")
-                              }
-                            />
+                            <div className="absolute -top-2.5 -left-2.5 flex gap-1">
+                              <button
+                                aria-label="Giảm cỡ chữ"
+                                className="h-5 px-1.5 rounded-full bg-black/75 text-white text-[9px] flex items-center justify-center shadow"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={() =>
+                                  onUpdateTextItem?.(item.id, {
+                                    fontScale: Math.max(0.012, item.fontScale * 0.9),
+                                  })
+                                }
+                              >
+                                A−
+                              </button>
+                              <button
+                                aria-label="Tăng cỡ chữ"
+                                className="h-5 px-1.5 rounded-full bg-black/75 text-white text-[9px] flex items-center justify-center shadow"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={() =>
+                                  onUpdateTextItem?.(item.id, {
+                                    fontScale: Math.min(0.3, item.fontScale * 1.1),
+                                  })
+                                }
+                              >
+                                A+
+                              </button>
+                            </div>
                           </>
                         )
                       )}
