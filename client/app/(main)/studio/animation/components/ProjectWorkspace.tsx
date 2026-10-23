@@ -213,7 +213,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      <AnimaticPlayer scenes={project.scenes} />
+      <AnimaticPlayer project={project} />
 
       {project.kind === "2d" && project.scenes.length > 0 && (
         <div className="space-y-3">
