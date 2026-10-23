@@ -24,6 +24,8 @@ export interface AnimScene {
   note?: string;
   /** Timeline 2D của cảnh (layer/keyframe/camera) — chỉ dự án 2d dùng. */
   timeline?: import("./timeline").SceneTimeline;
+  /** Track thoại/phụ đề của cảnh (từ chữ trong panel hoặc điền tay). */
+  dialogue?: import("./dialogue").DialogueLine[];
 }
 
 export interface AnimProject {

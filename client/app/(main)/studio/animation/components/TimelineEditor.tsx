@@ -36,6 +36,11 @@ import {
   type Transform,
 } from "../lib/timeline";
 import { CAMERA_PRESETS, LAYER_PRESETS } from "../lib/motionPresets";
+import {
+  dialogueLineAt,
+  newDialogueId,
+  type DialogueLine,
+} from "../lib/dialogue";
 
 const STAGE_W = 960;
 const STAGE_H = 540;
@@ -54,9 +59,11 @@ function newKeyId(prefix: string): string {
 export function TimelineEditor({
   scene,
   onChange,
+  onDialogueChange,
 }: {
   scene: AnimScene;
   onChange: (timeline: SceneTimeline) => void;
+  onDialogueChange?: (lines: DialogueLine[]) => void;
 }) {
   const timeline = useMemo<SceneTimeline>(
     () => scene.timeline ?? createSceneTimeline(),
@@ -196,7 +203,25 @@ export function TimelineEditor({
       }
       drawLayer(layer, timeSec);
     }
-  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion]);
+
+    // Phụ đề: dòng thoại đang hiệu lực, vẽ ở đáy sân khấu (màn hình-space)
+    const activeLine = dialogueLineAt(scene.dialogue ?? [], timeSec);
+    if (activeLine) {
+      ctx.save();
+      ctx.font = "600 25px sans-serif";
+      ctx.textAlign = "center";
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = "rgba(0,0,0,0.85)";
+      ctx.fillStyle = "#ffffff";
+      const label = activeLine.speaker
+        ? `${activeLine.speaker}: ${activeLine.text}`
+        : activeLine.text;
+      ctx.strokeText(label, STAGE_W / 2, STAGE_H - 28);
+      ctx.fillText(label, STAGE_W / 2, STAGE_H - 28);
+      ctx.restore();
+    }
+
+  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue]);
 
   // ── Thao tác keyframe ──────────────────────────────────────────────────────
   const placeLayerKey = () => {
@@ -575,6 +600,108 @@ export function TimelineEditor({
                   + Thêm chuyển động nhỏ
                 </button>
               </div>
+            </section>
+          )}
+
+          {/* Thoại / phụ đề */}
+          {onDialogueChange && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[12px] font-semibold text-white/70">
+                  THOẠI / PHỤ ĐỀ
+                </h3>
+                <button
+                  onClick={() =>
+                    onDialogueChange([
+                      ...(scene.dialogue ?? []),
+                      {
+                        id: newDialogueId(),
+                        text: "",
+                        startSec: Math.round(timeSec * 10) / 10,
+                        durationSec: 2,
+                      },
+                    ])
+                  }
+                  className="flex items-center gap-1 px-2 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
+                >
+                  <Plus className="w-3 h-3" /> Dòng thoại
+                </button>
+              </div>
+              {(scene.dialogue ?? []).map((line) => (
+                <div key={line.id} className="rounded-lg bg-white/[0.03] border border-white/5 p-2 space-y-1.5">
+                  <input
+                    value={line.text}
+                    onChange={(e) =>
+                      onDialogueChange(
+                        (scene.dialogue ?? []).map((x) =>
+                          x.id === line.id ? { ...x, text: e.currentTarget.value } : x,
+                        ),
+                      )
+                    }
+                    placeholder="Nội dung thoại…"
+                    className="w-full bg-transparent text-[13px] outline-none border-b border-transparent focus:border-white/30"
+                  />
+                  <div className="flex items-center gap-2 text-[11px] text-white/45">
+                    <label className="flex items-center gap-1">
+                      Từ
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.1}
+                        value={line.startSec}
+                        onChange={(e) =>
+                          onDialogueChange(
+                            (scene.dialogue ?? []).map((x) =>
+                              x.id === line.id
+                                ? { ...x, startSec: Number(e.currentTarget.value) }
+                                : x,
+                            ),
+                          )
+                        }
+                        className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                      />
+                      s
+                    </label>
+                    <label className="flex items-center gap-1">
+                      Dài
+                      <input
+                        type="number"
+                        min={0.3}
+                        step={0.1}
+                        value={line.durationSec}
+                        onChange={(e) =>
+                          onDialogueChange(
+                            (scene.dialogue ?? []).map((x) =>
+                              x.id === line.id
+                                ? { ...x, durationSec: Number(e.currentTarget.value) }
+                                : x,
+                            ),
+                          )
+                        }
+                        className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                      />
+                      s
+                    </label>
+                    <button
+                      onClick={() =>
+                        onDialogueChange(
+                          (scene.dialogue ?? []).filter((x) => x.id !== line.id),
+                        )
+                      }
+                      aria-label="Xoá dòng thoại"
+                      className="ml-auto text-white/35 hover:text-rose-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {(scene.dialogue ?? []).length === 0 && (
+                <p className="text-[11px] text-white/35">
+                  Chưa có thoại — nạp từ manga sẽ tự trích chữ trong panel,
+                  hoặc thêm dòng thoại tay.
+                </p>
+              )}
             </section>
           )}
 

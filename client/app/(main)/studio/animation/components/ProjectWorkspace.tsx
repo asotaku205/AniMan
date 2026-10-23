@@ -24,6 +24,10 @@ import {
 import { getAnimProject, saveAnimProject } from "../lib/animStorage";
 import { AnimaticPlayer } from "./AnimaticPlayer";
 import { TimelineEditor } from "./TimelineEditor";
+import { loadMangaPanels } from "../lib/mangaImport";
+import { buildDialogueTrack } from "../lib/dialogue";
+import { createSceneLayer } from "../lib/timeline";
+import { CAMERA_PRESETS } from "../lib/motionPresets";
 
 /**
  * Workspace dự án phim — Slice 1: khung workspace + **bảng phân cảnh**
@@ -55,6 +59,54 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
     [],
   );
+
+  const [importing, setImporting] = useState(false);
+  const [importNote, setImportNote] = useState<string | null>(null);
+
+  /** Pipeline gợi ý Manga → Animation: panel đã vẽ → cảnh + thoại. */
+  const importFromManga = async () => {
+    if (!project?.sourceMangaProjectId) return;
+    setImporting(true);
+    setImportNote(null);
+    const panels = await loadMangaPanels(project.sourceMangaProjectId);
+    setImporting(false);
+    if (panels.length === 0) {
+      setImportNote(
+        "Chưa nạp được panel nào — hãy chắc chắn dự án manga nguồn đã có trang vẽ trong Manga Studio.",
+      );
+      return;
+    }
+    const kenBurns = CAMERA_PRESETS.find((p) => p.id === "ken-burns-in")!;
+    const newScenes = panels.map((panel, i) => {
+      const { lines, suggestedSceneDurationSec } = buildDialogueTrack(panel.texts);
+      const layer = createSceneLayer(`Panel ${panel.page}.${i + 1}`, "#241a3f");
+      layer.imageDataUrl = panel.imageDataUrl;
+      return {
+        id: `scene-${Date.now().toString(36)}-${i}`,
+        name: `Trang ${panel.page} · Khung ${i + 1}`,
+        durationSec: suggestedSceneDurationSec,
+        source: {
+          mangaProjectId: project.sourceMangaProjectId!,
+          page: panel.page,
+          panelId: panel.panelId,
+        },
+        note: "",
+        timeline: {
+          layers: [layer],
+          cameraKeys: kenBurns.build(suggestedSceneDurationSec),
+        },
+        dialogue: lines,
+      };
+    });
+    await apply({
+      ...project,
+      scenes: [...project.scenes, ...newScenes],
+      updatedAt: Date.now(),
+    });
+    setImportNote(
+      `Đã nạp ${newScenes.length} cảnh từ manga (mỗi panel một cảnh, camera Ken Burns mặc định, thoại trích từ chữ trong panel).`,
+    );
+  };
 
   if (missing) {
     return (
@@ -115,6 +167,28 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         className="w-full bg-transparent text-2xl font-semibold outline-none border-b border-transparent focus:border-pink-400/50 pb-1"
       />
 
+      {project.kind === "2d" && project.sourceMangaProjectId && (
+        <div className="rounded-2xl border border-pink-400/25 bg-pink-500/[0.06] p-4 flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[220px]">
+            <div className="text-sm font-medium">Nạp từ Manga Studio</div>
+            <p className="text-[12px] text-white/45 leading-relaxed">
+              Mỗi panel đã vẽ thành một cảnh (camera Ken Burns mặc định), chữ
+              trong panel thành track thoại với thời lượng ước lượng.
+            </p>
+            {importNote && (
+              <p className="text-[12px] text-pink-200/80 mt-1">{importNote}</p>
+            )}
+          </div>
+          <button
+            onClick={() => void importFromManga()}
+            disabled={importing}
+            className="px-4 h-10 rounded-xl bg-gradient-to-r from-pink-500 to-rose-400 text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+          >
+            {importing ? "Đang nạp…" : "Nạp panel + thoại"}
+          </button>
+        </div>
+      )}
+
       <AnimaticPlayer scenes={project.scenes} />
 
       {project.kind === "2d" && project.scenes.length > 0 && (
@@ -145,6 +219,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 scene={sc}
                 onChange={(timeline) =>
                   void apply(updateScene(project, sc.id, { timeline }))
+                }
+                onDialogueChange={(dialogue) =>
+                  void apply(updateScene(project, sc.id, { dialogue }))
                 }
               />
             );

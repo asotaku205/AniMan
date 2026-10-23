@@ -119,3 +119,34 @@ describe("chuyển động tham số — deterministic và có biên", () => {
     expect(a.x).not.toBeCloseTo(b.x);
   });
 });
+
+import {
+  buildDialogueTrack,
+  dialogueLineAt,
+  estimateLineDurationSec,
+} from "../lib/dialogue";
+
+describe("dialogue — ước lượng & dựng track thoại", () => {
+  it("thời lượng đọc tỉ lệ độ dài câu, có sàn/trần", () => {
+    expect(estimateLineDurationSec("Ừ.")).toBe(1.2);
+    expect(estimateLineDurationSec("x".repeat(26))).toBeCloseTo(2);
+    expect(estimateLineDurationSec("x".repeat(500))).toBe(8);
+  });
+
+  it("track liên tiếp có nghỉ giữa câu; gợi ý thời lượng cảnh chứa hết thoại", () => {
+    const { lines, suggestedSceneDurationSec } = buildDialogueTrack([
+      "Câu một.",
+      "  ",
+      "Câu hai dài hơn một chút.",
+    ]);
+    expect(lines).toHaveLength(2);
+    expect(lines[1].startSec).toBeGreaterThan(
+      lines[0].startSec + lines[0].durationSec,
+    );
+    expect(suggestedSceneDurationSec).toBeGreaterThanOrEqual(
+      lines[1].startSec + lines[1].durationSec,
+    );
+    expect(dialogueLineAt(lines, lines[0].startSec + 0.1)?.text).toBe("Câu một.");
+    expect(dialogueLineAt(lines, 999)).toBeNull();
+  });
+});
