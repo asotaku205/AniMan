@@ -27,6 +27,8 @@ import {
   saveEpisode,
 } from "../lib/libraryStorage";
 import { MultiTrackTimeline } from "./components/MultiTrackTimeline";
+import { CueTable } from "./components/CueTable";
+import { CueInspector } from "./components/CueInspector";
 import { SubTab } from "./components/SubTab";
 import { TranslateTab } from "./components/TranslateTab";
 import { DubTab } from "./components/DubTab";
@@ -225,6 +227,14 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
     setExporting(false);
   };
 
+  const selectedCue = cues.find((c) => c.id === selectedCueId) ?? null;
+  const patchCue = (id: string, patch: Partial<CueV2>) =>
+    setCues((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  const deleteCue = (id: string) => {
+    setCues((prev) => prev.filter((c) => c.id !== id));
+    setSelectedCueId(null);
+  };
+
   const tabBtn = (id: typeof tab, icon: React.ReactNode, label: string) => (
     <button
       onClick={() => setTab(id)}
@@ -333,6 +343,24 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         </div>
       </div>
 
+      {/* Bố cục studio 3 vùng (S2): trái = công cụ + bảng cue · giữa = video + timeline · phải = mode + inspector */}
+      <div className="grid grid-cols-1 xl:grid-cols-[330px_minmax(0,1fr)_330px] gap-4 items-start">
+        <div className="space-y-3 order-2 xl:order-1">
+          <SubTab
+            cues={cues}
+            currentTimeSec={currentTime}
+            onCuesChange={applyCueLines}
+          />
+          <CueTable
+            cues={cues}
+            series={series}
+            currentTimeSec={currentTime}
+            selectedCueId={selectedCueId}
+            onSelect={(cue) => seek(cue.startSec, cue.id)}
+          />
+        </div>
+
+        <div className="space-y-3 order-1 xl:order-2">
       <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-black aspect-video">
         {videoUrl ? (
           <>
@@ -371,14 +399,16 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         )}
       </div>
 
-      <MultiTrackTimeline
-        cues={cues}
-        durationSec={duration}
-        currentTimeSec={currentTime}
-        selectedCueId={selectedCueId}
-        onSeek={seek}
-      />
+          <MultiTrackTimeline
+            cues={cues}
+            durationSec={duration}
+            currentTimeSec={currentTime}
+            selectedCueId={selectedCueId}
+            onSeek={seek}
+          />
+        </div>
 
+        <div className="space-y-3 order-3">
       <div className="flex flex-wrap gap-2">
         {tabBtn("sub", <Subtitles className="w-4 h-4" />, "Phụ đề")}
         {tabBtn("translate", <Languages className="w-4 h-4" />, "Dịch")}
@@ -386,19 +416,27 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-4">
-        {tab === "sub" && (
-          <SubTab
-            cues={cues}
-            currentTimeSec={currentTime}
-            selectedCueId={selectedCueId}
-            onCuesChange={applyCueLines}
-            onSeek={seek}
-          />
-        )}
+        {tab === "sub" &&
+          (selectedCue ? (
+            <CueInspector
+              cue={selectedCue}
+              series={series}
+              onPatch={(patch) => patchCue(selectedCue.id, patch)}
+              onDelete={() => deleteCue(selectedCue.id)}
+            />
+          ) : (
+            <p className="text-[13px] text-white/40 leading-relaxed">
+              Chọn một cue trong bảng bên trái để sửa mốc thời gian, gán nhân
+              vật và chỉnh nội dung tại đây. Bấm vào hàng cue cũng sẽ nhảy
+              video tới đúng vị trí.
+            </p>
+          ))}
         {tab === "translate" && (
           <TranslateTab title={episode.title} cues={cues} onCuesChange={applyCueLines} />
         )}
         {tab === "dub" && <DubTab cues={cues} onSeek={seek} />}
+      </div>
+        </div>
       </div>
     </div>
   );
