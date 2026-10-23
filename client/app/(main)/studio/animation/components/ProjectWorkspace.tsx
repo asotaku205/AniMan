@@ -26,6 +26,7 @@ import { AnimaticPlayer } from "./AnimaticPlayer";
 import { TimelineEditor } from "./TimelineEditor";
 import { PrevizEditor } from "./PrevizEditor";
 import { ExportPanel } from "./ExportPanel";
+import { AssetLibrary } from "./AssetLibrary";
 import {
   sceneDraftToAnimScene,
   suggestScenesFromText,
@@ -237,7 +238,15 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               project.scenes.find((x) => x.id === selectedSceneId) ??
               project.scenes[0];
             return (
-              <TimelineEditor
+              <>
+                <AssetLibrary
+                  project={project}
+                  scene={sc}
+                  onUpdateScene={(patch) =>
+                    void apply(updateScene(project, sc.id, patch))
+                  }
+                />
+                <TimelineEditor
                 key={sc.id}
                 scene={sc}
                 onChange={(timeline) =>
@@ -246,7 +255,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 onDialogueChange={(dialogue) =>
                   void apply(updateScene(project, sc.id, { dialogue }))
                 }
-              />
+                />
+              </>
             );
           })()}
         </div>
@@ -275,7 +285,15 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               project.scenes.find((x) => x.id === selectedSceneId) ??
               project.scenes[0];
             return (
-              <PrevizEditor
+              <>
+                <AssetLibrary
+                  project={project}
+                  scene={sc}
+                  onUpdateScene={(patch) =>
+                    void apply(updateScene(project, sc.id, patch))
+                  }
+                />
+                <PrevizEditor
                 key={sc.id}
                 scene={sc}
                 onChange={(previz) =>
@@ -284,7 +302,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 onDialogueChange={(dialogue) =>
                   void apply(updateScene(project, sc.id, { dialogue }))
                 }
-              />
+                />
+              </>
             );
           })()}
         </div>

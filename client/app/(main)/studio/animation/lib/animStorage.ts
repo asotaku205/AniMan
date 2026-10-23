@@ -8,14 +8,18 @@
  *   thông điệp tiếng Việt — lỗi lưu không bao giờ bị nuốt âm thầm nữa.
  * - v2 (Slice B1): thêm store `voiceBlobs` chứa file tiếng (bản thu giọng
  *   theo takeId, nhạc nền theo `bgm-<projectId>`).
+ * - v3 (Đợt C): thêm store `assets` — thư viện tài sản dùng chung mọi dự
+ *   án (nhân vật 3D, mẫu phong cảnh, hình 2D).
  */
 
 import type { AnimProject } from "./animProject";
+import type { AnimAsset } from "./animAssets";
 
 const DB_NAME = "animan_animation_db";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_PROJECTS = "projects";
 const STORE_VOICE_BLOBS = "voiceBlobs";
+const STORE_ASSETS = "assets";
 
 const isBrowser =
   typeof window !== "undefined" && "indexedDB" in window;
@@ -33,6 +37,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_VOICE_BLOBS)) {
         db.createObjectStore(STORE_VOICE_BLOBS);
+      }
+      if (!db.objectStoreNames.contains(STORE_ASSETS)) {
+        db.createObjectStore(STORE_ASSETS, { keyPath: "id" });
       }
     };
     req.onsuccess = () => {
@@ -141,6 +148,30 @@ export async function deleteVoiceBlob(key: string): Promise<void> {
   if (!isBrowser) return;
   const db = await openDb();
   await request(db, STORE_VOICE_BLOBS, "readwrite", (s) => s.delete(key));
+}
+
+// ── Thư viện tài sản dùng chung (Đợt C) ─────────────────────────────────────
+
+export async function listAnimAssets(): Promise<AnimAsset[]> {
+  if (!isBrowser) return [];
+  const db = await openDb();
+  const all =
+    (await request<AnimAsset[]>(db, STORE_ASSETS, "readonly", (s) =>
+      s.getAll(),
+    )) ?? [];
+  return all.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function saveAnimAsset(asset: AnimAsset): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_ASSETS, "readwrite", (s) => s.put(asset));
+}
+
+export async function deleteAnimAsset(id: string): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_ASSETS, "readwrite", (s) => s.delete(id));
 }
 
 /**
