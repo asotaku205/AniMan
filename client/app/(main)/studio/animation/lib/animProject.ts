@@ -26,6 +26,8 @@ export interface AnimScene {
   timeline?: import("./timeline").SceneTimeline;
   /** Track thoại/phụ đề của cảnh (từ chữ trong panel hoặc điền tay). */
   dialogue?: import("./dialogue").DialogueLine[];
+  /** Cảnh previz 3D (vật thể/camera keyframe) — chỉ dự án 3d dùng. */
+  previz?: import("./previz").PrevizScene;
 }
 
 export interface AnimProject {

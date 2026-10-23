@@ -24,6 +24,7 @@ import {
 import { getAnimProject, saveAnimProject } from "../lib/animStorage";
 import { AnimaticPlayer } from "./AnimaticPlayer";
 import { TimelineEditor } from "./TimelineEditor";
+import { PrevizEditor } from "./PrevizEditor";
 import { loadMangaPanels } from "../lib/mangaImport";
 import { buildDialogueTrack } from "../lib/dialogue";
 import { createSceneLayer } from "../lib/timeline";
@@ -222,6 +223,41 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 }
                 onDialogueChange={(dialogue) =>
                   void apply(updateScene(project, sc.id, { dialogue }))
+                }
+              />
+            );
+          })()}
+        </div>
+      )}
+
+      {project.kind === "3d" && project.scenes.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-white/45">Dựng previz cảnh:</span>
+            {project.scenes.map((sc) => (
+              <button
+                key={sc.id}
+                onClick={() => setSelectedSceneId(sc.id)}
+                className={`px-3 h-8 rounded-lg text-[12px] border transition ${
+                  (selectedSceneId ?? project.scenes[0].id) === sc.id
+                    ? "bg-sky-500/25 border-sky-400/50 text-white"
+                    : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
+                }`}
+              >
+                {sc.name}
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const sc =
+              project.scenes.find((x) => x.id === selectedSceneId) ??
+              project.scenes[0];
+            return (
+              <PrevizEditor
+                key={sc.id}
+                scene={sc}
+                onChange={(previz) =>
+                  void apply(updateScene(project, sc.id, { previz }))
                 }
               />
             );
