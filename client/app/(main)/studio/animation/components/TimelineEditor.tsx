@@ -62,7 +62,9 @@ import {
   type DialogueLine,
 } from "../lib/dialogue";
 import DialogueVoice from "./DialogueVoice";
+import { SceneAudioPanel } from "./SceneAudioPanel";
 import { playSceneVoice } from "../lib/voicePreview";
+import type { SceneAudioClip } from "../lib/animProject";
 
 const STAGE_W = 960;
 const STAGE_H = 540;
@@ -85,6 +87,7 @@ function newKeyId(prefix: string): string {
 function TimelineStrip({
   timeline,
   dialogue,
+  audioClips,
   duration,
   timeSec,
   selectedLayerId,
@@ -93,6 +96,7 @@ function TimelineStrip({
 }: {
   timeline: SceneTimeline;
   dialogue: DialogueLine[];
+  audioClips: SceneAudioClip[];
   duration: number;
   timeSec: number;
   selectedLayerId: string | null;
@@ -117,6 +121,9 @@ function TimelineStrip({
       onClick: () => onSelectLayer(l.id),
     })),
     { id: "dialogue", label: "Thoại", color: "#f472b6" },
+    ...(audioClips.length > 0
+      ? [{ id: "audio", label: "Âm thanh", color: "#34d399" }]
+      : []),
   ];
   return (
     <div className="shrink-0 border-t border-white/10 pt-2">
@@ -178,6 +185,7 @@ function TimelineStrip({
                   ))}
                 {r.id !== "camera" &&
                   r.id !== "dialogue" &&
+                  r.id !== "audio" &&
                   (() => {
                     const layer = timeline.layers.find((l) => l.id === r.id);
                     if (!layer) return null;
@@ -209,6 +217,20 @@ function TimelineStrip({
                       {line.speaker}
                     </span>
                   ))}
+                {r.id === "audio" &&
+                  audioClips.map((clip) => (
+                    <span
+                      key={clip.id}
+                      title={clip.name}
+                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[13px]"
+                      style={{
+                        left: pct(clip.startSec),
+                        width: `${Math.max(2, (clip.durationSec / duration) * 100)}%`,
+                      }}
+                    >
+                      {clip.name}
+                    </span>
+                  ))}
               </div>
             ))}
             <div
@@ -227,11 +249,13 @@ export function TimelineEditor({
   onChange,
   onDialogueChange,
   onWeatherChange,
+  onAudioChange,
 }: {
   scene: AnimScene;
   onChange: (timeline: SceneTimeline) => void;
   onDialogueChange?: (lines: DialogueLine[]) => void;
   onWeatherChange?: (weather: SceneWeather | null) => void;
+  onAudioChange?: (clips: SceneAudioClip[]) => void;
 }) {
   const timeline = useMemo<SceneTimeline>(
     () => scene.timeline ?? createSceneTimeline(),
@@ -1451,6 +1475,9 @@ export function TimelineEditor({
               </button>
             </div>
           </section>
+          {onAudioChange && (
+            <SceneAudioPanel scene={scene} onChange={onAudioChange} />
+          )}
         </div>
         )}
       </div>
@@ -1458,6 +1485,7 @@ export function TimelineEditor({
       <TimelineStrip
         timeline={timeline}
         dialogue={scene.dialogue ?? []}
+        audioClips={scene.audioClips ?? []}
         duration={duration}
         timeSec={timeSec}
         selectedLayerId={selectedLayerId}

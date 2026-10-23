@@ -9,7 +9,7 @@
 
 import type { AnimProject } from "./animProject";
 import { dialogueLineAt, type DialogueLine } from "./dialogue";
-import { buildFilmAudioPlan } from "./filmAudio";
+import { applyFadeEnvelope, buildFilmAudioPlan } from "./filmAudio";
 import { bgmBlobKey, loadVoiceBlob } from "./animStorage";
 
 /** Dòng thoại đang vang tại mốc thời gian tuyệt đối của phim. */
@@ -115,18 +115,30 @@ export function createFilmPreviewAudio(project: AnimProject): FilmPreviewAudio {
       for (const clip of plan.clips) {
         const buf = buffers.get(clip.takeId);
         if (!buf) continue;
-        const clipEnd = clip.atSec + buf.duration;
+        const playDur = clip.playDurationSec ?? buf.duration;
+        const clipEnd = clip.atSec + playDur;
         if (clipEnd <= fromSec) continue;
         const src = ctx.createBufferSource();
         src.buffer = buf;
         const gain = ctx.createGain();
-        gain.gain.value = clip.volume;
         src.connect(gain);
         gain.connect(ctx.destination);
         const when = startedAtCtx + Math.max(0, clip.atSec - fromSec);
         const offsetInClip = Math.max(0, fromSec - clip.atSec);
+        applyFadeEnvelope(gain.gain, {
+          startCtx: when,
+          durationSec: playDur,
+          volume: clip.volume,
+          fadeInSec: clip.fadeInSec ?? 0,
+          fadeOutSec: clip.fadeOutSec ?? 0,
+          fromOffsetSec: offsetInClip,
+        });
         try {
-          src.start(when, offsetInClip);
+          src.start(
+            when,
+            (clip.sourceOffsetSec ?? 0) + offsetInClip,
+            playDur - offsetInClip,
+          );
           sources.push(src);
         } catch {
           /* clip không hợp lệ — bỏ qua */

@@ -373,6 +373,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                     onWeatherChange={(weather) =>
                       void apply(updateScene(project, sc.id, { weather }))
                     }
+                    onAudioChange={(audioClips) =>
+                      void apply(updateScene(project, sc.id, { audioClips }))
+                    }
                   />
                 ) : (
                   <PrevizEditor
@@ -386,6 +389,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                     }
                     onWeatherChange={(weather) =>
                       void apply(updateScene(project, sc.id, { weather }))
+                    }
+                    onAudioChange={(audioClips) =>
+                      void apply(updateScene(project, sc.id, { audioClips }))
                     }
                   />
                 )

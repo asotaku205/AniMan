@@ -40,6 +40,8 @@ import {
 } from "../lib/weatherPoints";
 import type { SceneWeather, WeatherType } from "../lib/layerEffects";
 import DialogueVoice from "./DialogueVoice";
+import { SceneAudioPanel } from "./SceneAudioPanel";
+import type { SceneAudioClip } from "../lib/animProject";
 import { playSceneVoice } from "../lib/voicePreview";
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
@@ -121,6 +123,7 @@ function buildProp(kind: PrevizObjectKind, color: string, size: number): THREE.O
 function PrevizStrip({
   previz,
   dialogue,
+  audioClips,
   duration,
   timeSec,
   selectedId,
@@ -129,6 +132,7 @@ function PrevizStrip({
 }: {
   previz: PrevizScene;
   dialogue: DialogueLine[];
+  audioClips: SceneAudioClip[];
   duration: number;
   timeSec: number;
   selectedId: string | null;
@@ -154,6 +158,9 @@ function PrevizStrip({
       onClick: () => onSelect(o.id),
     })),
     { id: "dialogue", label: "Thoại", color: "#f472b6" },
+    ...(audioClips.length > 0
+      ? [{ id: "audio", label: "Âm thanh", color: "#34d399" }]
+      : []),
   ];
   return (
     <div className="shrink-0 border-t border-white/10 pt-2">
@@ -215,6 +222,7 @@ function PrevizStrip({
                   ))}
                 {r.id !== "camera" &&
                   r.id !== "dialogue" &&
+                  r.id !== "audio" &&
                   (() => {
                     const obj = previz.objects.find((o) => o.id === r.id);
                     if (!obj) return null;
@@ -246,6 +254,20 @@ function PrevizStrip({
                       {line.speaker}
                     </span>
                   ))}
+                {r.id === "audio" &&
+                  audioClips.map((clip) => (
+                    <span
+                      key={clip.id}
+                      title={clip.name}
+                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[13px]"
+                      style={{
+                        left: pct(clip.startSec),
+                        width: `${Math.max(2, (clip.durationSec / duration) * 100)}%`,
+                      }}
+                    >
+                      {clip.name}
+                    </span>
+                  ))}
               </div>
             ))}
             <div
@@ -264,11 +286,13 @@ export function PrevizEditor({
   onChange,
   onDialogueChange,
   onWeatherChange,
+  onAudioChange,
 }: {
   scene: AnimScene;
   onChange: (previz: PrevizScene) => void;
   onDialogueChange?: (lines: DialogueLine[]) => void;
   onWeatherChange?: (weather: SceneWeather | null) => void;
+  onAudioChange?: (clips: SceneAudioClip[]) => void;
 }) {
   const previz = useMemo<PrevizScene>(
     () => scene.previz ?? createPrevizScene(),
@@ -1263,6 +1287,9 @@ export function PrevizEditor({
             <span className="font-medium text-white/75">Sinh video AI từ cảnh này: </span>
             {genStatus.label}
           </div>
+          {onAudioChange && (
+            <SceneAudioPanel scene={scene} onChange={onAudioChange} />
+          )}
         </div>
         )}
       </div>
@@ -1271,6 +1298,7 @@ export function PrevizEditor({
       <PrevizStrip
         previz={previz}
         dialogue={scene.dialogue ?? []}
+        audioClips={scene.audioClips ?? []}
         duration={duration}
         timeSec={timeSec}
         selectedId={selectedId}

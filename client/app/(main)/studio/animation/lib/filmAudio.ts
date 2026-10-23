@@ -8,6 +8,7 @@
 import { projectDurationSec, type AnimProject } from "./animProject";
 import { selectedDialogueTake } from "./dialogue";
 import { loadVoiceBlob } from "./animStorage";
+import { audioClipBlobKey } from "./audioClips";
 
 export interface FilmVoiceClip {
   takeId: string;
@@ -15,6 +16,53 @@ export interface FilmVoiceClip {
   atSec: number;
   volume: number;
   sceneName: string;
+  /** Điểm bắt đầu trong file gốc (giây) — clip âm thanh đã cắt (R2). */
+  sourceOffsetSec?: number;
+  /** Độ dài phần nghe được (giây) — mặc định hết file. */
+  playDurationSec?: number;
+  fadeInSec?: number;
+  fadeOutSec?: number;
+}
+
+/**
+ * Đường cong âm lượng fade in/out của một clip, tính theo thời lượng
+ * clip (dùng chung cho bản trộn xuất bản và máy phát thử — R2).
+ * `fromOffsetSec` = điểm bắt đầu phát tính trong clip (khi tua giữa clip).
+ */
+export function applyFadeEnvelope(
+  param: AudioParam,
+  opts: {
+    startCtx: number;
+    durationSec: number;
+    volume: number;
+    fadeInSec: number;
+    fadeOutSec: number;
+    fromOffsetSec?: number;
+  },
+): void {
+  const dur = Math.max(0.05, opts.durationSec);
+  const fi = Math.min(Math.max(0, opts.fadeInSec), dur / 2);
+  const fo = Math.min(Math.max(0, opts.fadeOutSec), dur / 2);
+  const from = Math.min(Math.max(0, opts.fromOffsetSec ?? 0), dur);
+  const gainAt = (t: number): number => {
+    let g = opts.volume;
+    if (fi > 0) g = Math.min(g, (opts.volume * t) / fi);
+    if (fo > 0) g = Math.min(g, (opts.volume * Math.max(0, dur - t)) / fo);
+    return Math.max(0, g);
+  };
+  const t0 = opts.startCtx;
+  const tEnd = t0 + (dur - from);
+  const points: Array<[number, number]> = [[t0, gainAt(from)]];
+  const fiEnd = t0 + (fi - from);
+  if (fi > 0 && fiEnd > t0 && fiEnd < tEnd) points.push([fiEnd, gainAt(fi)]);
+  const foStart = t0 + (dur - fo - from);
+  if (fo > 0 && foStart > t0 && foStart < tEnd)
+    points.push([foStart, gainAt(dur - fo)]);
+  points.push([tEnd, gainAt(dur)]);
+  param.setValueAtTime(points[0][1], t0);
+  for (let i = 1; i < points.length; i++) {
+    param.linearRampToValueAtTime(points[i][1], points[i][0]);
+  }
 }
 
 export interface MissingVoiceLine {
@@ -44,6 +92,18 @@ export function buildFilmAudioPlan(project: AnimProject): {
       } else {
         missing.push({ sceneName: scene.name, text: line.text });
       }
+    }
+    for (const clip of scene.audioClips ?? []) {
+      clips.push({
+        takeId: audioClipBlobKey(clip.id),
+        atSec: offset + clip.startSec,
+        volume: clip.volume,
+        sceneName: scene.name,
+        sourceOffsetSec: clip.offsetSec,
+        playDurationSec: clip.durationSec,
+        fadeInSec: clip.fadeInSec,
+        fadeOutSec: clip.fadeOutSec,
+      });
     }
     offset += scene.durationSec;
   }
@@ -123,10 +183,22 @@ export async function renderFilmAudioMix(
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const gain = ctx.createGain();
-    gain.gain.value = clip.volume;
     src.connect(gain);
     gain.connect(ctx.destination);
-    src.start(clip.atSec + offsetSec);
+    const when = clip.atSec + offsetSec;
+    const playDur = clip.playDurationSec ?? buf.duration;
+    applyFadeEnvelope(gain.gain, {
+      startCtx: when,
+      durationSec: playDur,
+      volume: clip.volume,
+      fadeInSec: clip.fadeInSec ?? 0,
+      fadeOutSec: clip.fadeOutSec ?? 0,
+    });
+    try {
+      src.start(when, clip.sourceOffsetSec ?? 0, playDur);
+    } catch {
+      /* clip không hợp lệ — bỏ qua */
+    }
   }
 
   if (bgm) {

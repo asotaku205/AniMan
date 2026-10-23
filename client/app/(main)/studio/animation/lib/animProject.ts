@@ -32,6 +32,33 @@ export interface AnimScene {
   previz?: import("./previz").PrevizScene;
   /** Thời tiết/hiệu ứng không khí của cảnh (S2) — cả 2D lẫn 3D dùng. */
   weather?: import("./layerEffects").SceneWeather | null;
+  /** Clip âm thanh của cảnh (R2 — phòng âm thanh): hiệu ứng tiếng (tiếng
+   * bước chân, tiếng mưa, vỗ tay...) và đoạn nhạc riêng của cảnh. File
+   * tiếng nằm ở kho Blob, key = `audio-<clipId>`. */
+  audioClips?: SceneAudioClip[];
+}
+
+/**
+ * Một đoạn âm thanh đặt trong cảnh (R2). Người dùng thu trực tiếp bằng
+ * micro (làm hiệu ứng tiếng kiểu foley) hoặc nạp file, rồi cắt đầu, dời
+ * mốc, chỉnh âm lượng và fade — mọi tham số đều do người dùng đặt.
+ */
+export interface SceneAudioClip {
+  id: string;
+  name: string;
+  kind: "sfx" | "music";
+  /** Mốc bắt đầu trong cảnh (giây). */
+  startSec: number;
+  /** Điểm bắt đầu cắt trong file gốc (giây). */
+  offsetSec: number;
+  /** Độ dài phần nghe được sau khi cắt (giây). */
+  durationSec: number;
+  /** Độ dài toàn bộ file gốc (giây). */
+  sourceDurationSec: number;
+  /** Âm lượng 0–1.5. */
+  volume: number;
+  fadeInSec: number;
+  fadeOutSec: number;
 }
 
 /** Nhạc nền của toàn phim — file tiếng nằm ở kho Blob, key = `blobKey`. */
