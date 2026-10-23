@@ -13,6 +13,7 @@ import {
   Layers,
   Plus,
   Sparkles,
+  Wand2,
   Trash2,
   X,
 } from "lucide-react";
@@ -34,6 +35,10 @@ import {
   exportProjectPackage,
   importProjectPackage,
 } from "../lib/projectTransfer";
+import {
+  buildSampleProject2D,
+  buildSampleProject3D,
+} from "../lib/sampleProjects";
 
 /**
  * Hub Animation Studio — danh sách DỰ ÁN PHIM THẬT của người dùng
@@ -92,6 +97,16 @@ export function ProjectHub() {
         err instanceof Error ? err.message : "Không nhập được dự án.",
       );
     }
+  };
+
+  const handleCreateSample = async (kind: "2d" | "3d") => {
+    const sample =
+      kind === "2d" ? buildSampleProject2D() : buildSampleProject3D();
+    await saveAnimProject(sample);
+    await refresh();
+    setTransferNote(
+      `Đã tạo "${sample.name}" — mở dự án, thu giọng cho các dòng thoại trong từng cảnh, rồi xuất phim ở panel Kiểm tra & xuất bản.`,
+    );
   };
 
   const handleDelete = async (p: AnimProject) => {
@@ -164,6 +179,33 @@ export function ProjectHub() {
           Mở phòng biên tập
         </span>
       </Link>
+
+      <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-5 flex flex-wrap items-center gap-4">
+        <span className="w-11 h-11 rounded-xl bg-pink-500/15 grid place-items-center shrink-0">
+          <Wand2 className="w-5 h-5 text-pink-300" />
+        </span>
+        <span className="flex-1 min-w-[240px]">
+          <span className="block font-medium">Bắt đầu nhanh với dự án mẫu hoàn chỉnh</span>
+          <span className="block text-[13px] text-white/45 leading-relaxed mt-0.5">
+            Dự án mẫu có sẵn cảnh, phong cảnh, nhân vật, chuyển động, camera
+            và lời thoại — mở ra học theo, thu giọng rồi xuất thành phim.
+          </span>
+        </span>
+        <span className="flex gap-2">
+          <button
+            onClick={() => void handleCreateSample("2d")}
+            className="px-4 h-10 rounded-xl bg-pink-500/20 border border-pink-400/40 text-sm font-medium hover:bg-pink-500/30 transition"
+          >
+            Tạo mẫu 2D
+          </button>
+          <button
+            onClick={() => void handleCreateSample("3d")}
+            className="px-4 h-10 rounded-xl bg-sky-500/20 border border-sky-400/40 text-sm font-medium hover:bg-sky-500/30 transition"
+          >
+            Tạo mẫu 3D
+          </button>
+        </span>
+      </div>
 
       {loading ? (
         <p className="text-sm text-white/40">Đang tải dự án…</p>
