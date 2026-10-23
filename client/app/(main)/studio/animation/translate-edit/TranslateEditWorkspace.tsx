@@ -44,7 +44,7 @@ import {
   validateCues,
   type QcProfile,
 } from "../lib/qcEngine";
-import { CueTable } from "./components/CueTable";
+import { CueScriptList } from "./components/CueScriptList";
 import { CueInspector } from "./components/CueInspector";
 import { QcPanel } from "./components/QcPanel";
 import { SubTab } from "./components/SubTab";
@@ -725,22 +725,70 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         </button>
       </div>
 
-      {/* Bố cục studio 3 vùng (S2): trái = công cụ + bảng cue · giữa = video + timeline · phải = mode + inspector */}
-      <div className="grid grid-cols-1 xl:grid-cols-[330px_minmax(0,1fr)_330px] gap-4 items-start">
-        <div className="space-y-3 order-2 xl:order-1">
+      {/* Bố cục hướng B (Descript × CapCut): nội dung theo mode là sân khấu chính bên trái · video + QC bên phải · transport + timeline chạy ngang đáy */}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px] gap-4 items-start">
+        <div className="space-y-3 order-2 xl:order-1 min-w-0">
+      <div className="inline-flex flex-wrap gap-1 rounded-full border border-white/10 bg-white/[0.05] backdrop-blur p-1">
+        {tabBtn("sub", <Subtitles className="w-4 h-4" />, "Phụ đề")}
+        {tabBtn("translate", <Languages className="w-4 h-4" />, "Dịch")}
+        {tabBtn("dub", <Mic className="w-4 h-4" />, "Lồng tiếng")}
+      </div>
+
+      <div className="rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
+        {tab === "sub" && (
+          <div className="space-y-3">
           <SubTab
             cues={cues}
             currentTimeSec={currentTime}
             onCuesChange={applyCueLines}
           />
-          <CueTable
+            <CueScriptList
+              cues={cues}
+              series={series}
+              currentTimeSec={currentTime}
+              selectedCueId={selectedCueId}
+              onSelect={(cue) => seek(cue.startSec, cue.id)}
+              qcMaxCps={qcProfile.maxCps}
+            />
+            {selectedCue ? (
+              <div className="border-t border-white/[0.07] pt-3">
+            <CueInspector
+              cue={selectedCue}
+              series={series}
+              onPatch={(patch) => patchCue(selectedCue.id, patch)}
+              onDelete={() => deleteCue(selectedCue.id)}
+            />
+              </div>
+            ) : (
+            <p className="text-[13px] text-white/40 leading-relaxed">
+              Chọn một cue trong danh sách kịch bản để sửa mốc thời gian, gán nhân
+              vật và chỉnh nội dung tại đây. Bấm vào hàng cue cũng sẽ nhảy
+              video tới đúng vị trí.
+            </p>
+            )}
+          </div>
+        )}
+        {tab === "translate" && (
+          <TranslateTab
+            title={episode.title}
             cues={cues}
             series={series}
-            currentTimeSec={currentTime}
-            selectedCueId={selectedCueId}
-            onSelect={(cue) => seek(cue.startSec, cue.id)}
-            qcMaxCps={qcProfile.maxCps}
+            onCuesChange={applyCueLines}
+            onPatchCue={patchCue}
+            onTranslated={markTranslated}
           />
+        )}
+        {tab === "dub" && (
+          <DubTab
+            cues={cues}
+            series={series}
+            onPatchCue={patchCue}
+            onSeek={seek}
+            playSegment={playSegment}
+            previewDub={previewDub}
+          />
+        )}
+      </div>
         </div>
 
         <div className="space-y-3 order-1 xl:order-2">
@@ -792,7 +840,26 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         )}
       </div>
 
-          {/* Thanh transport: timecode + fps + spotting I/O + tách/gộp + undo */}
+          <QcPanel
+            issues={qcIssues}
+            profile={qcProfile}
+            onProfileChange={(next) => {
+              setQcProfile(next);
+              saveQcProfile(next);
+            }}
+            onFix={() => {
+              const { cues: fixed } = applyMechanicalFixes(cues, qcProfile, fps);
+              commitCues(fixed);
+            }}
+            onJump={(cueId) => {
+              const cue = cues.find((c) => c.id === cueId);
+              if (cue) seek(cue.startSec, cue.id);
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="relative space-y-3">
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur px-3 py-2">
             <span className="text-[13px] font-mono tabular-nums text-emerald-300">
               {formatTimecode(currentTime, fps)}
@@ -866,70 +933,6 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             fps={fps}
             onSeek={seek}
           />
-        </div>
-
-        <div className="space-y-3 order-3">
-      <div className="inline-flex flex-wrap gap-1 rounded-full border border-white/10 bg-white/[0.05] backdrop-blur p-1">
-        {tabBtn("sub", <Subtitles className="w-4 h-4" />, "Phụ đề")}
-        {tabBtn("translate", <Languages className="w-4 h-4" />, "Dịch")}
-        {tabBtn("dub", <Mic className="w-4 h-4" />, "Lồng tiếng")}
-      </div>
-
-      <div className="rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
-        {tab === "sub" &&
-          (selectedCue ? (
-            <CueInspector
-              cue={selectedCue}
-              series={series}
-              onPatch={(patch) => patchCue(selectedCue.id, patch)}
-              onDelete={() => deleteCue(selectedCue.id)}
-            />
-          ) : (
-            <p className="text-[13px] text-white/40 leading-relaxed">
-              Chọn một cue trong bảng bên trái để sửa mốc thời gian, gán nhân
-              vật và chỉnh nội dung tại đây. Bấm vào hàng cue cũng sẽ nhảy
-              video tới đúng vị trí.
-            </p>
-          ))}
-        {tab === "translate" && (
-          <TranslateTab
-            title={episode.title}
-            cues={cues}
-            series={series}
-            onCuesChange={applyCueLines}
-            onPatchCue={patchCue}
-            onTranslated={markTranslated}
-          />
-        )}
-        {tab === "dub" && (
-          <DubTab
-            cues={cues}
-            series={series}
-            onPatchCue={patchCue}
-            onSeek={seek}
-            playSegment={playSegment}
-            previewDub={previewDub}
-          />
-        )}
-      </div>
-
-          <QcPanel
-            issues={qcIssues}
-            profile={qcProfile}
-            onProfileChange={(next) => {
-              setQcProfile(next);
-              saveQcProfile(next);
-            }}
-            onFix={() => {
-              const { cues: fixed } = applyMechanicalFixes(cues, qcProfile, fps);
-              commitCues(fixed);
-            }}
-            onJump={(cueId) => {
-              const cue = cues.find((c) => c.id === cueId);
-              if (cue) seek(cue.startSec, cue.id);
-            }}
-          />
-        </div>
       </div>
     </div>
   );
