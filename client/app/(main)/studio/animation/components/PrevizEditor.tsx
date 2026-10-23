@@ -344,7 +344,7 @@ export function PrevizEditor({
     if (!mount) return;
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    renderer.setSize(mount.clientWidth, mount.clientHeight);
+    renderer.setSize(mount.clientWidth, mount.clientHeight, false);
     mount.appendChild(renderer.domElement);
 
     const threeScene = new THREE.Scene();
@@ -383,6 +383,18 @@ export function PrevizEditor({
       characters: new Map(),
       weatherPoints: null,
     };
+
+    // Co giãn renderer theo ô chứa (khung R1 thay đổi kích thước theo cửa sổ)
+    const resize = () => {
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
+      if (w === 0 || h === 0) return;
+      renderer.setSize(w, h, false);
+      orbitCam.aspect = w / h;
+      orbitCam.updateProjectionMatrix();
+    };
+    const ro = new ResizeObserver(resize);
+    ro.observe(mount);
 
     // Chọn/kéo vật thể ngay trên khung 3D (S3)
     const raycaster = new THREE.Raycaster();
@@ -448,6 +460,7 @@ export function PrevizEditor({
     window.addEventListener("pointerup", onPointerUp);
 
     return () => {
+      ro.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
@@ -567,6 +580,24 @@ export function PrevizEditor({
       ctx.shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
       if (ctx.weatherPoints) updateWeatherPoints(ctx.weatherPoints, st.timeSec);
       ctx.controls.enabled = st.viewMode === "orbit";
+      // Góc qua camera phim: letterbox đúng tỉ lệ 16:9 trong ô chứa
+      {
+        const size = new THREE.Vector2();
+        ctx.renderer.getSize(size);
+        if (st.viewMode === "shot" && size.x > 0 && size.y > 0) {
+          const target = 16 / 9;
+          const ca = size.x / size.y;
+          let vw = size.x, vh = size.y, vx = 0, vy = 0;
+          if (ca > target) { vw = size.y * target; vx = (size.x - vw) / 2; }
+          else { vh = size.x / target; vy = (size.y - vh) / 2; }
+          ctx.renderer.setScissorTest(true);
+          ctx.renderer.setScissor(vx, vy, vw, vh);
+          ctx.renderer.setViewport(vx, vy, vw, vh);
+        } else {
+          ctx.renderer.setScissorTest(false);
+          ctx.renderer.setViewport(0, 0, size.x, size.y);
+        }
+      }
       ctx.renderer.render(
         ctx.scene,
         st.viewMode === "shot" ? ctx.shotCam : ctx.orbitCam,
@@ -719,10 +750,10 @@ export function PrevizEditor({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0">
-        <div className="min-w-0">
+        <div className="min-w-0 min-h-0 flex flex-col">
           <div
             ref={mountRef}
-            className="w-full aspect-video rounded-xl border border-white/10 overflow-hidden bg-black [&>canvas]:w-full [&>canvas]:h-full"
+            className="w-full flex-1 min-h-[240px] rounded-xl border border-white/10 overflow-hidden bg-black [&>canvas]:w-full [&>canvas]:h-full"
           />
           <p className="mt-2 text-[11px] text-white/35">
             Mẹo: ở góc nhìn tự do, bấm thẳng vào vật thể trên khung để chọn,
@@ -1046,177 +1077,177 @@ export function PrevizEditor({
               />
             </label>
           </section>
+          {onWeatherChange && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+              <h3 className="text-[12px] font-semibold text-white/70">
+                HIỆU ỨNG CẢNH — THỜI TIẾT & KHÔNG KHÍ
+              </h3>
+              <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                <select
+                  value={scene.weather?.type ?? "none"}
+                  onChange={(e) => {
+                    const v = e.currentTarget.value;
+                    if (v === "none") onWeatherChange(null);
+                    else
+                      onWeatherChange({
+                        type: v as WeatherType,
+                        intensity: scene.weather?.intensity ?? 0.7,
+                      });
+                  }}
+                  className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80"
+                >
+                  <option value="none">Không có</option>
+                  <option value="rain">Mưa</option>
+                  <option value="snow">Tuyết rơi</option>
+                  <option value="sparkles">Lấp lánh</option>
+                </select>
+                {scene.weather && (
+                  <label className="flex items-center gap-2 text-white/50 flex-1 min-w-[160px]">
+                    Mật độ
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      value={scene.weather.intensity}
+                      onChange={(e) =>
+                        onWeatherChange({
+                          ...scene.weather!,
+                          intensity: Number(e.currentTarget.value),
+                        })
+                      }
+                      className="flex-1 accent-sky-400"
+                    />
+                  </label>
+                )}
+              </div>
+              <p className="text-[11px] text-white/35">
+                Thời tiết hiện ở cả lúc dựng, lúc phát thử và trong bản xuất.
+              </p>
+            </section>
+          )}
+
+          {onDialogueChange && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[12px] font-semibold text-white/70">
+                  THOẠI & GIỌNG CỦA CẢNH
+                </h3>
+                <button
+                  onClick={() =>
+                    onDialogueChange([
+                      ...(scene.dialogue ?? []),
+                      {
+                        id: newDialogueId(),
+                        text: "",
+                        startSec: 0.3,
+                        durationSec: 2,
+                      },
+                    ])
+                  }
+                  className="flex items-center gap-1 px-2 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
+                >
+                  <Plus className="w-3 h-3" /> Dòng thoại
+                </button>
+              </div>
+              {(scene.dialogue ?? []).map((line) => (
+                <div
+                  key={line.id}
+                  className="rounded-lg bg-white/[0.03] border border-white/5 p-2 space-y-1.5"
+                >
+                  <input
+                    value={line.text}
+                    onChange={(e) =>
+                      onDialogueChange(
+                        (scene.dialogue ?? []).map((x) =>
+                          x.id === line.id
+                            ? { ...x, text: e.currentTarget.value }
+                            : x,
+                        ),
+                      )
+                    }
+                    placeholder="Nội dung thoại…"
+                    className="w-full bg-transparent text-[13px] outline-none border-b border-transparent focus:border-white/30"
+                  />
+                  <div className="flex items-center gap-2 text-[11px] text-white/45">
+                    <label className="flex items-center gap-1">
+                      Từ
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.1}
+                        value={line.startSec}
+                        onChange={(e) =>
+                          onDialogueChange(
+                            (scene.dialogue ?? []).map((x) =>
+                              x.id === line.id
+                                ? { ...x, startSec: Number(e.currentTarget.value) }
+                                : x,
+                            ),
+                          )
+                        }
+                        className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                      />
+                      s
+                    </label>
+                    <label className="flex items-center gap-1">
+                      Dài
+                      <input
+                        type="number"
+                        min={0.3}
+                        step={0.1}
+                        value={line.durationSec}
+                        onChange={(e) =>
+                          onDialogueChange(
+                            (scene.dialogue ?? []).map((x) =>
+                              x.id === line.id
+                                ? {
+                                    ...x,
+                                    durationSec: Number(e.currentTarget.value),
+                                  }
+                                : x,
+                            ),
+                          )
+                        }
+                        className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                      />
+                      s
+                    </label>
+                    <button
+                      onClick={() =>
+                        onDialogueChange(
+                          (scene.dialogue ?? []).filter((x) => x.id !== line.id),
+                        )
+                      }
+                      aria-label="Xoá dòng thoại"
+                      className="ml-auto text-white/35 hover:text-rose-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <DialogueVoice
+                    line={line}
+                    onChange={(next) =>
+                      onDialogueChange(
+                        (scene.dialogue ?? []).map((x) =>
+                          x.id === next.id ? next : x,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+              ))}
+              {(scene.dialogue ?? []).length === 0 && (
+                <p className="text-[11px] text-white/35">
+                  Chưa có thoại — thêm dòng thoại rồi thu giọng để phim có tiếng
+                  khi xuất bản.
+                </p>
+              )}
+            </section>
+          )}
         </div>
       </div>
 
-      {onWeatherChange && (
-        <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
-          <h3 className="text-[12px] font-semibold text-white/70">
-            HIỆU ỨNG CẢNH — THỜI TIẾT & KHÔNG KHÍ
-          </h3>
-          <div className="flex flex-wrap items-center gap-2 text-[12px]">
-            <select
-              value={scene.weather?.type ?? "none"}
-              onChange={(e) => {
-                const v = e.currentTarget.value;
-                if (v === "none") onWeatherChange(null);
-                else
-                  onWeatherChange({
-                    type: v as WeatherType,
-                    intensity: scene.weather?.intensity ?? 0.7,
-                  });
-              }}
-              className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80"
-            >
-              <option value="none">Không có</option>
-              <option value="rain">Mưa</option>
-              <option value="snow">Tuyết rơi</option>
-              <option value="sparkles">Lấp lánh</option>
-            </select>
-            {scene.weather && (
-              <label className="flex items-center gap-2 text-white/50 flex-1 min-w-[160px]">
-                Mật độ
-                <input
-                  type="range"
-                  min={0.1}
-                  max={1}
-                  step={0.05}
-                  value={scene.weather.intensity}
-                  onChange={(e) =>
-                    onWeatherChange({
-                      ...scene.weather!,
-                      intensity: Number(e.currentTarget.value),
-                    })
-                  }
-                  className="flex-1 accent-sky-400"
-                />
-              </label>
-            )}
-          </div>
-          <p className="text-[11px] text-white/35">
-            Thời tiết hiện ở cả lúc dựng, lúc phát thử và trong bản xuất.
-          </p>
-        </section>
-      )}
-
-      {onDialogueChange && (
-        <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2 shrink-0 max-h-[230px] overflow-y-auto">
-          <div className="flex items-center justify-between">
-            <h3 className="text-[12px] font-semibold text-white/70">
-              THOẠI & GIỌNG CỦA CẢNH
-            </h3>
-            <button
-              onClick={() =>
-                onDialogueChange([
-                  ...(scene.dialogue ?? []),
-                  {
-                    id: newDialogueId(),
-                    text: "",
-                    startSec: 0.3,
-                    durationSec: 2,
-                  },
-                ])
-              }
-              className="flex items-center gap-1 px-2 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
-            >
-              <Plus className="w-3 h-3" /> Dòng thoại
-            </button>
-          </div>
-          {(scene.dialogue ?? []).map((line) => (
-            <div
-              key={line.id}
-              className="rounded-lg bg-white/[0.03] border border-white/5 p-2 space-y-1.5"
-            >
-              <input
-                value={line.text}
-                onChange={(e) =>
-                  onDialogueChange(
-                    (scene.dialogue ?? []).map((x) =>
-                      x.id === line.id
-                        ? { ...x, text: e.currentTarget.value }
-                        : x,
-                    ),
-                  )
-                }
-                placeholder="Nội dung thoại…"
-                className="w-full bg-transparent text-[13px] outline-none border-b border-transparent focus:border-white/30"
-              />
-              <div className="flex items-center gap-2 text-[11px] text-white/45">
-                <label className="flex items-center gap-1">
-                  Từ
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.1}
-                    value={line.startSec}
-                    onChange={(e) =>
-                      onDialogueChange(
-                        (scene.dialogue ?? []).map((x) =>
-                          x.id === line.id
-                            ? { ...x, startSec: Number(e.currentTarget.value) }
-                            : x,
-                        ),
-                      )
-                    }
-                    className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
-                  />
-                  s
-                </label>
-                <label className="flex items-center gap-1">
-                  Dài
-                  <input
-                    type="number"
-                    min={0.3}
-                    step={0.1}
-                    value={line.durationSec}
-                    onChange={(e) =>
-                      onDialogueChange(
-                        (scene.dialogue ?? []).map((x) =>
-                          x.id === line.id
-                            ? {
-                                ...x,
-                                durationSec: Number(e.currentTarget.value),
-                              }
-                            : x,
-                        ),
-                      )
-                    }
-                    className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
-                  />
-                  s
-                </label>
-                <button
-                  onClick={() =>
-                    onDialogueChange(
-                      (scene.dialogue ?? []).filter((x) => x.id !== line.id),
-                    )
-                  }
-                  aria-label="Xoá dòng thoại"
-                  className="ml-auto text-white/35 hover:text-rose-400"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <DialogueVoice
-                line={line}
-                onChange={(next) =>
-                  onDialogueChange(
-                    (scene.dialogue ?? []).map((x) =>
-                      x.id === next.id ? next : x,
-                    ),
-                  )
-                }
-              />
-            </div>
-          ))}
-          {(scene.dialogue ?? []).length === 0 && (
-            <p className="text-[11px] text-white/35">
-              Chưa có thoại — thêm dòng thoại rồi thu giọng để phim có tiếng
-              khi xuất bản.
-            </p>
-          )}
-        </section>
-      )}
       {/* Dải timeline đa track (R1) */}
       <PrevizStrip
         previz={previz}
