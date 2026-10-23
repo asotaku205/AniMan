@@ -38,11 +38,19 @@ import {
   createWeatherPoints,
   updateWeatherPoints,
 } from "../lib/weatherPoints";
+import {
+  createParticlePoints,
+  updateParticlePoints,
+} from "../lib/particlePoints";
+import { SceneParticlesPanel } from "./SceneParticlesPanel";
+import type { ParticleSystemSettings } from "../lib/particles";
 import type { SceneWeather, WeatherType } from "../lib/layerEffects";
 import DialogueVoice from "./DialogueVoice";
 import { SceneAudioPanel } from "./SceneAudioPanel";
 import type { SceneAudioClip } from "../lib/animProject";
-import { playSceneVoice } from "../lib/voicePreview";
+import { playSceneSounds } from "../lib/voicePreview";
+import { renderFilmAudioMix } from "../lib/filmAudio";
+import type { AnimProject } from "../lib/animProject";
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
@@ -172,15 +180,15 @@ function PrevizStrip({
           {timeSec.toFixed(2)}s / {duration.toFixed(1)}s
         </span>
       </div>
-      <div className="max-h-[172px] overflow-y-auto">
-        <div className="grid grid-cols-[104px_minmax(0,1fr)]">
+      <div className="max-h-[188px] overflow-y-auto overflow-x-clip">
+        <div className="grid grid-cols-[116px_minmax(0,1fr)]">
           <div>
             <div className="h-4 sticky top-0 bg-[#0a0614] z-10" />
             {rows.map((r) => (
               <button
                 key={r.id}
                 onClick={r.onClick}
-                className={`h-5 w-full flex items-center gap-1.5 px-1.5 text-[11px] truncate text-left rounded ${
+                className={`h-6 w-full flex items-center gap-1.5 px-1.5 text-xs truncate text-left rounded ${
                   r.id === selectedId
                     ? "bg-sky-500/15 text-white"
                     : "text-white/55 hover:text-white"
@@ -199,8 +207,16 @@ function PrevizStrip({
               {ticks.map((t) => (
                 <span
                   key={t}
-                  className="absolute top-0 text-[9px] text-white/40"
-                  style={{ left: pct(t) }}
+                  className="absolute top-0 text-[10px] text-white/40"
+                  style={{
+                    left: pct(t),
+                    transform:
+                      t === 0
+                        ? "none"
+                        : t >= duration
+                          ? "translateX(-100%)"
+                          : "translateX(-50%)",
+                  }}
                 >
                   {t.toFixed(0)}s
                 </span>
@@ -209,7 +225,7 @@ function PrevizStrip({
             {rows.map((r) => (
               <div
                 key={r.id}
-                className="h-5 relative border-b border-white/5 cursor-pointer"
+                className="h-6 relative border-b border-white/5 cursor-pointer"
               >
                 {r.id === "camera" &&
                   previz.cameraKeys.map((k) => (
@@ -245,7 +261,7 @@ function PrevizStrip({
                     <span
                       key={line.id}
                       title={`${line.speaker}: ${line.text}`}
-                      className="absolute top-[2px] bottom-[2px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[13px]"
+                      className="absolute top-[2px] bottom-[2px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px]"
                       style={{
                         left: pct(line.startSec),
                         width: `${Math.max(2, (line.durationSec / duration) * 100)}%`,
@@ -259,7 +275,7 @@ function PrevizStrip({
                     <span
                       key={clip.id}
                       title={clip.name}
-                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[13px]"
+                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px]"
                       style={{
                         left: pct(clip.startSec),
                         width: `${Math.max(2, (clip.durationSec / duration) * 100)}%`,
@@ -287,12 +303,14 @@ export function PrevizEditor({
   onDialogueChange,
   onWeatherChange,
   onAudioChange,
+  onParticlesChange,
 }: {
   scene: AnimScene;
   onChange: (previz: PrevizScene) => void;
   onDialogueChange?: (lines: DialogueLine[]) => void;
   onWeatherChange?: (weather: SceneWeather | null) => void;
   onAudioChange?: (clips: SceneAudioClip[]) => void;
+  onParticlesChange?: (particles: ParticleSystemSettings | null) => void;
 }) {
   const previz = useMemo<PrevizScene>(
     () => scene.previz ?? createPrevizScene(),
@@ -322,6 +340,7 @@ export function PrevizEditor({
     groups: Map<string, THREE.Object3D>;
     characters: Map<string, CharacterParts>;
     weatherPoints: THREE.Points | null;
+    particlePoints: THREE.Points | null;
   } | null>(null);
 
   const selected = previz.objects.find((o) => o.id === selectedId) ?? null;
@@ -417,6 +436,7 @@ export function PrevizEditor({
       groups: new Map(),
       characters: new Map(),
       weatherPoints: null,
+      particlePoints: null,
     };
 
     // Co giãn renderer theo ô chứa (khung R1 thay đổi kích thước theo cửa sổ)
@@ -536,6 +556,23 @@ export function PrevizEditor({
     }
   }, [scene.weather]);
 
+  // ── Hệ hạt tự chế 3D (R3): gắn hạt vào scene khi thông số thay đổi ──────
+  useEffect(() => {
+    const ctx = threeRef.current;
+    if (!ctx) return;
+    if (ctx.particlePoints) {
+      ctx.scene.remove(ctx.particlePoints);
+      ctx.particlePoints.geometry.dispose();
+      (ctx.particlePoints.material as THREE.Material).dispose();
+      ctx.particlePoints = null;
+    }
+    if (scene.particles && scene.particles.count > 0) {
+      const points = createParticlePoints(scene.particles);
+      ctx.particlePoints = points;
+      ctx.scene.add(points);
+    }
+  }, [scene.particles]);
+
   // ── Đồng bộ vật thể vào scene Three ────────────────────────────────────────
   useEffect(() => {
     const ctx = threeRef.current;
@@ -600,11 +637,21 @@ export function PrevizEditor({
             position: st.draftPos,
             rotationY: st.draftRotY,
             pose: sampled.pose,
+            glow: sampled.glow,
           };
         }
         group.position.set(sampled.position.x, sampled.position.y, sampled.position.z);
         group.rotation.y = rad(sampled.rotationY);
         if (obj.kind === "model") group.scale.setScalar(obj.size);
+        group.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const mat = mesh.material as THREE.MeshStandardMaterial;
+          if (mat && "emissive" in mat) {
+            mat.emissive = new THREE.Color(obj.color);
+            mat.emissiveIntensity = sampled.glow * 0.55;
+          }
+        });
         const parts = ctx.characters.get(obj.id);
         if (parts) {
           const pose =
@@ -627,6 +674,7 @@ export function PrevizEditor({
       ctx.shotCam.position.set(cam.position.x, cam.position.y, cam.position.z);
       ctx.shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
       if (ctx.weatherPoints) updateWeatherPoints(ctx.weatherPoints, st.timeSec);
+      if (ctx.particlePoints) updateParticlePoints(ctx.particlePoints, st.timeSec);
       ctx.controls.enabled = st.viewMode === "orbit";
       ctx.renderer.render(
         ctx.scene,
@@ -660,6 +708,8 @@ export function PrevizEditor({
   const voicePlaybackRef = useRef<{ stop: () => void } | null>(null);
   const dialogueRef = useRef<DialogueLine[]>([]);
   dialogueRef.current = scene.dialogue ?? [];
+  const audioClipsRef = useRef<SceneAudioClip[]>([]);
+  audioClipsRef.current = scene.audioClips ?? [];
   useEffect(() => {
     if (!playing) {
       voicePlaybackRef.current?.stop();
@@ -667,7 +717,7 @@ export function PrevizEditor({
       return;
     }
     let alive = true;
-    void playSceneVoice(dialogueRef.current, timeSec).then((pb) => {
+    void playSceneSounds(dialogueRef.current, audioClipsRef.current, timeSec).then((pb) => {
       if (!alive) {
         pb?.stop();
         return;
@@ -693,6 +743,38 @@ export function PrevizEditor({
     setTimeSec(0);
     await new Promise((r) => setTimeout(r, 120));
     const stream = ctx.renderer.domElement.captureStream(30);
+    // Tiếng của cảnh (thoại + clip hiệu ứng/nhạc) trộn sẵn rồi phát vào
+    // luồng ghi — trước đây bản xuất từng cảnh chỉ có hình, không tiếng.
+    let audioCtx: AudioContext | null = null;
+    let startSceneAudio: (() => void) | null = null;
+    try {
+      const mixBlob = await renderFilmAudioMix(
+        { scenes: [scene], bgm: null } as unknown as AnimProject,
+        0,
+      );
+      if (mixBlob) {
+        audioCtx = new AudioContext();
+        const buf = await audioCtx.decodeAudioData(
+          await mixBlob.arrayBuffer(),
+        );
+        const dest = audioCtx.createMediaStreamDestination();
+        const srcNode = audioCtx.createBufferSource();
+        srcNode.buffer = buf;
+        srcNode.connect(dest);
+        const track = dest.stream.getAudioTracks()[0];
+        if (track) stream.addTrack(track);
+        startSceneAudio = () => {
+          try {
+            srcNode.start();
+          } catch {
+            /* đã phát */
+          }
+        };
+      }
+    } catch {
+      audioCtx = null;
+      startSceneAudio = null;
+    }
     const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => {
@@ -703,10 +785,12 @@ export function PrevizEditor({
     });
     recorder.start(200);
     setPlaying(true);
+    startSceneAudio?.();
     await new Promise((r) => setTimeout(r, duration * 1000 + 150));
     setPlaying(false);
     recorder.stop();
     await done;
+    void audioCtx?.close().catch(() => undefined);
     const blob = new Blob(chunks, { type: "video/webm" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -787,7 +871,7 @@ export function PrevizEditor({
         </div>
       </div>
 
-      <div className={`grid grid-cols-1 ${propsOpen ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "xl:grid-cols-[minmax(0,1fr)]"} gap-4 flex-1 min-h-0`}>
+      <div className={`grid grid-cols-1 ${propsOpen ? "xl:grid-cols-[minmax(0,1fr)_360px]" : "xl:grid-cols-[minmax(0,1fr)]"} gap-4 flex-1 min-h-0`}>
         <div className="min-w-0 min-h-0 flex flex-col overflow-hidden">
           <div className="relative w-full flex-1 min-h-0">
             <div
@@ -971,6 +1055,11 @@ export function PrevizEditor({
                   {Math.round((selected.glow ?? 0) * 100)}%
                 </span>
               </label>
+              <p className="text-[10.5px] text-white/30 leading-relaxed">
+                Mức phát sáng được ghi vào key mỗi khi bấm "Đặt key" — đặt
+                ở nhiều key với mức khác nhau để vật phát sáng thay đổi
+                theo thời gian.
+              </p>
               {selected.kind === "character" && (
                 <label className="flex items-center gap-2 text-[11px] text-white/45">
                   <span className="w-14">Pose</span>
@@ -1012,6 +1101,7 @@ export function PrevizEditor({
                         position: draftPos,
                         rotationY: draftRotY,
                         poseId: draftPose,
+                        glow: selected.glow ?? 0,
                         easing,
                       }),
                     });
@@ -1287,6 +1377,12 @@ export function PrevizEditor({
             <span className="font-medium text-white/75">Sinh video AI từ cảnh này: </span>
             {genStatus.label}
           </div>
+          {onParticlesChange && (
+            <SceneParticlesPanel
+              value={scene.particles ?? null}
+              onChange={onParticlesChange}
+            />
+          )}
           {onAudioChange && (
             <SceneAudioPanel scene={scene} onChange={onAudioChange} />
           )}

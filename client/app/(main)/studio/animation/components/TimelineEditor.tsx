@@ -46,9 +46,17 @@ import {
   layerEffectAt,
   layerEffectsOf,
   weatherParticles,
+  type LayerEffectKey,
   type SceneWeather,
   type WeatherType,
 } from "../lib/layerEffects";
+import { particlePointsAt, type ParticleSystemSettings } from "../lib/particles";
+import {
+  newStrokeId,
+  strokeVisiblePoints,
+  type SceneStroke,
+} from "../lib/strokes";
+import { SceneParticlesPanel } from "./SceneParticlesPanel";
 import { suggestMotionPresets } from "../lib/motionPrompt";
 import {
   TRANSLATION_TARGET_OPTIONS,
@@ -63,7 +71,7 @@ import {
 } from "../lib/dialogue";
 import DialogueVoice from "./DialogueVoice";
 import { SceneAudioPanel } from "./SceneAudioPanel";
-import { playSceneVoice } from "../lib/voicePreview";
+import { playSceneSounds } from "../lib/voicePreview";
 import type { SceneAudioClip } from "../lib/animProject";
 
 const STAGE_W = 960;
@@ -135,15 +143,15 @@ function TimelineStrip({
           {timeSec.toFixed(2)}s / {duration.toFixed(1)}s
         </span>
       </div>
-      <div className="max-h-[172px] overflow-y-auto">
-        <div className="grid grid-cols-[104px_minmax(0,1fr)]">
+      <div className="max-h-[188px] overflow-y-auto overflow-x-clip">
+        <div className="grid grid-cols-[116px_minmax(0,1fr)]">
           <div>
             <div className="h-4 sticky top-0 bg-[#0a0614] z-10" />
             {rows.map((r) => (
               <button
                 key={r.id}
                 onClick={r.onClick}
-                className={`h-5 w-full flex items-center gap-1.5 px-1.5 text-[11px] truncate text-left rounded ${
+                className={`h-6 w-full flex items-center gap-1.5 px-1.5 text-xs truncate text-left rounded ${
                   r.id === selectedLayerId
                     ? "bg-pink-500/15 text-white"
                     : "text-white/55 hover:text-white"
@@ -162,8 +170,16 @@ function TimelineStrip({
               {ticks.map((t) => (
                 <span
                   key={t}
-                  className="absolute top-0 text-[9px] text-white/40"
-                  style={{ left: pct(t) }}
+                  className="absolute top-0 text-[10px] text-white/40"
+                  style={{
+                    left: pct(t),
+                    transform:
+                      t === 0
+                        ? "none"
+                        : t >= duration
+                          ? "translateX(-100%)"
+                          : "translateX(-50%)",
+                  }}
                 >
                   {t.toFixed(0)}s
                 </span>
@@ -172,7 +188,7 @@ function TimelineStrip({
             {rows.map((r) => (
               <div
                 key={r.id}
-                className="h-5 relative border-b border-white/5 cursor-pointer"
+                className="h-6 relative border-b border-white/5 cursor-pointer"
               >
                 {r.id === "camera" &&
                   sortKeys(timeline.cameraKeys).map((k) => (
@@ -208,7 +224,7 @@ function TimelineStrip({
                     <span
                       key={line.id}
                       title={`${line.speaker}: ${line.text}`}
-                      className="absolute top-[2px] bottom-[2px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[13px]"
+                      className="absolute top-[2px] bottom-[2px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px]"
                       style={{
                         left: pct(line.startSec),
                         width: `${Math.max(2, (line.durationSec / duration) * 100)}%`,
@@ -222,7 +238,7 @@ function TimelineStrip({
                     <span
                       key={clip.id}
                       title={clip.name}
-                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[13px]"
+                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px]"
                       style={{
                         left: pct(clip.startSec),
                         width: `${Math.max(2, (clip.durationSec / duration) * 100)}%`,
@@ -250,12 +266,16 @@ export function TimelineEditor({
   onDialogueChange,
   onWeatherChange,
   onAudioChange,
+  onParticlesChange,
+  onStrokesChange,
 }: {
   scene: AnimScene;
   onChange: (timeline: SceneTimeline) => void;
   onDialogueChange?: (lines: DialogueLine[]) => void;
   onWeatherChange?: (weather: SceneWeather | null) => void;
   onAudioChange?: (clips: SceneAudioClip[]) => void;
+  onParticlesChange?: (particles: ParticleSystemSettings | null) => void;
+  onStrokesChange?: (strokes: SceneStroke[]) => void;
 }) {
   const timeline = useMemo<SceneTimeline>(
     () => scene.timeline ?? createSceneTimeline(),
@@ -321,6 +341,13 @@ export function TimelineEditor({
     startT: Transform;
   } | null>(null);
   const [stageDragging, setStageDragging] = useState(false);
+  // Vệt vẽ tay (R3)
+  const [strokeMode, setStrokeMode] = useState(false);
+  const [strokeColor, setStrokeColor] = useState("#7df9ff");
+  const [strokeWidth, setStrokeWidth] = useState(7);
+  const [drawingStroke, setDrawingStroke] = useState<{ x: number; y: number }[] | null>(null);
+  const drawingRef = useRef<{ startSec: number; wallStart: number } | null>(null);
+  const [selectedFxKeyId, setSelectedFxKeyId] = useState<string | null>(null);
 
   const stagePointOf = (e: React.PointerEvent): { x: number; y: number } | null => {
     const canvas = canvasRef.current;
@@ -343,6 +370,12 @@ export function TimelineEditor({
   const onStagePointerDown = (e: React.PointerEvent) => {
     const point = stagePointOf(e);
     if (!point) return;
+    if (strokeMode && onStrokesChange) {
+      drawingRef.current = { startSec: timeSec, wallStart: performance.now() };
+      setDrawingStroke([point]);
+      canvasRef.current?.setPointerCapture(e.pointerId);
+      return;
+    }
     const hit = layerAtPoint(timeline, timeSec, point);
     if (!hit) return;
     setSelectedLayerId(hit.id);
@@ -359,6 +392,17 @@ export function TimelineEditor({
   };
 
   const onStagePointerMove = (e: React.PointerEvent) => {
+    if (drawingRef.current) {
+      const point = stagePointOf(e);
+      if (!point) return;
+      setDrawingStroke((prev) => {
+        if (!prev) return prev;
+        const last = prev[prev.length - 1];
+        if (last && Math.hypot(point.x - last.x, point.y - last.y) < 0.004) return prev;
+        return [...prev, point];
+      });
+      return;
+    }
     const drag = stageDragRef.current;
     if (!drag) return;
     const point = stagePointOf(e);
@@ -373,6 +417,28 @@ export function TimelineEditor({
   };
 
   const onStagePointerUp = () => {
+    if (drawingRef.current && onStrokesChange) {
+      const info = drawingRef.current;
+      drawingRef.current = null;
+      const points = drawingStroke ?? [];
+      setDrawingStroke(null);
+      if (points.length >= 1) {
+        const drawn = points.length === 1 ? [points[0], { x: points[0].x + 0.001, y: points[0].y }] : points;
+        const dur = Math.max(0.3, Math.min(scene.durationSec, (performance.now() - info.wallStart) / 1000));
+        onStrokesChange([
+          ...(scene.strokes ?? []),
+          {
+            id: newStrokeId(),
+            color: strokeColor,
+            widthPx: strokeWidth,
+            points: drawn,
+            startSec: Math.round(info.startSec * 100) / 100,
+            durationSec: Math.round(dur * 100) / 100,
+          },
+        ]);
+      }
+      return;
+    }
     stageDragRef.current = null;
     setStageDragging(false);
   };
@@ -482,6 +548,8 @@ export function TimelineEditor({
   const timeSecRef = useRef(0);
   const dialogueRef = useRef<DialogueLine[]>([]);
   dialogueRef.current = scene.dialogue ?? [];
+  const audioClipsRef = useRef<SceneAudioClip[]>([]);
+  audioClipsRef.current = scene.audioClips ?? [];
 
   // Phát thử KÈM TIẾNG: lên lịch các bản thu đã chọn theo mốc thoại
   const voicePlaybackRef = useRef<{ stop: () => void } | null>(null);
@@ -493,7 +561,7 @@ export function TimelineEditor({
     }
     timeSecRef.current = timeSec;
     let alive = true;
-    void playSceneVoice(dialogueRef.current, timeSec).then((pb) => {
+    void playSceneSounds(dialogueRef.current, audioClipsRef.current, timeSec).then((pb) => {
       if (!alive) {
         pb?.stop();
         return;
@@ -555,6 +623,7 @@ export function TimelineEditor({
             layer.keys.map((k) => k.timeSec),
             t,
             scene.durationSec,
+            layer.effectKeys,
           );
       ctx.save();
       ctx.translate(STAGE_W / 2, STAGE_H / 2);
@@ -643,6 +712,41 @@ export function TimelineEditor({
       ctx.restore();
     }
 
+    // Hệ hạt tự chế (R3) — cùng hàm thuần với bản xuất
+    if (scene.particles && scene.particles.count > 0) {
+      ctx.save();
+      ctx.fillStyle = scene.particles.color;
+      for (const p of particlePointsAt(scene.particles, timeSec)) {
+        if (p.alpha < 0.02) continue;
+        ctx.globalAlpha = p.alpha;
+        ctx.beginPath();
+        ctx.arc(p.x * STAGE_W, p.y * STAGE_H, Math.max(0.6, p.size), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Vệt vẽ tay (R3) + nét đang vẽ dở
+    const drawStrokePath = (pts: { x: number; y: number }[], color: string, widthPx: number) => {
+      if (pts.length < 2) return;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = widthPx;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = widthPx * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x * STAGE_W, pts[0].y * STAGE_H);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x * STAGE_W, pts[i].y * STAGE_H);
+      ctx.stroke();
+      ctx.restore();
+    };
+    for (const stroke of scene.strokes ?? []) {
+      drawStrokePath(strokeVisiblePoints(stroke, timeSec), stroke.color, stroke.widthPx);
+    }
+    if (drawingStroke) drawStrokePath(drawingStroke, strokeColor, strokeWidth);
+
     // Phụ đề: dòng thoại đang hiệu lực, vẽ ở đáy sân khấu (màn hình-space)
     const activeLine = dialogueLineAt(scene.dialogue ?? [], timeSec);
     if (activeLine) {
@@ -660,7 +764,7 @@ export function TimelineEditor({
       ctx.restore();
     }
 
-  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue, scene.weather, scene.durationSec]);
+  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue, scene.weather, scene.particles, scene.strokes, drawingStroke, strokeColor, strokeWidth, scene.durationSec]);
 
   // ── Thao tác keyframe ──────────────────────────────────────────────────────
   const placeLayerKey = () => {
@@ -674,6 +778,35 @@ export function TimelineEditor({
     updateLayer(selectedLayer.id, { keys });
     setDraftDirty(false);
   };
+
+  // Mốc hiệu ứng theo thời gian của layer (R3)
+  const addFxKey = () => {
+    if (!selectedLayer) return;
+    const fx = layerEffectsOf(selectedLayer.effects);
+    const key: LayerEffectKey = {
+      id: newKeyId("fxkey"),
+      timeSec: Math.round(timeSec * 100) / 100,
+      values: { opacity: 1, shake: fx.shake, glow: fx.glow, pulse: fx.pulse },
+    };
+    const rest = (selectedLayer.effectKeys ?? []).filter(
+      (k) => Math.abs(k.timeSec - key.timeSec) > 1e-6,
+    );
+    updateLayer(selectedLayer.id, {
+      effectKeys: [...rest, key].sort((a, b) => a.timeSec - b.timeSec),
+    });
+    setSelectedFxKeyId(key.id);
+  };
+  const updateFxKey = (keyId: string, values: LayerEffectKey["values"]) => {
+    if (!selectedLayer) return;
+    updateLayer(selectedLayer.id, {
+      effectKeys: (selectedLayer.effectKeys ?? []).map((k) =>
+        k.id === keyId ? { ...k, values } : k,
+      ),
+    });
+  };
+  const selectedFxKey =
+    (selectedLayer?.effectKeys ?? []).find((k) => k.id === selectedFxKeyId) ??
+    null;
 
   const placeCameraKey = () => {
     const keys = upsertCameraKey(timeline.cameraKeys, {
@@ -757,11 +890,13 @@ export function TimelineEditor({
         </button>
       </div>
 
-      <div className={`grid grid-cols-1 ${propsOpen ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "xl:grid-cols-[minmax(0,1fr)]"} gap-4 flex-1 min-h-0`}>
+      <div className={`grid grid-cols-1 ${propsOpen ? "xl:grid-cols-[minmax(0,1fr)_360px]" : "xl:grid-cols-[minmax(0,1fr)]"} gap-4 flex-1 min-h-0`}>
         <div className="min-w-0 min-h-0 flex flex-col overflow-hidden pr-0.5">
           <div className="relative flex-1 min-h-0">
             <span className="pointer-events-none absolute left-2 top-2 z-10 rounded-md bg-black/55 px-2 py-1 text-[10.5px] text-white/70">
-              Bấm layer để chọn · kéo để dời vị trí · xong bấm "Đặt key"
+              {strokeMode
+                ? "Đang vẽ vệt: kéo chuột trên khung hình, nhả ra để lưu nét"
+                : "Bấm layer để chọn · kéo để dời vị trí · xong bấm \"Đặt key\""}
             </span>
             <canvas
               ref={canvasRef}
@@ -1058,6 +1193,67 @@ export function TimelineEditor({
                   updateLayer(selectedLayer.id, {
                     effects: { ...layerEffectsOf(selectedLayer.effects), pulse: v },
                   }), (v) => `${Math.round(v * 100)}%`)}
+              </div>
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <h4 className="text-[11px] font-semibold text-white/60">
+                  MỐC HIỆU ỨNG THEO THỜI GIAN
+                </h4>
+                <p className="text-[11px] leading-relaxed text-white/35">
+                  Đặt mốc tại các thời điểm khác nhau để hiệu ứng tự biến
+                  đổi (phát sáng tăng dần, rung mạnh rồi tắt...). Giữa hai
+                  mốc, giá trị tự nội suy.
+                </p>
+                <button
+                  onClick={addFxKey}
+                  className="w-full h-8 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10 transition"
+                >
+                  + Đặt mốc hiệu ứng tại {timeSec.toFixed(2)}s
+                </button>
+                {(selectedLayer.effectKeys ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(selectedLayer.effectKeys ?? []).map((k) => (
+                      <span
+                        key={k.id}
+                        className={`flex items-center gap-1 px-2 h-6 rounded-md border text-[11px] ${
+                          selectedFxKeyId === k.id
+                            ? "bg-pink-500/20 border-pink-400/40 text-white"
+                            : "bg-white/5 border-white/10 text-white/60"
+                        }`}
+                      >
+                        <button onClick={() => setSelectedFxKeyId(k.id)}>
+                          {k.timeSec.toFixed(2)}s
+                        </button>
+                        <button
+                          onClick={() => {
+                            updateLayer(selectedLayer.id, {
+                              effectKeys: (selectedLayer.effectKeys ?? []).filter((x) => x.id !== k.id),
+                            });
+                            if (selectedFxKeyId === k.id) setSelectedFxKeyId(null);
+                          }}
+                          aria-label="Xoá mốc hiệu ứng"
+                          className="text-white/40 hover:text-rose-400"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {selectedFxKey && (
+                  <div className="space-y-2 rounded-lg bg-black/30 border border-white/5 p-2">
+                    <div className="text-[11px] text-white/45">
+                      Giá trị tại mốc {selectedFxKey.timeSec.toFixed(2)}s:
+                    </div>
+                    {slider("Độ mờ", selectedFxKey.values.opacity, 0, 1, 0.01, (v) =>
+                      updateFxKey(selectedFxKey.id, { ...selectedFxKey.values, opacity: v }), (v) => `${Math.round(v * 100)}%`)}
+                    {slider("Rung", selectedFxKey.values.shake, 0, 1, 0.05, (v) =>
+                      updateFxKey(selectedFxKey.id, { ...selectedFxKey.values, shake: v }), (v) => `${Math.round(v * 100)}%`)}
+                    {slider("Phát sáng", selectedFxKey.values.glow, 0, 1, 0.05, (v) =>
+                      updateFxKey(selectedFxKey.id, { ...selectedFxKey.values, glow: v }), (v) => `${Math.round(v * 100)}%`)}
+                    {slider("Nhịp phồng", selectedFxKey.values.pulse, 0, 1, 0.05, (v) =>
+                      updateFxKey(selectedFxKey.id, { ...selectedFxKey.values, pulse: v }), (v) => `${Math.round(v * 100)}%`)}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2 pt-1">
                 {easingSelect}
@@ -1475,6 +1671,74 @@ export function TimelineEditor({
               </button>
             </div>
           </section>
+          {onParticlesChange && (
+            <SceneParticlesPanel
+              value={scene.particles ?? null}
+              onChange={onParticlesChange}
+            />
+          )}
+          {onStrokesChange && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2.5">
+              <h4 className="text-[12px] font-semibold text-white/60">
+                VỆT VẼ TAY TRÊN KHUNG HÌNH
+              </h4>
+              <p className="text-[11px] leading-relaxed text-white/35">
+                Bật chế độ vẽ rồi kéo chuột thẳng lên khung hình — vệt
+                sáng phép thuật, đường bay, vòng nhấn... Nét vẽ xuất hiện
+                dần đúng khoảng thời gian bạn vẽ.
+              </p>
+              <button
+                onClick={() => setStrokeMode((v) => !v)}
+                className={`w-full h-8 rounded-lg border text-[12px] font-medium transition ${
+                  strokeMode
+                    ? "bg-cyan-500/25 border-cyan-300/40 text-cyan-100"
+                    : "bg-white/5 border-white/10 hover:bg-white/10"
+                }`}
+              >
+                {strokeMode ? "Đang vẽ — bấm để tắt chế độ vẽ" : "Bật chế độ vẽ vệt"}
+              </button>
+              <label className="flex items-center gap-2 text-[11px] text-white/50">
+                <span className="w-14 shrink-0">Màu nét</span>
+                <input
+                  type="color"
+                  value={strokeColor}
+                  onChange={(e) => setStrokeColor(e.currentTarget.value)}
+                  className="w-10 h-7 rounded bg-white/5 border border-white/10 cursor-pointer"
+                />
+                <span className="text-white/60">{strokeColor}</span>
+              </label>
+              {slider("Độ dày nét", strokeWidth, 2, 30, 1, (v) => setStrokeWidth(v), (v) => `${Math.round(v)}px`)}
+              {(scene.strokes ?? []).length > 0 && (
+                <ul className="space-y-1">
+                  {(scene.strokes ?? []).map((st, i) => (
+                    <li
+                      key={st.id}
+                      className="flex items-center gap-2 text-[11px] text-white/55"
+                    >
+                      <span
+                        className="w-3 h-3 rounded-full flex-none border border-white/20"
+                        style={{ background: st.color }}
+                      />
+                      <span className="flex-1">
+                        Vệt {i + 1} · từ {st.startSec.toFixed(1)}s, hiện trong{" "}
+                        {st.durationSec.toFixed(1)}s
+                      </span>
+                      <button
+                        onClick={() =>
+                          onStrokesChange(
+                            (scene.strokes ?? []).filter((x) => x.id !== st.id),
+                          )
+                        }
+                        className="text-white/35 hover:text-rose-400"
+                      >
+                        Xoá
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
           {onAudioChange && (
             <SceneAudioPanel scene={scene} onChange={onAudioChange} />
           )}
