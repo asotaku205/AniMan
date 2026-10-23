@@ -216,7 +216,7 @@ export function ExportPanel({
       setProgress(
         `Đang dựng cảnh ${i + 1}/${project.scenes.length}: ${scene.name}`,
       );
-      film.loadScene(scene);
+      await film.loadScene(scene);
       const sceneStart = performance.now();
       await new Promise<void>((resolve) => {
         const step = () => {

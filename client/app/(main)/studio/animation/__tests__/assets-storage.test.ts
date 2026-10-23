@@ -13,7 +13,7 @@ beforeAll(() => {
 });
 
 describe("animStorage — thư viện tài sản", () => {
-  it("lưu 3 loại tài sản, đọc lại đủ, xoá đúng cái cần xoá", async () => {
+  it("lưu các loại tài sản (nhân vật/phong cảnh/hình/mô hình 3D), đọc lại đủ, xoá đúng cái cần xoá", async () => {
     const storage = await import("../lib/animStorage");
     const { BUILTIN_SCENERY } = await import("../lib/animAssets");
     await storage.saveAnimAsset({
@@ -40,8 +40,15 @@ describe("animStorage — thư viện tài sản", () => {
       dataUrl: "data:image/png;base64,AAAA",
       createdAt: 3,
     });
+    await storage.saveAnimAsset({
+      kind: "model3d",
+      id: "mdl-t",
+      name: "nha-go",
+      dataUrl: "data:model/gltf-binary;base64,AAAA",
+      createdAt: 4,
+    });
     const all = await storage.listAnimAssets();
-    expect(all.map((a) => a.id)).toEqual(["char-t", "scn-t", "img-t"]);
+    expect(all.map((a) => a.id)).toEqual(["char-t", "scn-t", "img-t", "mdl-t"]);
     const scenery = all.find((a) => a.kind === "scenery");
     expect(
       scenery && scenery.kind === "scenery" ? scenery.objects.length : 0,
@@ -50,6 +57,7 @@ describe("animStorage — thư viện tài sản", () => {
     expect((await storage.listAnimAssets()).map((a) => a.id)).toEqual([
       "char-t",
       "img-t",
+      "mdl-t",
     ]);
   });
 });

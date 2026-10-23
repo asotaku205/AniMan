@@ -64,7 +64,12 @@ function lerpPose(a: CharacterPose, b: CharacterPose, t: number): CharacterPose 
 
 // ── Vật thể & keyframe ───────────────────────────────────────────────────────
 
-export type PrevizObjectKind = "character" | "box" | "cylinder" | "wall";
+export type PrevizObjectKind =
+  | "character"
+  | "box"
+  | "cylinder"
+  | "wall"
+  | "model";
 
 export interface PrevizKey {
   id: string;
@@ -80,6 +85,8 @@ export interface PrevizObject {
   id: string;
   kind: PrevizObjectKind;
   name: string;
+  /** Mã tài sản mô hình (chỉ kind "model" dùng) — trỏ vào thư viện tài sản. */
+  modelAssetId?: string;
   color: string;
   /** Kích thước cơ sở (mét) — nhân vật dùng chiều cao tổng. */
   size: number;
@@ -116,6 +123,7 @@ export function createPrevizObject(
     box: "#8a6d4b",
     cylinder: "#5b7a99",
     wall: "#4a4360",
+    model: "#9a8fb5",
   };
   return {
     id: newPrevizId("obj"),

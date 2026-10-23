@@ -21,6 +21,7 @@ import {
   type AnimAsset,
   type Character3DAsset,
   type ImageAsset,
+  type Model3DAsset,
   type ImageAssetCategory,
   type SceneryAsset,
 } from "../lib/animAssets";
@@ -29,7 +30,7 @@ import {
   listAnimAssets,
   saveAnimAsset,
 } from "../lib/animStorage";
-import { createPrevizScene } from "../lib/previz";
+import { createPrevizObject, createPrevizScene } from "../lib/previz";
 import { createSceneLayer, createSceneTimeline } from "../lib/timeline";
 
 export function AssetLibrary({
@@ -64,6 +65,39 @@ export function AssetLibrary({
     (a): a is SceneryAsset => a.kind === "scenery",
   );
   const images = assets.filter((a): a is ImageAsset => a.kind === "image");
+  const models = assets.filter(
+    (a): a is Model3DAsset => a.kind === "model3d",
+  );
+
+  const uploadModel = (file: File) => {
+    if (file.size > 20 * 1024 * 1024) {
+      setNote("Mô hình nặng hơn 20MB — hãy dùng bản rút gọn (low-poly) để phim chạy mượt.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      await saveAnimAsset({
+        kind: "model3d",
+        id: newAssetId("model"),
+        name: file.name.replace(/\.glb$/i, ""),
+        dataUrl: String(reader.result),
+        createdAt: Date.now(),
+      });
+      await refresh();
+      setNote(`Đã nạp mô hình "${file.name}" vào thư viện.`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const addModelToScene = (asset: Model3DAsset) => {
+    const obj = createPrevizObject("model", asset.name);
+    obj.modelAssetId = asset.id;
+    obj.size = 1.7;
+    onUpdateScene({
+      previz: { ...previz, objects: [...previz.objects, obj] },
+    });
+    setNote(`Đã thêm mô hình "${asset.name}" vào cảnh "${scene.name}" — kéo vị trí/đặt key như vật thể thường.`);
+  };
 
   const previz = scene.previz ?? createPrevizScene();
 
@@ -317,6 +351,55 @@ export function AssetLibrary({
                 Lưu cảnh hiện tại thành phong cảnh
               </button>
             </div>
+          </section>
+          <section className="space-y-2">
+            <h3 className="text-[12px] font-semibold text-white/60">
+              MÔ HÌNH 3D CÓ SẴN (FILE .GLB)
+            </h3>
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
+              <label className="px-3 h-9 leading-9 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 cursor-pointer">
+                Nạp mô hình .glb vào thư viện
+                <input
+                  type="file"
+                  accept=".glb,model/gltf-binary"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.currentTarget.files?.[0];
+                    e.currentTarget.value = "";
+                    if (file) uploadModel(file);
+                  }}
+                />
+              </label>
+              <span className="text-white/35">
+                Mô hình đẹp có sẵn miễn phí ở các kho như Kenney, Quaternius
+                (giấy phép CC0) — tải file .glb về rồi nạp vào đây.
+              </span>
+            </div>
+            {models.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {models.map((m) => (
+                  <span
+                    key={m.id}
+                    className="flex items-center gap-1 rounded-lg bg-violet-500/10 border border-violet-300/25 pl-3 pr-1 h-9"
+                  >
+                    <button
+                      onClick={() => addModelToScene(m)}
+                      className="flex items-center gap-2 text-[12px]"
+                    >
+                      {m.name}
+                      <Plus className="w-3 h-3 text-white/40" />
+                    </button>
+                    <button
+                      onClick={() => void removeAsset(m)}
+                      aria-label={`Xoá mô hình ${m.name}`}
+                      className="p-1.5 text-white/35 hover:text-rose-400"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </section>
         </>
       )}

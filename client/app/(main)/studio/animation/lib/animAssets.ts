@@ -52,7 +52,22 @@ export interface ImageAsset {
   createdAt: number;
 }
 
-export type AnimAsset = Character3DAsset | SceneryAsset | ImageAsset;
+/** Mô hình 3D có sẵn (file .glb) người dùng nạp vào — đẹp hơn hẳn hình
+ * nhân khối; dùng trong cảnh 3D như một vật thể bình thường. */
+export interface Model3DAsset {
+  kind: "model3d";
+  id: string;
+  name: string;
+  /** Toàn bộ file .glb dạng data URL (base64). */
+  dataUrl: string;
+  createdAt: number;
+}
+
+export type AnimAsset =
+  | Character3DAsset
+  | SceneryAsset
+  | ImageAsset
+  | Model3DAsset;
 
 let assetCounter = 0;
 export function newAssetId(prefix: string): string {

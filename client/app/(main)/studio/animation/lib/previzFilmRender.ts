@@ -20,6 +20,7 @@ import {
   type PrevizScene,
 } from "./previz";
 import { dialogueLineAt } from "./dialogue";
+import { loadModelForScene } from "./modelLoader";
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
@@ -109,7 +110,7 @@ function buildProp(
 export interface PrevizFilmRenderer {
   /** Canvas 2D tổng hợp (hình 3D + phụ đề) — nguồn cho captureStream. */
   canvas: HTMLCanvasElement;
-  loadScene: (scene: AnimScene) => void;
+  loadScene: (scene: AnimScene) => Promise<void>;
   drawAt: (scene: AnimScene, t: number) => void;
   dispose: () => void;
 }
@@ -145,14 +146,25 @@ export function createPrevizFilmRenderer(
   const characters = new Map<string, CharacterParts>();
   let current: PrevizScene = createPrevizScene();
 
-  const loadScene = (scene: AnimScene) => {
+  const loadScene = async (scene: AnimScene) => {
     current = scene.previz ?? createPrevizScene();
     threeScene.background = new THREE.Color(current.backdrop);
     for (const group of groups.values()) threeScene.remove(group);
     groups.clear();
     characters.clear();
     for (const obj of current.objects) {
-      if (obj.kind === "character") {
+      if (obj.kind === "model") {
+        const holder = new THREE.Group();
+        groups.set(obj.id, holder);
+        threeScene.add(holder);
+        if (obj.modelAssetId) {
+          try {
+            holder.add(await loadModelForScene(obj.modelAssetId));
+          } catch {
+            // Mô hình lỗi/không còn trong thư viện — bỏ qua vật thể này
+          }
+        }
+      } else if (obj.kind === "character") {
         const parts = buildCharacter(obj.color, obj.size);
         characters.set(obj.id, parts);
         groups.set(obj.id, parts.root);
@@ -177,6 +189,7 @@ export function createPrevizFilmRenderer(
         sampled.position.z,
       );
       group.rotation.y = rad(sampled.rotationY);
+      if (obj.kind === "model") group.scale.setScalar(obj.size);
       const parts = characters.get(obj.id);
       if (parts) {
         const pose = sampled.pose;

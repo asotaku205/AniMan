@@ -31,6 +31,7 @@ import {
 } from "../lib/previz";
 import { videoGenStatus } from "../lib/videoGen";
 import { newDialogueId, type DialogueLine } from "../lib/dialogue";
+import { loadModelForScene } from "../lib/modelLoader";
 import DialogueVoice from "./DialogueVoice";
 import { playSceneVoice } from "../lib/voicePreview";
 
@@ -235,7 +236,19 @@ export function PrevizEditor({
     for (const obj of previz.objects) {
       seen.add(obj.id);
       if (!ctx.groups.has(obj.id)) {
-        if (obj.kind === "character") {
+        if (obj.kind === "model") {
+          // Mô hình glTF: đặt nhóm giữ chỗ trước, nạp xong gắn vào sau
+          const holder = new THREE.Group();
+          ctx.groups.set(obj.id, holder);
+          ctx.scene.add(holder);
+          if (obj.modelAssetId) {
+            void loadModelForScene(obj.modelAssetId)
+              .then((loaded) => {
+                if (ctx.groups.get(obj.id) === holder) holder.add(loaded);
+              })
+              .catch(() => undefined);
+          }
+        } else if (obj.kind === "character") {
           const parts = buildCharacter(obj.color, obj.size);
           ctx.characters.set(obj.id, parts);
           ctx.groups.set(obj.id, parts.root);
@@ -280,6 +293,7 @@ export function PrevizEditor({
         }
         group.position.set(sampled.position.x, sampled.position.y, sampled.position.z);
         group.rotation.y = rad(sampled.rotationY);
+        if (obj.kind === "model") group.scale.setScalar(obj.size);
         const parts = ctx.characters.get(obj.id);
         if (parts) {
           const pose =
