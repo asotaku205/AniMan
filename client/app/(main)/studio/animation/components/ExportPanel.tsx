@@ -10,6 +10,7 @@ import {
 import { checkProjectForExport, hasExportErrors } from "../lib/exportCheck";
 import { drawSceneFrame } from "../lib/renderFrame";
 import { buildFilmAudioPlan, renderFilmAudioMix } from "../lib/filmAudio";
+import { createPrevizFilmRenderer } from "../lib/previzFilmRender";
 import {
   bgmBlobKey,
   deleteVoiceBlob,
@@ -19,9 +20,9 @@ import {
 /**
  * Kiểm tra & xuất bản toàn dự án:
  * - Kiểm tra luật cứng (lib/exportCheck) chạy tức thì, liệt kê lỗi/cảnh báo.
- * - Xuất WebM (dự án 2D): render từng cảnh bằng đúng hàm vẽ deterministic
- *   `drawSceneFrame`, ghi bằng MediaRecorder theo thời gian thực.
- * Dự án 3D xuất WebM theo từng cảnh ngay trong PrevizEditor. MP4 qua
+ * - Xuất WebM toàn phim (Slice B4/B5): 2D render bằng `drawSceneFrame`,
+ *   3D render bằng `createPrevizFilmRenderer` — cả hai đều ghi kèm bản
+ *   trộn tiếng (thoại + nhạc nền) vào cùng một file WebM. MP4 qua
  * WebCodecs là nâng cấp sau — WebM chạy được trên mọi trình duyệt demo.
  */
 export function ExportPanel({
@@ -153,6 +154,94 @@ export function ExportPanel({
               : ""
           }.`
         : "Đã xuất phim (chưa có tiếng — hãy thu giọng cho các dòng thoại để phim có tiếng).",
+    );
+    const blob = new Blob(chunks, { type: "video/webm" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${project.name.replace(/\s+/g, "-")}.webm`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
+
+  const exportWebM3D = async () => {
+    if (exporting || project.kind !== "3d") return;
+    setExporting(true);
+    cancelRef.current = false;
+    setDoneNote("");
+    setProgress("Đang trộn tiếng cho phim…");
+    const mix = await renderFilmAudioMix(project).catch(() => null);
+    const audioPlan = buildFilmAudioPlan(project);
+    const film = createPrevizFilmRenderer(960, 540);
+    let audioCtx: AudioContext | null = null;
+    let stream: MediaStream = film.canvas.captureStream(30);
+    if (mix) {
+      try {
+        audioCtx = new AudioContext();
+        const mixBuf = await audioCtx.decodeAudioData(
+          await mix.arrayBuffer(),
+        );
+        const src = audioCtx.createBufferSource();
+        src.buffer = mixBuf;
+        const dest = audioCtx.createMediaStreamDestination();
+        src.connect(dest);
+        stream = new MediaStream([
+          ...stream.getVideoTracks(),
+          ...dest.stream.getAudioTracks(),
+        ]);
+        queueMicrotask(() => {
+          try {
+            src.start();
+          } catch {
+            /* nguồn đã huỷ */
+          }
+        });
+      } catch {
+        audioCtx = null;
+        stream = film.canvas.captureStream(30);
+      }
+    }
+    const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+    const stopped = new Promise<void>((r) => {
+      recorder.onstop = () => r();
+    });
+    recorder.start(200);
+    for (let i = 0; i < project.scenes.length; i++) {
+      const scene = project.scenes[i];
+      if (cancelRef.current) break;
+      setProgress(
+        `Đang dựng cảnh ${i + 1}/${project.scenes.length}: ${scene.name}`,
+      );
+      film.loadScene(scene);
+      const sceneStart = performance.now();
+      await new Promise<void>((resolve) => {
+        const step = () => {
+          if (cancelRef.current) return resolve();
+          const t = (performance.now() - sceneStart) / 1000;
+          if (t >= scene.durationSec) return resolve();
+          film.drawAt(scene, t);
+          requestAnimationFrame(step);
+        };
+        step();
+      });
+    }
+    recorder.stop();
+    await stopped;
+    film.dispose();
+    if (audioCtx) void audioCtx.close().catch(() => undefined);
+    setProgress("");
+    setExporting(false);
+    if (cancelRef.current) return;
+    setDoneNote(
+      mix
+        ? `Đã xuất phim 3D hoàn chỉnh kèm tiếng: ${audioPlan.clips.length} dòng thoại có giọng${
+            project.bgm ? " + nhạc nền" : ""
+          }.`
+        : "Đã xuất phim 3D hoàn chỉnh (chưa có tiếng — hãy thu giọng cho các dòng thoại để phim có tiếng).",
     );
     const blob = new Blob(chunks, { type: "video/webm" });
     const url = URL.createObjectURL(blob);
@@ -317,11 +406,38 @@ export function ExportPanel({
           )}
         </div>
       ) : (
-        <p className="text-[12px] text-white/45 leading-relaxed">
-          Dự án 3D: xuất WebM theo từng cảnh ngay trong trình dựng cảnh 3D
-          (nút "Xuất WebM cảnh này"). Ghép các đoạn lại bằng trình dựng
-          video bất kỳ.
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => void exportWebM3D()}
+            disabled={exporting || errors}
+            className="flex items-center gap-1.5 px-4 h-10 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 text-sm font-medium hover:opacity-90 transition disabled:opacity-40"
+          >
+            <Download className="w-4 h-4" />
+            {exporting ? "Đang xuất…" : "Xuất WebM toàn phim"}
+          </button>
+          {exporting && (
+            <button
+              onClick={() => {
+                cancelRef.current = true;
+              }}
+              className="px-3 h-10 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-white/10"
+            >
+              Huỷ xuất
+            </button>
+          )}
+          {progress && (
+            <span className="text-[12px] text-white/50">{progress}</span>
+          )}
+          {errors && (
+            <span className="text-[12px] text-rose-300/80">
+              Sửa các lỗi đỏ ở trên trước khi xuất.
+            </span>
+          )}
+          <span className="text-[12px] text-white/35">
+            Toàn bộ các cảnh 3D được ghép thành một phim duy nhất kèm
+            tiếng. Vẫn có thể xuất riêng từng cảnh trong trình dựng cảnh 3D.
+          </span>
+        </div>
       )}
       <p className="text-[11px] text-white/30">
         Định dạng MP4 (WebCodecs) là nâng cấp dự kiến sau; WebM hiện tại phát

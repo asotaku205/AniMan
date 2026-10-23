@@ -1,0 +1,225 @@
+/**
+ * Dựng khung hình 3D cho XUẤT PHIM HOÀN CHỈNH (Slice B5): một renderer
+ * Three.js ẩn, nạp lần lượt từng cảnh của dự án, vẽ qua camera phim theo
+ * keyframe, rồi chép sang canvas 2D để chèn phụ đề (cùng kiểu chữ với
+ * bản xuất 2D) và ghi vào MediaRecorder.
+ *
+ * Hàm dựng hình nhân/đạo cụ sao theo đúng PrevizEditor (bản tham chiếu) —
+ * nếu sửa hình dáng ở editor, cần đồng bộ lại tại đây. Việc lấy mẫu vị
+ * trí/pose/camera dùng chung hàm thuần ở `lib/previz.ts` nên chuyển động
+ * khớp tuyệt đối giữa phát thử và xuất bản.
+ */
+
+import * as THREE from "three";
+import type { AnimScene } from "./animProject";
+import {
+  createPrevizScene,
+  samplePrevizCamera,
+  samplePrevizObject,
+  type PrevizObjectKind,
+  type PrevizScene,
+} from "./previz";
+import { dialogueLineAt } from "./dialogue";
+
+const rad = (deg: number) => (deg * Math.PI) / 180;
+
+interface CharacterParts {
+  root: THREE.Group;
+  armL: THREE.Group;
+  armR: THREE.Group;
+  legL: THREE.Group;
+  legR: THREE.Group;
+  head: THREE.Group;
+  torso: THREE.Group;
+}
+
+function buildCharacter(color: string, height: number): CharacterParts {
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
+  const dark = new THREE.MeshStandardMaterial({
+    color: "#2b2440",
+    roughness: 0.8,
+  });
+  const root = new THREE.Group();
+  const legLen = height * 0.47;
+  const torsoH = height * 0.32;
+
+  const mkLimb = (w: number, len: number) => {
+    const pivot = new THREE.Group();
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, len, w), mat);
+    mesh.position.y = -len / 2;
+    pivot.add(mesh);
+    return pivot;
+  };
+
+  const legL = mkLimb(0.11, legLen);
+  legL.position.set(-0.11, legLen, 0);
+  const legR = mkLimb(0.11, legLen);
+  legR.position.set(0.11, legLen, 0);
+
+  const torso = new THREE.Group();
+  torso.position.y = legLen;
+  const torsoMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.42, torsoH, 0.22),
+    mat,
+  );
+  torsoMesh.position.y = torsoH / 2;
+  torso.add(torsoMesh);
+
+  const armL = mkLimb(0.09, height * 0.36);
+  armL.position.set(-0.27, torsoH - 0.03, 0);
+  const armR = mkLimb(0.09, height * 0.36);
+  armR.position.set(0.27, torsoH - 0.03, 0);
+  torso.add(armL, armR);
+
+  const head = new THREE.Group();
+  head.position.y = torsoH + 0.05;
+  const headMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 20, 16),
+    dark,
+  );
+  headMesh.position.y = 0.13;
+  head.add(headMesh);
+  torso.add(head);
+
+  root.add(legL, legR, torso);
+  return { root, armL, armR, legL, legR, head, torso };
+}
+
+function buildProp(
+  kind: PrevizObjectKind,
+  color: string,
+  size: number,
+): THREE.Object3D {
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+  if (kind === "cylinder") {
+    return new THREE.Mesh(
+      new THREE.CylinderGeometry(size * 0.4, size * 0.4, size, 20),
+      mat,
+    );
+  }
+  if (kind === "wall") {
+    return new THREE.Mesh(
+      new THREE.BoxGeometry(size * 3, size * 2.2, 0.15),
+      mat,
+    );
+  }
+  return new THREE.Mesh(new THREE.BoxGeometry(size, size, size), mat);
+}
+
+export interface PrevizFilmRenderer {
+  /** Canvas 2D tổng hợp (hình 3D + phụ đề) — nguồn cho captureStream. */
+  canvas: HTMLCanvasElement;
+  loadScene: (scene: AnimScene) => void;
+  drawAt: (scene: AnimScene, t: number) => void;
+  dispose: () => void;
+}
+
+export function createPrevizFilmRenderer(
+  width = 960,
+  height = 540,
+): PrevizFilmRenderer {
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(width, height);
+  const threeScene = new THREE.Scene();
+  const shotCam = new THREE.PerspectiveCamera(45, width / height, 0.1, 200);
+
+  threeScene.add(new THREE.AmbientLight(0xffffff, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  sun.position.set(5, 9, 4);
+  threeScene.add(sun);
+  threeScene.add(new THREE.GridHelper(30, 30, 0x554477, 0x332a4d));
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(30, 30),
+    new THREE.MeshStandardMaterial({ color: "#1b1530", roughness: 1 }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.01;
+  threeScene.add(ground);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx2d = canvas.getContext("2d")!;
+
+  const groups = new Map<string, THREE.Object3D>();
+  const characters = new Map<string, CharacterParts>();
+  let current: PrevizScene = createPrevizScene();
+
+  const loadScene = (scene: AnimScene) => {
+    current = scene.previz ?? createPrevizScene();
+    threeScene.background = new THREE.Color(current.backdrop);
+    for (const group of groups.values()) threeScene.remove(group);
+    groups.clear();
+    characters.clear();
+    for (const obj of current.objects) {
+      if (obj.kind === "character") {
+        const parts = buildCharacter(obj.color, obj.size);
+        characters.set(obj.id, parts);
+        groups.set(obj.id, parts.root);
+        threeScene.add(parts.root);
+      } else {
+        const mesh = buildProp(obj.kind, obj.color, obj.size);
+        mesh.position.y = obj.kind === "wall" ? obj.size * 1.1 : obj.size / 2;
+        groups.set(obj.id, mesh);
+        threeScene.add(mesh);
+      }
+    }
+  };
+
+  const drawAt = (scene: AnimScene, t: number) => {
+    for (const obj of current.objects) {
+      const group = groups.get(obj.id);
+      if (!group) continue;
+      const sampled = samplePrevizObject(obj, t);
+      group.position.set(
+        sampled.position.x,
+        sampled.position.y,
+        sampled.position.z,
+      );
+      group.rotation.y = rad(sampled.rotationY);
+      const parts = characters.get(obj.id);
+      if (parts) {
+        const pose = sampled.pose;
+        parts.armL.rotation.x = rad(pose.armL);
+        parts.armR.rotation.x = rad(pose.armR);
+        parts.legL.rotation.x = rad(pose.legL);
+        parts.legR.rotation.x = rad(pose.legR);
+        parts.head.rotation.x = rad(pose.headTilt);
+        parts.torso.rotation.x = rad(pose.lean);
+        const bend = Math.min(
+          1,
+          Math.max(0, (pose.legL + pose.legR) / 2 / 90),
+        );
+        group.position.y = sampled.position.y - bend * obj.size * 0.26;
+      }
+    }
+    const cam = samplePrevizCamera(current.cameraKeys, t);
+    shotCam.position.set(cam.position.x, cam.position.y, cam.position.z);
+    shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
+    renderer.render(threeScene, shotCam);
+
+    ctx2d.drawImage(renderer.domElement, 0, 0, width, height);
+    const line = dialogueLineAt(scene.dialogue ?? [], t);
+    if (line && line.text.trim()) {
+      ctx2d.save();
+      ctx2d.font = `600 ${Math.round(height * 0.046)}px sans-serif`;
+      ctx2d.textAlign = "center";
+      ctx2d.lineWidth = 6;
+      ctx2d.strokeStyle = "rgba(0,0,0,0.85)";
+      ctx2d.fillStyle = "#ffffff";
+      const label = line.speaker ? `${line.speaker}: ${line.text}` : line.text;
+      ctx2d.strokeText(label, width / 2, height - height * 0.052);
+      ctx2d.fillText(label, width / 2, height - height * 0.052);
+      ctx2d.restore();
+    }
+  };
+
+  return {
+    canvas,
+    loadScene,
+    drawAt,
+    dispose: () => {
+      renderer.dispose();
+    },
+  };
+}
