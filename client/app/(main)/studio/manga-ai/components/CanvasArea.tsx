@@ -516,7 +516,7 @@ export function CanvasArea({
                   const selectCls =
                     "bg-white/10 border border-white/15 rounded-md text-[10px] text-white/90 px-1 py-0.5 max-w-[104px]";
                   return (
-                    <div className="pointer-events-auto absolute left-1/2 top-2 -translate-x-1/3 flex flex-wrap items-center gap-x-2 gap-y-1 bg-black/80 border border-white/10 rounded-xl px-2.5 py-1.5 backdrop-blur-md max-w-[92%]">
+                    <div className="pointer-events-auto absolute left-1/2 top-2 z-40 -translate-x-1/3 flex flex-wrap items-center gap-x-2 gap-y-1 bg-black/80 border border-white/10 rounded-xl px-2.5 py-1.5 backdrop-blur-md max-w-[92%]">
                       <select
                         aria-label="Font chữ"
                         className={selectCls}
@@ -545,6 +545,24 @@ export function CanvasArea({
                           </option>
                         ))}
                       </select>
+                      <label className="flex items-center gap-1 text-[9px] text-white/60">
+                        Cỡ
+                        <input
+                          type="range"
+                          min={0.012}
+                          max={0.3}
+                          step={0.002}
+                          value={sel.fontScale}
+                          onChange={(e) =>
+                            patchStyle({ fontScale: Number(e.currentTarget.value) }, false)
+                          }
+                          onPointerUp={() => onCommitTextItems?.()}
+                          className="w-16 accent-pink-500"
+                        />
+                        <span className="text-white/80 tabular-nums w-9">
+                          {Math.round(sel.fontScale * 1600)}px
+                        </span>
+                      </label>
                       <button
                         aria-label="Chữ nghiêng"
                         aria-pressed={sel.italic}
@@ -643,7 +661,7 @@ export function CanvasArea({
                   return (
                     <div
                       key={shape.id}
-                      className={`absolute pointer-events-auto ${
+                      className={`absolute pointer-events-auto z-10 ${
                         isSel
                           ? "outline outline-2 outline-dashed outline-sky-400/80"
                           : "outline outline-1 outline-transparent hover:outline-white/30"
@@ -706,7 +724,7 @@ export function CanvasArea({
                     <div
                       key={`${shape.id}-tail`}
                       aria-label="Kéo đuôi bóng"
-                      className="absolute pointer-events-auto w-4 h-4 -ml-2 -mt-2 rounded-full bg-emerald-400 border-2 border-white shadow cursor-crosshair z-10"
+                      className="absolute pointer-events-auto w-4 h-4 -ml-2 -mt-2 rounded-full bg-emerald-400 border-2 border-white shadow cursor-crosshair z-20"
                       style={{
                         left: `${shape.tail.x * 100}%`,
                         top: `${shape.tail.y * 100}%`,
@@ -725,7 +743,7 @@ export function CanvasArea({
                   return (
                     <div
                       key={item.id}
-                      className={`absolute pointer-events-auto ${
+                      className={`absolute pointer-events-auto z-30 ${
                         isSel
                           ? "outline outline-2 outline-dashed outline-pink-400/80"
                           : "outline outline-1 outline-transparent hover:outline-white/40"
