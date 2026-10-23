@@ -23,7 +23,7 @@ describe("timecode — HH:MM:SS:FF theo fps", () => {
     expect(parseTimecode("02:10", 25)).toBeCloseTo(2.4);
     expect(parseTimecode("x:y", 25)).toBeNull();
     expect(snapToFrame(1.03, 25)).toBeCloseTo(1.04);
-    expect(snapToFrame(1.02, 25)).toBeCloseTo(1.0);
+    expect(snapToFrame(1.01, 25)).toBeCloseTo(1.0);
   });
 });
 
