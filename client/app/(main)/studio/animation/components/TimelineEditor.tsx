@@ -299,9 +299,16 @@ export function TimelineEditor({
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
+    // Canvas hiển thị theo kiểu giữ tỉ lệ (object-contain): quy điểm chạm
+    // về vùng hình thật ở giữa, tránh lệch khi ô chứa không đúng 16:9.
+    const scale = Math.min(rect.width / STAGE_W, rect.height / STAGE_H);
+    const cw = STAGE_W * scale;
+    const ch = STAGE_H * scale;
+    const ox = rect.left + (rect.width - cw) / 2;
+    const oy = rect.top + (rect.height - ch) / 2;
     return {
-      x: (e.clientX - rect.left) / rect.width,
-      y: (e.clientY - rect.top) / rect.height,
+      x: (e.clientX - ox) / cw,
+      y: (e.clientY - oy) / ch,
     };
   };
 
@@ -715,19 +722,25 @@ export function TimelineEditor({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0">
-        <div className="min-w-0 min-h-0 overflow-y-auto pr-0.5">
-          <canvas
-            ref={canvasRef}
-            width={STAGE_W}
-            height={STAGE_H}
-            onPointerDown={onStagePointerDown}
-            onPointerMove={onStagePointerMove}
-            onPointerUp={onStagePointerUp}
-            className={`w-full aspect-video rounded-xl border border-white/10 bg-black touch-none ${
-              stageDragging ? "cursor-grabbing" : "cursor-grab"
-            }`}
-          />
-          <div className="mt-3 flex items-center gap-2">
+        <div className="min-w-0 min-h-0 flex flex-col overflow-hidden pr-0.5">
+          <div className="flex-1 min-h-0">
+            <canvas
+              ref={canvasRef}
+              width={STAGE_W}
+              height={STAGE_H}
+              onPointerDown={onStagePointerDown}
+              onPointerMove={onStagePointerMove}
+              onPointerUp={onStagePointerUp}
+              className={`w-full h-full object-contain rounded-xl border border-white/10 bg-black touch-none ${
+                stageDragging ? "cursor-grabbing" : "cursor-grab"
+              }`}
+            />
+          </div>
+          <p className="mt-2 shrink-0 text-[11px] leading-snug text-white/35">
+            Bấm thẳng vào layer trên khung để chọn · kéo để dời vị trí — xong
+            bấm "Đặt key" để ghi vào mốc thời gian hiện tại.
+          </p>
+          <div className="mt-2 shrink-0 flex items-center gap-2">
             <button
               onClick={() => setPlaying((v) => !v)}
               aria-label={playing ? "Dừng" : "Phát"}

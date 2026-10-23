@@ -273,11 +273,16 @@ export function PrevizEditor({
   const [timeSec, setTimeSec] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [viewMode, setViewMode] = useState<"orbit" | "shot">("orbit");
+  useEffect(() => {
+    if (safeFrameRef.current)
+      safeFrameRef.current.style.display = viewMode === "shot" ? "block" : "none";
+  }, [viewMode]);
   const [selectedId, setSelectedId] = useState<string | null>(
     previz.objects[0]?.id ?? null,
   );
   const [recording, setRecording] = useState(false);
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const safeFrameRef = useRef<HTMLDivElement | null>(null);
   const threeRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -392,6 +397,19 @@ export function PrevizEditor({
       renderer.setSize(w, h, false);
       orbitCam.aspect = w / h;
       orbitCam.updateProjectionMatrix();
+      shotCam.aspect = w / h;
+      shotCam.updateProjectionMatrix();
+      const sf = safeFrameRef.current;
+      if (sf) {
+        let tw = w;
+        let th = (w * 9) / 16;
+        if (th > h) {
+          th = h;
+          tw = (h * 16) / 9;
+        }
+        sf.style.width = `${tw}px`;
+        sf.style.height = `${th}px`;
+      }
     };
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
@@ -580,24 +598,6 @@ export function PrevizEditor({
       ctx.shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
       if (ctx.weatherPoints) updateWeatherPoints(ctx.weatherPoints, st.timeSec);
       ctx.controls.enabled = st.viewMode === "orbit";
-      // Góc qua camera phim: letterbox đúng tỉ lệ 16:9 trong ô chứa
-      {
-        const size = new THREE.Vector2();
-        ctx.renderer.getSize(size);
-        if (st.viewMode === "shot" && size.x > 0 && size.y > 0) {
-          const target = 16 / 9;
-          const ca = size.x / size.y;
-          let vw = size.x, vh = size.y, vx = 0, vy = 0;
-          if (ca > target) { vw = size.y * target; vx = (size.x - vw) / 2; }
-          else { vh = size.x / target; vy = (size.y - vh) / 2; }
-          ctx.renderer.setScissorTest(true);
-          ctx.renderer.setScissor(vx, vy, vw, vh);
-          ctx.renderer.setViewport(vx, vy, vw, vh);
-        } else {
-          ctx.renderer.setScissorTest(false);
-          ctx.renderer.setViewport(0, 0, size.x, size.y);
-        }
-      }
       ctx.renderer.render(
         ctx.scene,
         st.viewMode === "shot" ? ctx.shotCam : ctx.orbitCam,
@@ -750,17 +750,28 @@ export function PrevizEditor({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0">
-        <div className="min-w-0 min-h-0 flex flex-col">
-          <div
-            ref={mountRef}
-            className="w-full flex-1 min-h-[240px] rounded-xl border border-white/10 overflow-hidden bg-black [&>canvas]:w-full [&>canvas]:h-full"
-          />
-          <p className="mt-2 text-[11px] text-white/35">
-            Mẹo: ở góc nhìn tự do, bấm thẳng vào vật thể trên khung để chọn,
-            kéo để dời trên mặt đất — xong bấm "Đặt key" để ghi vị trí vào
-            mốc thời gian hiện tại. Kéo ở vùng trống để xoay camera.
+        <div className="min-w-0 min-h-0 flex flex-col overflow-hidden">
+          <div className="relative w-full flex-1 min-h-0">
+            <div
+              ref={mountRef}
+              className="absolute inset-0 rounded-xl border border-white/10 overflow-hidden bg-black [&>canvas]:w-full [&>canvas]:h-full"
+            />
+            <div
+              ref={safeFrameRef}
+              style={{ display: "none" }}
+              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border border-dashed border-white/40 rounded-[4px]"
+            >
+              <span className="absolute top-1 left-2 text-[10px] tracking-wide text-white/60">
+                KHUNG XUẤT 16:9
+              </span>
+            </div>
+          </div>
+          <p className="mt-2 shrink-0 text-[11px] leading-snug text-white/35">
+            Bấm vào vật thể để chọn · kéo để dời trên mặt đất · kéo vùng trống
+            để xoay camera — xong bấm "Đặt key". Nhân vật là hình nhân khớp
+            nối dùng để dựng cảnh và tạo dáng.
           </p>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 shrink-0 flex items-center gap-2">
             <button
               onClick={() => setPlaying((v) => !v)}
               aria-label={playing ? "Dừng" : "Phát"}
@@ -784,22 +795,6 @@ export function PrevizEditor({
               aria-label="Playhead"
               className="flex-1 accent-sky-500"
             />
-          </div>
-          <p className="mt-2 text-[11px] text-white/35">
-            Ở góc nhìn tự do: kéo ở vùng trống để xoay camera, bấm vào vật
-            thể để chọn và kéo để dời trên mặt đất. Nhân vật là hình nhân
-            khớp nối dùng để dựng cảnh và tạo dáng — không phải mô hình
-            hoàn thiện.
-          </p>
-          <div
-            className={`mt-2 rounded-xl border p-3 text-[12px] leading-relaxed ${
-              genStatus.connected
-                ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-                : "border-white/10 bg-white/[0.03] text-white/50"
-            }`}
-          >
-            <span className="font-medium text-white/75">Sinh video AI từ cảnh này: </span>
-            {genStatus.label}
           </div>
         </div>
 
@@ -1245,6 +1240,16 @@ export function PrevizEditor({
               )}
             </section>
           )}
+          <div
+            className={`mt-2 rounded-xl border p-3 text-[12px] leading-relaxed ${
+              genStatus.connected
+                ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                : "border-white/10 bg-white/[0.03] text-white/50"
+            }`}
+          >
+            <span className="font-medium text-white/75">Sinh video AI từ cảnh này: </span>
+            {genStatus.label}
+          </div>
         </div>
       </div>
 
