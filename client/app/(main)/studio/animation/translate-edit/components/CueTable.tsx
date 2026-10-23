@@ -38,7 +38,7 @@ export function CueTable({
   qcMaxCps?: number;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden">
+    <div className="rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur overflow-hidden shadow-[0_12px_32px_rgba(0,0,0,0.3)]">
       <div className="grid grid-cols-[52px_52px_44px_40px_minmax(0,1fr)] gap-x-2 px-2.5 py-1.5 text-[10px] font-semibold tracking-wide text-white/40 border-b border-white/[0.07]">
         <span>IN</span>
         <span>OUT</span>
@@ -56,7 +56,7 @@ export function CueTable({
             <button
               key={cue.id}
               onClick={() => onSelect(cue)}
-              className={`w-full grid grid-cols-[52px_52px_44px_40px_minmax(0,1fr)] gap-x-2 px-2.5 py-1.5 text-left text-[11px] border-b border-white/[0.04] transition ${
+              className={`w-full grid grid-cols-[52px_52px_44px_40px_minmax(0,1fr)] gap-x-2 px-3 py-2 text-left text-[11px] border-b border-white/[0.04] transition-all duration-150 ${
                 cue.id === selectedCueId
                   ? "bg-fuchsia-500/[0.16]"
                   : active

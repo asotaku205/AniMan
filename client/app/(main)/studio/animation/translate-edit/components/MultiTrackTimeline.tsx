@@ -74,7 +74,7 @@ export function MultiTrackTimeline({
   for (let t = 0; t <= total; t += tickEvery) ticks.push(t);
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/40 p-2.5 space-y-1.5">
+    <div className="rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur p-3 space-y-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.3)]">
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-white/40 tabular-nums">
           {fps ? formatTimecode(currentTimeSec, fps) : `${currentTimeSec.toFixed(1)}s`}

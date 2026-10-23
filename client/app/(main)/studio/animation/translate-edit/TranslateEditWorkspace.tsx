@@ -568,10 +568,10 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
   const tabBtn = (id: typeof tab, icon: React.ReactNode, label: string) => (
     <button
       onClick={() => setTab(id)}
-      className={`flex items-center gap-2 px-4 h-10 rounded-xl text-[13px] font-medium border transition ${
+      className={`flex items-center gap-2 px-4 h-9 rounded-full text-[13px] font-semibold transition-all duration-200 ${
         tab === id
-          ? "bg-fuchsia-500/25 border-fuchsia-400/50 text-white"
-          : "bg-white/[0.03] border-white/10 text-white/55 hover:bg-white/[0.08]"
+          ? "bg-gradient-to-r from-fuchsia-500 to-pink-400 text-white shadow-[0_6px_18px_rgba(217,70,239,0.45)]"
+          : "text-white/55 hover:text-white hover:bg-white/[0.07]"
       }`}
     >
       {icon} {label}
@@ -596,8 +596,10 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="relative space-y-5">
+      <div aria-hidden className="pointer-events-none absolute -top-20 left-1/3 w-[520px] h-[300px] rounded-full bg-fuchsia-600/[0.13] blur-[110px]" />
+      <div aria-hidden className="pointer-events-none absolute top-40 -left-24 w-[380px] h-[280px] rounded-full bg-pink-500/[0.08] blur-[110px]" />
+      <div className="relative flex flex-wrap items-center gap-3">
         <Link
           href="/studio/animation/translate-edit"
           className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition"
@@ -609,7 +611,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
           {seasonTitle ? ` › ${seasonTitle}` : ""} › Tập {episode.number}
         </span>
         <span
-          className={`text-[11px] ml-auto ${
+          className={`text-[11px] ml-auto px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.04] backdrop-blur ${
             saveState.kind === "error"
               ? "text-rose-300 font-medium"
               : saveState.kind === "saved"
@@ -650,7 +652,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             onBlur={(e) => void patchEpisode({ title: e.currentTarget.value })}
             placeholder="Tên tập…"
             aria-label="Tên tập"
-            className="w-full bg-transparent text-2xl font-semibold outline-none border-b border-transparent focus:border-fuchsia-400/50 pb-1 placeholder:text-white/25"
+            className="w-full bg-transparent text-[26px] font-bold tracking-tight outline-none border-b border-transparent focus:border-fuchsia-400/50 pb-1 placeholder:text-white/25"
           />
           <p className="text-[12px] text-white/40 mt-1 leading-relaxed">
             Video chạy ngay trên máy của bạn — không tải lên server.
@@ -742,7 +744,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         </div>
 
         <div className="space-y-3 order-1 xl:order-2">
-      <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-black aspect-video">
+      <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-black aspect-video shadow-[0_20px_50px_rgba(0,0,0,0.5),0_10px_36px_rgba(217,70,239,0.14)]">
         {videoUrl ? (
           <>
             <video
@@ -791,7 +793,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
       </div>
 
           {/* Thanh transport: timecode + fps + spotting I/O + tách/gộp + undo */}
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur px-3 py-2">
             <span className="text-[13px] font-mono tabular-nums text-emerald-300">
               {formatTimecode(currentTime, fps)}
             </span>
@@ -867,13 +869,13 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         </div>
 
         <div className="space-y-3 order-3">
-      <div className="flex flex-wrap gap-2">
+      <div className="inline-flex flex-wrap gap-1 rounded-full border border-white/10 bg-white/[0.05] backdrop-blur p-1">
         {tabBtn("sub", <Subtitles className="w-4 h-4" />, "Phụ đề")}
         {tabBtn("translate", <Languages className="w-4 h-4" />, "Dịch")}
         {tabBtn("dub", <Mic className="w-4 h-4" />, "Lồng tiếng")}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-4">
+      <div className="rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
         {tab === "sub" &&
           (selectedCue ? (
             <CueInspector

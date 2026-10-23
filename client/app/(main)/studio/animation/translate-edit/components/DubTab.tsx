@@ -222,7 +222,7 @@ export function DubTab({
           return (
             <div
               key={cue.id}
-              className="rounded-xl border border-white/[0.08] bg-black/30 p-3 space-y-2"
+              className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur p-3 space-y-2 transition-all duration-200 hover:border-fuchsia-400/30"
             >
               <button
                 onClick={() => onSeek(cue.startSec, cue.id)}

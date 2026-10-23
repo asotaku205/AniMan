@@ -352,3 +352,15 @@ body {
     radial-gradient(ellipse 900px 500px at 90% 110%, rgba(212,166,72,0.06), transparent 60%);
   background-attachment: fixed;
 }
+
+/* ── Studio dịch & lồng tiếng — hiệu ứng hướng B (2026-10-23) ── */
+@keyframes stepFill {
+  from { width: 12%; }
+  to   { width: 88%; }
+}
+.anim-fade-up {
+  animation: fadeInUp 0.55s cubic-bezier(0.22, 0.8, 0.3, 1) both;
+}
+.step-doing-fill {
+  animation: stepFill 2.2s ease-in-out infinite alternate;
+}

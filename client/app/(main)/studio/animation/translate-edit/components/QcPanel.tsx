@@ -54,7 +54,7 @@ export function QcPanel({
 
   return (
     <div
-      className={`rounded-2xl border p-4 space-y-3 ${
+      className={`rounded-3xl border p-4 space-y-3 backdrop-blur-xl ${
         passed
           ? "border-emerald-400/25 bg-emerald-500/[0.05]"
           : "border-amber-400/25 bg-[#0d0817]"

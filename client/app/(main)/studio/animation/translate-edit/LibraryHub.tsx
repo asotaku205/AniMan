@@ -101,12 +101,14 @@ export function LibraryHub() {
   };
 
   return (
-    <div className="space-y-8">
-      <div>
+    <div className="relative space-y-8">
+      <div aria-hidden className="pointer-events-none absolute -top-24 -left-24 w-[480px] h-[320px] rounded-full bg-fuchsia-600/15 blur-[110px]" />
+      <div aria-hidden className="pointer-events-none absolute top-10 -right-24 w-[420px] h-[300px] rounded-full bg-pink-500/10 blur-[110px]" />
+      <div className="relative">
         <div className="flex items-center gap-2 text-[11px] tracking-[0.3em] text-fuchsia-300/70">
           <BookOpen className="w-3.5 h-3.5" /> THƯ VIỆN STUDIO
         </div>
-        <h1 className="text-2xl font-semibold mt-1">Dịch & lồng tiếng — thư viện series</h1>
+        <h1 className="text-[28px] font-bold tracking-tight mt-1.5 bg-gradient-to-r from-fuchsia-300 via-pink-200 to-rose-200 bg-clip-text text-transparent">Dịch & lồng tiếng — thư viện series</h1>
         <p className="text-sm text-white/50 mt-1 max-w-2xl leading-relaxed">
           Quản lý theo cây Series → Mùa → Tập như studio localization chuyên
           nghiệp. Mỗi series có glossary và dàn nhân vật riêng dùng chung cho
@@ -134,11 +136,11 @@ export function LibraryHub() {
           value={newSeriesTitle}
           onChange={(e) => setNewSeriesTitle(e.currentTarget.value)}
           placeholder="Tên series mới — VD: BokuYaba bản lồng tiếng…"
-          className="flex-1 h-11 rounded-xl bg-black/40 border border-white/10 px-3 text-sm outline-none focus:border-fuchsia-400/60"
+          className="flex-1 h-11 rounded-2xl bg-white/[0.04] backdrop-blur border border-white/10 px-3.5 text-sm outline-none focus:border-fuchsia-400/60 transition"
         />
         <button
           onClick={() => void addSeries()}
-          className="flex items-center gap-2 px-4 h-11 rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-400 text-sm font-medium hover:opacity-90 transition"
+          className="flex items-center gap-2 px-4 h-11 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-pink-400 text-sm font-semibold shadow-[0_8px_26px_rgba(217,70,239,0.4)] hover:shadow-[0_12px_32px_rgba(217,70,239,0.55)] hover:-translate-y-0.5 transition-all"
         >
           <Plus className="w-4 h-4" /> Tạo series
         </button>
@@ -159,7 +161,7 @@ export function LibraryHub() {
         trees.map(({ series, seasons }) => (
           <section
             key={series.id}
-            className="rounded-2xl border border-white/10 bg-[#0d0817] p-5 space-y-4"
+            className="relative rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur p-5 space-y-4 shadow-[0_16px_44px_rgba(0,0,0,0.35)]"
           >
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-lg font-semibold flex-1 min-w-[180px]">{series.title}</h2>
@@ -202,7 +204,7 @@ export function LibraryHub() {
             )}
 
             {!series.useSeasons && (
-              <div className="rounded-xl border border-white/[0.07] bg-black/25 p-3.5 space-y-2">
+              <div className="rounded-3xl border border-white/[0.07] bg-black/25 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-[13px] font-semibold text-white/75">Danh sách tập</h3>
                   <button
@@ -218,6 +220,7 @@ export function LibraryHub() {
                     + Thêm tập
                   </button>
                 </div>
+                <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                 {seasons.flatMap((x) => x.episodes).map(({ episode, progress, totalCues }) => (
                   <EpisodeRow
                     key={episode.id}
@@ -230,6 +233,7 @@ export function LibraryHub() {
                     }}
                   />
                 ))}
+                </div>
                 {seasons.every((x) => x.episodes.length === 0) && (
                   <p className="text-[12px] text-white/30">Chưa có tập nào.</p>
                 )}
@@ -237,7 +241,7 @@ export function LibraryHub() {
             )}
 
             {series.useSeasons && seasons.map(({ season, episodes }) => (
-              <div key={season.id} className="rounded-xl border border-white/[0.07] bg-black/25 p-3.5 space-y-2">
+              <div key={season.id} className="rounded-3xl border border-white/[0.07] bg-black/25 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-[13px] font-semibold text-white/75">
                     {season.title}
@@ -256,56 +260,20 @@ export function LibraryHub() {
                     + Thêm tập
                   </button>
                 </div>
+                <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                 {episodes.map(({ episode, progress, totalCues }) => (
-                  <div
+                  <EpisodeRow
                     key={episode.id}
-                    className="flex flex-wrap items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5"
-                  >
-                    <span className="w-9 h-9 rounded-lg bg-fuchsia-500/15 text-fuchsia-200 grid place-items-center text-[13px] font-bold">
-                      {episode.number}
-                    </span>
-                    <div className="flex-1 min-w-[160px]">
-                      <div className="text-[13px] font-medium">{episode.title}</div>
-                      <div className="text-[11px] text-white/35">
-                        {totalCues} cue
-                        {episode.videoName ? ` · Video: ${episode.videoName}` : " · Chưa chọn video"}
-                      </div>
-                    </div>
-                    <div className="w-32">
-                      <div className="h-1.5 rounded bg-white/10 overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-fuchsia-500 to-pink-400"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                      <div className="text-[10px] text-white/35 mt-0.5">{progress}% có bản dịch</div>
-                    </div>
-                    <select
-                      value={episode.status}
-                      onChange={async (e) => {
-                        await saveEpisode({
-                          ...episode,
-                          status: e.currentTarget.value as Episode["status"],
-                        });
-                        await refresh();
-                      }}
-                      aria-label="Trạng thái tập"
-                      className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none"
-                    >
-                      {EPISODE_STATUS_OPTIONS.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    <Link
-                      href={`/studio/animation/translate-edit/episode/${episode.id}`}
-                      className="flex items-center gap-1 px-3 h-9 rounded-lg bg-fuchsia-500/25 border border-fuchsia-400/40 text-[12px] font-medium hover:bg-fuchsia-500/35"
-                    >
-                      Mở biên tập <ChevronRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
+                    episode={episode}
+                    progress={progress}
+                    totalCues={totalCues}
+                    onStatusChange={async (status) => {
+                      await saveEpisode({ ...episode, status });
+                      await refresh();
+                    }}
+                  />
                 ))}
+                </div>
                 {episodes.length === 0 && (
                   <p className="text-[12px] text-white/30">Chưa có tập nào trong mùa này.</p>
                 )}
@@ -316,6 +284,38 @@ export function LibraryHub() {
       )}
     </div>
   );
+}
+
+const EPISODE_POSTERS = [
+  "from-fuchsia-600 via-pink-500 to-rose-400",
+  "from-violet-600 via-fuchsia-500 to-pink-400",
+  "from-pink-600 via-rose-500 to-fuchsia-400",
+  "from-purple-700 via-violet-500 to-fuchsia-400",
+];
+
+/** 4 bước quy trình studio: Dịch → Lồng tiếng → QC → Xuất. */
+function stepStates(
+  status: Episode["status"],
+): Array<"done" | "doing" | "todo"> {
+  switch (status) {
+    case "translating":
+      return ["doing", "todo", "todo", "todo"];
+    case "dubbing":
+      return ["done", "doing", "todo", "todo"];
+    case "qc":
+      return ["done", "done", "done", "todo"];
+    case "exported":
+      return ["done", "done", "done", "done"];
+    default:
+      return ["todo", "todo", "todo", "todo"];
+  }
+}
+
+function fmtDur(sec: number): string {
+  if (!sec) return "--:--";
+  const m = Math.floor(sec / 60);
+  const s2 = Math.floor(sec % 60);
+  return `${String(m).padStart(2, "0")}:${String(s2).padStart(2, "0")}`;
 }
 
 function EpisodeRow({
@@ -329,46 +329,61 @@ function EpisodeRow({
   totalCues: number;
   onStatusChange: (status: Episode["status"]) => void;
 }) {
+  const poster = EPISODE_POSTERS[episode.number % EPISODE_POSTERS.length];
+  const steps = stepStates(episode.status);
+  const statusLabel =
+    EPISODE_STATUS_OPTIONS.find((o) => o.id === episode.status)?.label ?? "";
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
-      <span className="w-9 h-9 rounded-lg bg-fuchsia-500/15 text-fuchsia-200 grid place-items-center text-[13px] font-bold">
-        {episode.number}
-      </span>
-      <div className="flex-1 min-w-[160px]">
-        <div className="text-[13px] font-medium">{episode.title}</div>
-        <div className="text-[11px] text-white/35">
-          {totalCues} cue
-          {episode.videoName ? ` · Video: ${episode.videoName}` : " · Chưa chọn video"}
+    <article className="anim-fade-up group rounded-3xl overflow-hidden border border-white/10 bg-white/[0.04] backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-fuchsia-400/50 hover:shadow-[0_18px_38px_rgba(0,0,0,0.5),0_10px_30px_rgba(217,70,239,0.22)]">
+      <div className={`relative h-24 bg-gradient-to-br ${poster}`}>
+        <span className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
+        <span className="absolute left-3.5 bottom-2.5 font-bold text-[13px] drop-shadow">
+          Tập {episode.number}
+        </span>
+        <span className="absolute right-3 bottom-2.5 text-[11px] font-mono tabular-nums bg-black/50 px-2 py-0.5 rounded-full">
+          {fmtDur(episode.durationSec)}
+        </span>
+      </div>
+      <div className="p-4">
+        <div className="font-semibold text-[14.5px] leading-snug">{episode.title}</div>
+        <div className="text-[11.5px] text-white/40 mt-1">
+          {totalCues} cue · {progress}% có bản dịch
+          {episode.videoName ? ` · ${episode.videoName}` : " · Chưa chọn video"}
+        </div>
+        <div className="flex gap-1.5 mt-3" title="Dịch → Lồng tiếng → QC → Xuất">
+          {steps.map((st, i) => (
+            <span key={i} className="flex-1 h-[5px] rounded-full bg-white/10 overflow-hidden relative">
+              {st === "done" && (
+                <span className="absolute inset-0 bg-gradient-to-r from-fuchsia-500 to-pink-400" />
+              )}
+              {st === "doing" && (
+                <span className="step-doing-fill absolute inset-y-0 left-0 bg-gradient-to-r from-fuchsia-500 to-pink-400" />
+              )}
+            </span>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 mt-3.5">
+          <select
+            value={episode.status}
+            onChange={(e) => onStatusChange(e.currentTarget.value as Episode["status"])}
+            aria-label={`Trạng thái tập — hiện: ${statusLabel}`}
+            className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[11.5px] outline-none"
+          >
+            {EPISODE_STATUS_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <Link
+            href={`/studio/animation/translate-edit/episode/${episode.id}`}
+            className="ml-auto flex items-center gap-1 px-3.5 h-9 rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-400 text-[12px] font-semibold shadow-[0_6px_18px_rgba(217,70,239,0.35)] hover:shadow-[0_10px_24px_rgba(217,70,239,0.5)] transition-all"
+          >
+            Mở biên tập <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
       </div>
-      <div className="w-32">
-        <div className="h-1.5 rounded bg-white/10 overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-fuchsia-500 to-pink-400"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <div className="text-[10px] text-white/35 mt-0.5">{progress}% có bản dịch</div>
-      </div>
-      <select
-        value={episode.status}
-        onChange={(e) => onStatusChange(e.currentTarget.value as Episode["status"])}
-        aria-label="Trạng thái tập"
-        className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none"
-      >
-        {EPISODE_STATUS_OPTIONS.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <Link
-        href={`/studio/animation/translate-edit/episode/${episode.id}`}
-        className="flex items-center gap-1 px-3 h-9 rounded-lg bg-fuchsia-500/25 border border-fuchsia-400/40 text-[12px] font-medium hover:bg-fuchsia-500/35"
-      >
-        Mở biên tập <ChevronRight className="w-3.5 h-3.5" />
-      </Link>
-    </div>
+    </article>
   );
 }
 

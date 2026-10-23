@@ -249,7 +249,7 @@ export function TranslateTab({
           return (
             <div
               key={cue.id}
-              className="rounded-xl border border-white/[0.07] bg-black/30 px-3 py-2 space-y-1"
+              className="rounded-2xl border border-white/[0.07] bg-white/[0.03] backdrop-blur px-3 py-2 space-y-1 transition-all duration-200 hover:border-fuchsia-400/30"
             >
               <div className="text-[12px] leading-relaxed">
                 <span className="text-white/35 mr-1.5 tabular-nums">
