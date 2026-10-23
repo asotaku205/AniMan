@@ -220,7 +220,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           project.scenes[0] ??
           null;
         return (
-          <div className="rounded-2xl border border-white/10 bg-[#0a0614] overflow-hidden flex h-[calc(100dvh-130px)] min-h-[620px]">
+          <div className="rounded-2xl border border-white/10 bg-[#0a0614] overflow-hidden flex h-[calc(100dvh-88px)] min-h-[620px]">
             <aside className="w-[248px] flex-none border-r border-white/10 flex flex-col min-h-0">
               <div className="flex gap-1 p-2 pb-0">
                 {(

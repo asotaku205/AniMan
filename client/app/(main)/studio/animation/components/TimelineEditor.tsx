@@ -78,7 +78,8 @@ function newKeyId(prefix: string): string {
  */
 /** Dải timeline đa track ở đáy editor (bố cục R1): camera, từng layer và
  * thoại trên cùng một trục thời gian — bấm vào dải để tua, bấm tên layer
- * để chọn, thoi vàng là mốc key. */
+ * để chọn, thoi vàng là mốc key. Dải được giới hạn chiều cao và cuộn nội
+ * bộ để sân khấu luôn cao tối đa. */
 function TimelineStrip({
   timeline,
   dialogue,
@@ -125,94 +126,94 @@ function TimelineStrip({
           {timeSec.toFixed(2)}s / {duration.toFixed(1)}s
         </span>
       </div>
-      <div className="grid grid-cols-[104px_minmax(0,1fr)]">
-        <div>
-          <div className="h-5" />
-          {rows.map((r) => (
-            <button
-              key={r.id}
-              onClick={r.onClick}
-              className={`h-6 w-full flex items-center gap-1.5 px-1.5 text-[11px] truncate text-left rounded ${
-                r.id === selectedLayerId
-                  ? "bg-pink-500/15 text-white"
-                  : "text-white/55 hover:text-white"
-              }`}
-            >
-              <span
-                className="w-2 h-2 rounded-full flex-none"
-                style={{ background: r.color }}
-              />
-              <span className="truncate">{r.label}</span>
-            </button>
-          ))}
-        </div>
-        <div className="relative" onPointerDown={seekFromEvent}>
-          <div className="h-5 relative border-b border-white/10 cursor-pointer">
-            {ticks.map((t) => (
-              <span
-                key={t}
-                className="absolute top-0.5 text-[9px] text-white/40"
-                style={{ left: pct(t) }}
+      <div className="max-h-[172px] overflow-y-auto">
+        <div className="grid grid-cols-[104px_minmax(0,1fr)]">
+          <div>
+            <div className="h-4 sticky top-0 bg-[#0a0614] z-10" />
+            {rows.map((r) => (
+              <button
+                key={r.id}
+                onClick={r.onClick}
+                className={`h-5 w-full flex items-center gap-1.5 px-1.5 text-[11px] truncate text-left rounded ${
+                  r.id === selectedLayerId
+                    ? "bg-pink-500/15 text-white"
+                    : "text-white/55 hover:text-white"
+                }`}
               >
-                {t.toFixed(0)}s
-              </span>
+                <span
+                  className="w-2 h-2 rounded-full flex-none"
+                  style={{ background: r.color }}
+                />
+                <span className="truncate">{r.label}</span>
+              </button>
             ))}
           </div>
-          {rows.map((r) => (
-            <div
-              key={r.id}
-              className="h-6 relative border-b border-white/5 cursor-pointer"
-            >
-              {r.id === "camera" &&
-                sortKeys(timeline.cameraKeys).map((k) => (
-                  <span
-                    key={k.id}
-                    title={`Key camera tại ${k.timeSec.toFixed(2)}s`}
-                    className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 bg-sky-400"
-                    style={{ left: `calc(${pct(k.timeSec)} - 5px)` }}
-                  />
-                ))}
-              {r.id !== "camera" &&
-                r.id !== "dialogue" &&
-                (() => {
-                  const layer = timeline.layers.find((l) => l.id === r.id);
-                  if (!layer) return null;
-                  return (
-                    <>
-                      <span
-                        className="absolute top-[3px] bottom-[3px] left-0 right-0 rounded bg-violet-500/25 border border-violet-400/30"
-                      />
-                      {sortKeys(layer.keys).map((k) => (
-                        <span
-                          key={k.id}
-                          title={`Key tại ${k.timeSec.toFixed(2)}s`}
-                          className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 bg-amber-400"
-                          style={{ left: `calc(${pct(k.timeSec)} - 5px)` }}
-                        />
-                      ))}
-                    </>
-                  );
-                })()}
-              {r.id === "dialogue" &&
-                dialogue.map((line) => (
-                  <span
-                    key={line.id}
-                    title={`${line.speaker}: ${line.text}`}
-                    className="absolute top-[3px] bottom-[3px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[16px]"
-                    style={{
-                      left: pct(line.startSec),
-                      width: `${Math.max(2, (line.durationSec / duration) * 100)}%`,
-                    }}
-                  >
-                    {line.speaker}
-                  </span>
-                ))}
+          <div className="relative" onPointerDown={seekFromEvent}>
+            <div className="h-4 relative border-b border-white/10 cursor-pointer sticky top-0 bg-[#0a0614] z-10">
+              {ticks.map((t) => (
+                <span
+                  key={t}
+                  className="absolute top-0 text-[9px] text-white/40"
+                  style={{ left: pct(t) }}
+                >
+                  {t.toFixed(0)}s
+                </span>
+              ))}
             </div>
-          ))}
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-rose-500 pointer-events-none"
-            style={{ left: pct(timeSec) }}
-          />
+            {rows.map((r) => (
+              <div
+                key={r.id}
+                className="h-5 relative border-b border-white/5 cursor-pointer"
+              >
+                {r.id === "camera" &&
+                  sortKeys(timeline.cameraKeys).map((k) => (
+                    <span
+                      key={k.id}
+                      title={`Key camera tại ${k.timeSec.toFixed(2)}s`}
+                      className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-sky-400"
+                      style={{ left: `calc(${pct(k.timeSec)} - 4px)` }}
+                    />
+                  ))}
+                {r.id !== "camera" &&
+                  r.id !== "dialogue" &&
+                  (() => {
+                    const layer = timeline.layers.find((l) => l.id === r.id);
+                    if (!layer) return null;
+                    return (
+                      <>
+                        <span className="absolute top-[2px] bottom-[2px] left-0 right-0 rounded bg-violet-500/25 border border-violet-400/30" />
+                        {sortKeys(layer.keys).map((k) => (
+                          <span
+                            key={k.id}
+                            title={`Key tại ${k.timeSec.toFixed(2)}s`}
+                            className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-amber-400"
+                            style={{ left: `calc(${pct(k.timeSec)} - 4px)` }}
+                          />
+                        ))}
+                      </>
+                    );
+                  })()}
+                {r.id === "dialogue" &&
+                  dialogue.map((line) => (
+                    <span
+                      key={line.id}
+                      title={`${line.speaker}: ${line.text}`}
+                      className="absolute top-[2px] bottom-[2px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[13px]"
+                      style={{
+                        left: pct(line.startSec),
+                        width: `${Math.max(2, (line.durationSec / duration) * 100)}%`,
+                      }}
+                    >
+                      {line.speaker}
+                    </span>
+                  ))}
+              </div>
+            ))}
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-rose-500 pointer-events-none"
+              style={{ left: pct(timeSec) }}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -723,7 +724,10 @@ export function TimelineEditor({
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0">
         <div className="min-w-0 min-h-0 flex flex-col overflow-hidden pr-0.5">
-          <div className="flex-1 min-h-0">
+          <div className="relative flex-1 min-h-0">
+            <span className="pointer-events-none absolute left-2 top-2 z-10 rounded-md bg-black/55 px-2 py-1 text-[10.5px] text-white/70">
+              Bấm layer để chọn · kéo để dời vị trí · xong bấm "Đặt key"
+            </span>
             <canvas
               ref={canvasRef}
               width={STAGE_W}
@@ -736,10 +740,6 @@ export function TimelineEditor({
               }`}
             />
           </div>
-          <p className="mt-2 shrink-0 text-[11px] leading-snug text-white/35">
-            Bấm thẳng vào layer trên khung để chọn · kéo để dời vị trí — xong
-            bấm "Đặt key" để ghi vào mốc thời gian hiện tại.
-          </p>
           <div className="mt-2 shrink-0 flex items-center gap-2">
             <button
               onClick={() => setPlaying((v) => !v)}
@@ -798,7 +798,7 @@ export function TimelineEditor({
               <span
                 key={k.id}
                 title={`Key camera tại ${k.timeSec.toFixed(2)}s`}
-                className="absolute bottom-0 w-2.5 h-2.5 rotate-45 bg-sky-400"
+                className="absolute bottom-0 w-2 h-2 rotate-45 bg-sky-400"
                 style={{ left: `calc(${(k.timeSec / duration) * 100}% - 5px)` }}
               />
             ))}
