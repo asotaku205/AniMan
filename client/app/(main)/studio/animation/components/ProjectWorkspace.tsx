@@ -25,6 +25,7 @@ import { getAnimProject, saveAnimProject } from "../lib/animStorage";
 import { AnimaticPlayer } from "./AnimaticPlayer";
 import { TimelineEditor } from "./TimelineEditor";
 import { PrevizEditor } from "./PrevizEditor";
+import { ExportPanel } from "./ExportPanel";
 import { loadMangaPanels } from "../lib/mangaImport";
 import { buildDialogueTrack } from "../lib/dialogue";
 import { createSceneLayer } from "../lib/timeline";
@@ -376,6 +377,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             : "Bước tiếp theo trên chính bảng cảnh này: dựng previz 3D cho từng cảnh (nhân vật, phong cảnh, camera theo mốc thời gian) rồi xuất đoạn phim."}
         </p>
       </div>
+
+      <ExportPanel project={project} />
     </div>
   );
 }
