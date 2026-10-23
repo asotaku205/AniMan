@@ -42,6 +42,16 @@ export interface AnimScene {
   /** Vệt vẽ tay trên khung hình (R3, chỉ 2D): nét vẽ xuất hiện dần theo
    * thời gian — vệt sáng phép thuật, đường bay, gạch nhấn tự vẽ. */
   strokes?: import("./strokes").SceneStroke[];
+  /** Trạng thái sản xuất của cảnh (R5 — theo dõi kiểu bảng phân cảnh
+   * chuyên nghiệp rút gọn): chưa làm/đang làm/chờ duyệt/hoàn thành. */
+  status?: import("./storyboard").SceneStatus;
+  /** Loại cú máy dự kiến của cảnh (R5): Toàn cảnh, Trung cảnh... */
+  shotType?: string;
+  /** Ghi chú cho người quay/dựng về camera (R5): chuyển động máy, góc... */
+  cameraNote?: string;
+  /** Hình phác phân cảnh vẽ tay của cảnh (R5) — khung tranh ý tưởng
+   * trước khi dựng thật; null/chưa có nghĩa là chưa phác. */
+  boardDataUrl?: string | null;
 }
 
 /**

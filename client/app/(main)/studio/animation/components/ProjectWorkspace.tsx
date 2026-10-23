@@ -6,9 +6,11 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  Camera,
   ChevronLeft,
   ChevronRight,
   Copy,
+  Paintbrush,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -22,9 +24,20 @@ import {
   removeScene,
   updateScene,
   type AnimProject,
+  type AnimScene,
 } from "../lib/animProject";
 import { getAnimProject, saveAnimProject } from "../lib/animStorage";
 import { AnimaticPlayer } from "./AnimaticPlayer";
+import DrawStudioModal from "./DrawStudioModal";
+import {
+  SCENE_STATUSES,
+  SHOT_TYPES,
+  captureSceneThumbnail,
+  projectProgress,
+  sceneStatusMeta,
+  sceneStatusOf,
+  type SceneStatus,
+} from "../lib/storyboard";
 import { TimelineEditor } from "./TimelineEditor";
 import { PrevizEditor } from "./PrevizEditor";
 import { ExportPanel } from "./ExportPanel";
@@ -82,11 +95,21 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [novelDrafts, setNovelDrafts] = useState<SceneDraft[] | null>(null);
   const [importNote, setImportNote] = useState<string | null>(null);
   const [railTab, setRailTab] = useState<"scenes" | "assets">("scenes");
+  const [boardDrawSceneId, setBoardDrawSceneId] = useState<string | null>(null);
   const [railOpen, setRailOpen] = useState(true);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
 
   /** Pipeline gợi ý Manga → Animation: panel đã vẽ → cảnh + thoại. */
+  /** Chụp khung đầu cảnh 2D làm hình phác phân cảnh (R5). */
+  const captureBoard = async (target: AnimScene) => {
+    if (!project) return;
+    const url = await captureSceneThumbnail(target);
+    if (url) {
+      await apply(updateScene(project, target.id, { boardDataUrl: url }));
+    }
+  };
+
   const importFromManga = async () => {
     if (!project?.sourceMangaProjectId) return;
     setImporting(true);
@@ -302,6 +325,15 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                         <span className="w-7 h-7 flex-none rounded-lg bg-pink-500/15 text-pink-300 grid place-items-center text-[12px] font-bold">
                           {idx + 1}
                         </span>
+                        <span
+                          className="w-2 h-2 flex-none rounded-full"
+                          style={{
+                            backgroundColor: sceneStatusMeta(
+                              sceneStatusOf(scene),
+                            ).color,
+                          }}
+                          title={`Trạng thái: ${sceneStatusMeta(sceneStatusOf(scene)).label}`}
+                        />
                         <span className="flex-1 min-w-0">
                           <span className="block text-[13px] truncate">
                             {scene.name}
@@ -442,6 +474,40 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             </button>
           </div>
         </div>
+        {project.scenes.length > 0 &&
+          (() => {
+            const prog = projectProgress(project.scenes);
+            return (
+              <div className="mb-3 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-white/50">
+                  <span className="font-medium text-white/75">
+                    Tiến độ sản xuất: {prog.done}/{prog.total} cảnh hoàn
+                    thành ({prog.percent}%)
+                  </span>
+                  {SCENE_STATUSES.map((st) => (
+                    <span key={st.id} className="flex items-center gap-1">
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: st.color }}
+                      />
+                      {st.label}: {prog.counts[st.id]}
+                    </span>
+                  ))}
+                </div>
+                <div className="h-2 rounded-full bg-white/5 overflow-hidden flex">
+                  {SCENE_STATUSES.map((st) => (
+                    <div
+                      key={st.id}
+                      style={{
+                        width: `${(prog.counts[st.id] / Math.max(1, prog.total)) * 100}%`,
+                        backgroundColor: st.color,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         <div className="space-y-2">
           {project.scenes.map((scene, idx) => (
             <div
@@ -451,6 +517,39 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               <span className="w-8 h-8 rounded-lg bg-pink-500/15 text-pink-300 grid place-items-center text-[13px] font-bold">
                 {idx + 1}
               </span>
+              <div className="w-36 flex-none">
+                <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black/50 grid place-items-center">
+                  {scene.boardDataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={scene.boardDataUrl}
+                      alt={`Hình phác cảnh ${scene.name}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-[10px] text-white/30 px-2 text-center leading-snug">
+                      Chưa có hình phác
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-1 mt-1.5">
+                  <button
+                    onClick={() => setBoardDrawSceneId(scene.id)}
+                    className="flex-1 flex items-center justify-center gap-1 h-7 rounded-md bg-sky-500/20 border border-sky-300/30 text-[11px] text-sky-100 hover:bg-sky-500/30 transition"
+                  >
+                    <Paintbrush className="w-3 h-3" /> Vẽ phác
+                  </button>
+                  {project.kind === "2d" && (
+                    <button
+                      onClick={() => void captureBoard(scene)}
+                      title="Chụp khung đầu cảnh làm hình phác"
+                      className="flex-1 flex items-center justify-center gap-1 h-7 rounded-md bg-white/5 border border-white/10 text-[11px] text-white/70 hover:bg-white/10 transition"
+                    >
+                      <Camera className="w-3 h-3" /> Chụp khung
+                    </button>
+                  )}
+                </div>
+              </div>
               <input
                 value={scene.name}
                 onChange={(e) =>
@@ -527,6 +626,71 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
+              <div className="basis-full flex flex-wrap items-center gap-2 pt-2 border-t border-white/5">
+                <label className="flex items-center gap-1.5 text-[12px] text-white/45">
+                  <span
+                    className="w-2 h-2 rounded-full flex-none"
+                    style={{
+                      backgroundColor: sceneStatusMeta(sceneStatusOf(scene))
+                        .color,
+                    }}
+                  />
+                  Trạng thái
+                  <select
+                    value={sceneStatusOf(scene)}
+                    onChange={(e) =>
+                      void apply(
+                        updateScene(project, scene.id, {
+                          status: e.currentTarget.value as SceneStatus,
+                        }),
+                      )
+                    }
+                    aria-label="Trạng thái sản xuất của cảnh"
+                    className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                  >
+                    {SCENE_STATUSES.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-1.5 text-[12px] text-white/45">
+                  Cú máy
+                  <select
+                    value={scene.shotType ?? ""}
+                    onChange={(e) =>
+                      void apply(
+                        updateScene(project, scene.id, {
+                          shotType: e.currentTarget.value || undefined,
+                        }),
+                      )
+                    }
+                    aria-label="Loại cú máy của cảnh"
+                    className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                  >
+                    <option value="">Chưa chọn</option>
+                    {SHOT_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <input
+                  value={scene.cameraNote ?? ""}
+                  onChange={(e) =>
+                    void apply(
+                      updateScene(project, scene.id, {
+                        cameraNote: e.currentTarget.value,
+                      }),
+                    )
+                  }
+                  placeholder="Ghi chú camera (VD: lia máy chậm từ trái sang, giữ 2 giây ở mặt nhân vật…)"
+                  aria-label="Ghi chú camera"
+                  className="flex-1 min-w-[200px] bg-transparent text-[12px] text-white/60 outline-none border-b border-transparent focus:border-white/30 placeholder:text-white/25"
+                />
+              </div>
             </div>
           ))}
           {project.scenes.length === 0 && (
@@ -541,6 +705,27 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             : "Bước tiếp theo trên chính bảng cảnh này: dựng cảnh 3D xem trước cho từng cảnh (nhân vật, phong cảnh, camera theo mốc thời gian) rồi xuất đoạn phim."}
         </p>
       </div>
+
+      {boardDrawSceneId &&
+        (() => {
+          const target = project.scenes.find((x) => x.id === boardDrawSceneId);
+          if (!target) return null;
+          return (
+            <DrawStudioModal
+              title={`Vẽ phác phân cảnh — ${target.name}`}
+              initialDataUrl={target.boardDataUrl ?? null}
+              canvasWidth={960}
+              canvasHeight={540}
+              onClose={() => setBoardDrawSceneId(null)}
+              onSave={(dataUrl) => {
+                void apply(
+                  updateScene(project, target.id, { boardDataUrl: dataUrl }),
+                );
+                setBoardDrawSceneId(null);
+              }}
+            />
+          );
+        })()}
 
       {showNovelSuggest && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
