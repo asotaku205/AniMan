@@ -216,6 +216,9 @@ export function CanvasArea({
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [selectedTextId, selectedShapeId, editingTextId]);
 
+  /** Khoảng đệm (px) nới VÙNG CHỌN quanh bóng để dễ bấm trúng — hình bóng vẽ ra không đổi. */
+  const SHAPE_HIT_PAD_PX = 14;
+
   // Bóng vừa thêm từ thanh công cụ → tự chọn luôn để kéo/đổi cỡ ngay
   const prevShapeCountRef = useRef(0);
   useEffect(() => {
@@ -667,15 +670,16 @@ export function CanvasArea({
                           : "outline outline-1 outline-transparent hover:outline-white/30"
                       }`}
                       style={{
-                        left: `${shape.x * 100}%`,
-                        top: `${shape.y * 100}%`,
-                        width: `${shape.w * 100}%`,
-                        height: `${shape.h * 100}%`,
+                        // Vùng chọn nới ra quanh bóng (bóng thật vẽ ở composite, nhỏ hơn vùng này)
+                        left: `calc(${shape.x * 100}% - ${SHAPE_HIT_PAD_PX}px)`,
+                        top: `calc(${shape.y * 100}% - ${SHAPE_HIT_PAD_PX}px)`,
+                        width: `calc(${shape.w * 100}% + ${SHAPE_HIT_PAD_PX * 2}px)`,
+                        height: `calc(${shape.h * 100}% + ${SHAPE_HIT_PAD_PX * 2}px)`,
                         borderRadius: shape.kind === "rect" ? "8px" : "50%",
                         cursor: "move",
                       }}
                       onPointerDown={(e) => onShapePointerDown(e, shape, "move")}
-                      title="Kéo để dời bóng · chấm xanh ở đuôi để kéo đuôi"
+                      title="Vùng chọn rộng hơn bóng thật để dễ bấm · kéo để dời · chấm xanh ở đuôi để kéo đuôi"
                     >
                       {isSel && (
                         <>
