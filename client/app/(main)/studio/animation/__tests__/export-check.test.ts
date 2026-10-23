@@ -29,12 +29,29 @@ describe("exportCheck — kiểm tra trước xuất", () => {
     p = updateScene(p, p.scenes[0].id, {
       timeline: { layers: [layer], cameraKeys: [] },
       dialogue: [
-        { id: "d1", text: "Xin chào", startSec: 0.3, durationSec: 1.5 },
+        {
+          id: "d1",
+          text: "Xin chào",
+          startSec: 0.3,
+          durationSec: 1.5,
+          takes: [{ id: "t1", durationSec: 1.4, volume: 1, createdAt: 1 }],
+          selectedTakeId: "t1",
+        },
       ],
     });
     issues = checkProjectForExport(p);
     expect(hasExportErrors(issues)).toBe(false);
     expect(issues).toHaveLength(0);
+
+    // Bỏ bản thu → xuất hiện cảnh báo thiếu tiếng (không phải lỗi chặn)
+    p = updateScene(p, p.scenes[0].id, {
+      dialogue: [
+        { id: "d1", text: "Xin chào", startSec: 0.3, durationSec: 1.5 },
+      ],
+    });
+    issues = checkProjectForExport(p);
+    expect(issues.some((i) => i.message.includes("chưa có bản thu giọng"))).toBe(true);
+    expect(hasExportErrors(issues)).toBe(false);
   });
 
   it("thoại tràn khỏi cảnh và cảnh 3D trống → cảnh báo/lỗi đúng loại", () => {

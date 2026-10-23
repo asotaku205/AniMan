@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Download, ShieldCheck, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, Music, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import {
   formatDuration,
   projectDurationSec,
@@ -9,6 +9,12 @@ import {
 } from "../lib/animProject";
 import { checkProjectForExport, hasExportErrors } from "../lib/exportCheck";
 import { drawSceneFrame } from "../lib/renderFrame";
+import { buildFilmAudioPlan, renderFilmAudioMix } from "../lib/filmAudio";
+import {
+  bgmBlobKey,
+  deleteVoiceBlob,
+  saveVoiceBlob,
+} from "../lib/animStorage";
 
 /**
  * Kiểm tra & xuất bản toàn dự án:
@@ -18,11 +24,18 @@ import { drawSceneFrame } from "../lib/renderFrame";
  * Dự án 3D xuất WebM theo từng cảnh ngay trong PrevizEditor. MP4 qua
  * WebCodecs là nâng cấp sau — WebM chạy được trên mọi trình duyệt demo.
  */
-export function ExportPanel({ project }: { project: AnimProject }) {
+export function ExportPanel({
+  project,
+  onProjectChange,
+}: {
+  project: AnimProject;
+  onProjectChange?: (project: AnimProject) => void;
+}) {
   const issues = useMemo(() => checkProjectForExport(project), [project]);
   const errors = hasExportErrors(issues);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState("");
+  const [doneNote, setDoneNote] = useState("");
   const cancelRef = useRef(false);
 
   const exportWebM = async () => {
@@ -61,7 +74,39 @@ export function ExportPanel({ project }: { project: AnimProject }) {
     );
     const getImage = (url: string) => imageCache.get(url) ?? null;
 
-    const stream = canvas.captureStream(30);
+    // Trộn tiếng (thoại đã chọn + nhạc nền) TRƯỚC khi ghi hình
+    setProgress("Đang trộn tiếng cho phim…");
+    const mix = await renderFilmAudioMix(project).catch(() => null);
+    const audioPlan = buildFilmAudioPlan(project);
+    let audioCtx: AudioContext | null = null;
+    let stream: MediaStream = canvas.captureStream(30);
+    if (mix) {
+      try {
+        audioCtx = new AudioContext();
+        const mixBuf = await audioCtx.decodeAudioData(
+          await mix.arrayBuffer(),
+        );
+        const src = audioCtx.createBufferSource();
+        src.buffer = mixBuf;
+        const dest = audioCtx.createMediaStreamDestination();
+        src.connect(dest);
+        stream = new MediaStream([
+          ...stream.getVideoTracks(),
+          ...dest.stream.getAudioTracks(),
+        ]);
+        // Phát bản trộn đồng bộ với lúc bắt đầu ghi hình (ngay dưới đây)
+        queueMicrotask(() => {
+          try {
+            src.start();
+          } catch {
+            /* nguồn đã huỷ */
+          }
+        });
+      } catch {
+        audioCtx = null;
+        stream = canvas.captureStream(30);
+      }
+    }
     const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => {
@@ -93,10 +138,22 @@ export function ExportPanel({ project }: { project: AnimProject }) {
     }
     recorder.stop();
     await stopped;
+    if (audioCtx) void audioCtx.close().catch(() => undefined);
     setProgress("");
     setExporting(false);
     void elapsed;
     if (cancelRef.current) return;
+    setDoneNote(
+      mix
+        ? `Đã xuất phim kèm tiếng: ${audioPlan.clips.length} dòng thoại có giọng${
+            project.bgm ? " + nhạc nền" : ""
+          }${
+            audioPlan.missing.length > 0
+              ? ` (${audioPlan.missing.length} dòng chưa có giọng — chỉ hiện phụ đề)`
+              : ""
+          }.`
+        : "Đã xuất phim (chưa có tiếng — hãy thu giọng cho các dòng thoại để phim có tiếng).",
+    );
     const blob = new Blob(chunks, { type: "video/webm" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -140,6 +197,96 @@ export function ExportPanel({ project }: { project: AnimProject }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {onProjectChange && (
+        <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+          <h3 className="text-[12px] font-semibold text-white/70 flex items-center gap-1.5">
+            <Music className="w-3.5 h-3.5" /> NHẠC NỀN TOÀN PHIM
+          </h3>
+          {project.bgm ? (
+            <div className="flex flex-wrap items-center gap-3 text-[12px]">
+              <span className="text-white/75">{project.bgm.name}</span>
+              <label className="flex items-center gap-1.5 text-white/45">
+                Âm lượng
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={project.bgm.volume}
+                  onChange={(e) =>
+                    onProjectChange({
+                      ...project,
+                      bgm: {
+                        ...project.bgm!,
+                        volume: Number(e.currentTarget.value),
+                      },
+                    })
+                  }
+                  className="w-24 accent-emerald-400"
+                />
+              </label>
+              <label className="flex items-center gap-1.5 text-white/45">
+                <input
+                  type="checkbox"
+                  checked={project.bgm.loop}
+                  onChange={(e) =>
+                    onProjectChange({
+                      ...project,
+                      bgm: { ...project.bgm!, loop: e.currentTarget.checked },
+                    })
+                  }
+                  className="accent-emerald-400"
+                />
+                Lặp khi nhạc ngắn hơn phim
+              </label>
+              <button
+                onClick={() => {
+                  void deleteVoiceBlob(project.bgm!.blobKey).catch(
+                    () => undefined,
+                  );
+                  onProjectChange({ ...project, bgm: null });
+                }}
+                className="flex items-center gap-1 text-white/40 hover:text-rose-400"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Xoá nhạc nền
+              </button>
+            </div>
+          ) : (
+            <label className="flex flex-wrap items-center gap-2 text-[12px] text-white/50">
+              <span>Chọn một file nhạc — nhạc tự nhỏ dần ở cuối phim khi xuất.</span>
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={(e) => {
+                  const file = e.currentTarget.files?.[0];
+                  e.currentTarget.value = "";
+                  if (!file) return;
+                  const key = bgmBlobKey(project.id);
+                  void saveVoiceBlob(key, file)
+                    .then(() =>
+                      onProjectChange({
+                        ...project,
+                        bgm: {
+                          blobKey: key,
+                          name: file.name,
+                          volume: 0.35,
+                          loop: true,
+                        },
+                      }),
+                    )
+                    .catch(() => undefined);
+                }}
+                className="text-[12px] file:mr-2 file:px-3 file:h-8 file:rounded-lg file:border file:border-white/15 file:bg-white/5 file:text-white/70"
+              />
+            </label>
+          )}
+        </div>
+      )}
+
+      {doneNote && (
+        <p className="text-[12px] text-emerald-300/90">{doneNote}</p>
       )}
 
       {project.kind === "2d" ? (

@@ -492,7 +492,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      <ExportPanel project={project} />
+      <ExportPanel
+        project={project}
+        onProjectChange={(p) => void apply(p)}
+      />
     </div>
   );
 }

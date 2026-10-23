@@ -1,11 +1,13 @@
 /**
  * Kiểm tra trước xuất bản — luật cứng thuần (không AI): quét dự án tìm
  * các vấn đề khiến bản xuất bị hỏng/thiếu: cảnh trống, cảnh chưa có hình,
- * thoại tràn khỏi cảnh, cảnh 3D chưa dựng vật thể. Chạy ngay trong trình
- * duyệt trước khi render để người dùng sửa lúc còn rẻ.
+ * thoại tràn khỏi cảnh, cảnh 3D chưa dựng vật thể, dòng thoại chưa có bản
+ * thu giọng (Slice B4). Chạy ngay trong trình duyệt trước khi render để
+ * người dùng sửa lúc còn rẻ.
  */
 
 import { projectDurationSec, type AnimProject } from "./animProject";
+import { selectedDialogueTake } from "./dialogue";
 
 export type ExportIssueLevel = "error" | "warn";
 
@@ -74,6 +76,16 @@ export function checkProjectForExport(project: AnimProject): ExportIssue[] {
           message: `Cảnh "${scene.name}" chưa có key camera — sẽ dùng camera mặc định.`,
         });
       }
+    }
+    const missingVoice = (scene.dialogue ?? []).filter(
+      (l) => l.text.trim() && !selectedDialogueTake(l),
+    ).length;
+    if (missingVoice > 0) {
+      issues.push({
+        ...at,
+        level: "warn",
+        message: `Cảnh "${scene.name}" có ${missingVoice} dòng thoại chưa có bản thu giọng — bản xuất ở các dòng đó sẽ chỉ hiện phụ đề, không có tiếng.`,
+      });
     }
     for (const line of scene.dialogue ?? []) {
       const end = line.startSec + line.durationSec;
