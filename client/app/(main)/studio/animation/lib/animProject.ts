@@ -22,6 +22,8 @@ export interface AnimScene {
   /** Panel nguồn trong Manga Studio (trang/khung) nếu cảnh nạp từ manga. */
   source?: { mangaProjectId: string; page: number; panelId: string } | null;
   note?: string;
+  /** Timeline 2D của cảnh (layer/keyframe/camera) — chỉ dự án 2d dùng. */
+  timeline?: import("./timeline").SceneTimeline;
 }
 
 export interface AnimProject {

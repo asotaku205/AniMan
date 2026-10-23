@@ -23,6 +23,7 @@ import {
 } from "../lib/animProject";
 import { getAnimProject, saveAnimProject } from "../lib/animStorage";
 import { AnimaticPlayer } from "./AnimaticPlayer";
+import { TimelineEditor } from "./TimelineEditor";
 
 /**
  * Workspace dự án phim — Slice 1: khung workspace + **bảng phân cảnh**
@@ -33,6 +34,7 @@ import { AnimaticPlayer } from "./AnimaticPlayer";
 export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<AnimProject | null>(null);
   const [missing, setMissing] = useState(false);
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +116,41 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       />
 
       <AnimaticPlayer scenes={project.scenes} />
+
+      {project.kind === "2d" && project.scenes.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-white/45">Chỉnh timeline cảnh:</span>
+            {project.scenes.map((sc) => (
+              <button
+                key={sc.id}
+                onClick={() => setSelectedSceneId(sc.id)}
+                className={`px-3 h-8 rounded-lg text-[12px] border transition ${
+                  (selectedSceneId ?? project.scenes[0].id) === sc.id
+                    ? "bg-pink-500/25 border-pink-400/50 text-white"
+                    : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
+                }`}
+              >
+                {sc.name}
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const sc =
+              project.scenes.find((x) => x.id === selectedSceneId) ??
+              project.scenes[0];
+            return (
+              <TimelineEditor
+                key={sc.id}
+                scene={sc}
+                onChange={(timeline) =>
+                  void apply(updateScene(project, sc.id, { timeline }))
+                }
+              />
+            );
+          })()}
+        </div>
+      )}
 
       <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-4">
         <div className="flex items-center justify-between mb-3">
