@@ -34,8 +34,16 @@ import {
   splitCue,
 } from "../lib/cueEngine";
 import { extractWaveformPeaks } from "../lib/waveform";
+import {
+  applyMechanicalFixes,
+  loadQcProfile,
+  saveQcProfile,
+  validateCues,
+  type QcProfile,
+} from "../lib/qcEngine";
 import { CueTable } from "./components/CueTable";
 import { CueInspector } from "./components/CueInspector";
+import { QcPanel } from "./components/QcPanel";
 import { SubTab } from "./components/SubTab";
 import { TranslateTab } from "./components/TranslateTab";
 import { DubTab } from "./components/DubTab";
@@ -61,6 +69,9 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
   const [peaks, setPeaks] = useState<number[] | null>(null);
   const [waveBusy, setWaveBusy] = useState(false);
   const [spotIn, setSpotIn] = useState<number | null>(null);
+  // loadQcProfile tự rơi về chuẩn Netflix khi không có localStorage (SSR)
+  const [qcProfile, setQcProfile] = useState<QcProfile>(() => loadQcProfile());
+  const qcIssues = validateCues(cues, qcProfile, fps);
   const historyRef = useRef<CueV2[][]>([]);
   const cuesRef = useRef<CueV2[]>([]);
   cuesRef.current = cues;
@@ -461,6 +472,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             currentTimeSec={currentTime}
             selectedCueId={selectedCueId}
             onSelect={(cue) => seek(cue.startSec, cue.id)}
+            qcMaxCps={qcProfile.maxCps}
           />
         </div>
 
@@ -607,6 +619,23 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         )}
         {tab === "dub" && <DubTab cues={cues} onSeek={seek} />}
       </div>
+
+          <QcPanel
+            issues={qcIssues}
+            profile={qcProfile}
+            onProfileChange={(next) => {
+              setQcProfile(next);
+              saveQcProfile(next);
+            }}
+            onFix={() => {
+              const { cues: fixed } = applyMechanicalFixes(cues, qcProfile, fps);
+              commitCues(fixed);
+            }}
+            onJump={(cueId) => {
+              const cue = cues.find((c) => c.id === cueId);
+              if (cue) seek(cue.startSec, cue.id);
+            }}
+          />
         </div>
       </div>
     </div>

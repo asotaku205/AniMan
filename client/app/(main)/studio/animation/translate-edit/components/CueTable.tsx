@@ -27,12 +27,15 @@ export function CueTable({
   currentTimeSec,
   selectedCueId,
   onSelect,
+  qcMaxCps,
 }: {
   cues: CueV2[];
   series: Series | null;
   currentTimeSec: number;
   selectedCueId: string | null;
   onSelect: (cue: CueV2) => void;
+  /** Ngưỡng CPS của QC — vượt ngưỡng thì tô đỏ như Aegisub (mặc định Netflix 20). */
+  qcMaxCps?: number;
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden">
@@ -68,7 +71,13 @@ export function CueTable({
               <span className="tabular-nums text-white/60">
                 {cue.durationSec.toFixed(1)}
               </span>
-              <span className="tabular-nums text-white/80">
+              <span
+                className={`tabular-nums ${
+                  cue.text.trim() && qcMaxCps && cueCps(cue) > qcMaxCps
+                    ? "text-rose-400 font-bold"
+                    : "text-white/80"
+                }`}
+              >
                 {cue.text.trim() ? cueCps(cue).toFixed(0) : "—"}
               </span>
               <span className="min-w-0">
