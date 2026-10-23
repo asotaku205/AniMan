@@ -22,6 +22,7 @@ import {
   type AnimProject,
 } from "../lib/animProject";
 import { getAnimProject, saveAnimProject } from "../lib/animStorage";
+import { AnimaticPlayer } from "./AnimaticPlayer";
 
 /**
  * Workspace dự án phim — Slice 1: khung workspace + **bảng phân cảnh**
@@ -111,6 +112,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         aria-label="Tên dự án"
         className="w-full bg-transparent text-2xl font-semibold outline-none border-b border-transparent focus:border-pink-400/50 pb-1"
       />
+
+      <AnimaticPlayer scenes={project.scenes} />
 
       <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-4">
         <div className="flex items-center justify-between mb-3">

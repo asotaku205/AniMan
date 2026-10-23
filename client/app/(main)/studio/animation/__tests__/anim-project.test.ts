@@ -68,3 +68,27 @@ describe("AnimProject — thao tác cảnh", () => {
     expect(formatDuration(9)).toBe("0:09");
   });
 });
+
+import {
+  animaticTimeline,
+  segmentAtTime,
+  segmentProgress,
+} from "../lib/animatic";
+
+describe("animatic — mốc thời gian phát thử", () => {
+  it("các đoạn nối tiếp đúng thời lượng và cảnh tại thời điểm t chính xác", () => {
+    let p = createAnimProject("X", "2d");
+    p = addScene(p, "B");
+    p = updateScene(p, p.scenes[1].id, { durationSec: 5 });
+    const segs = animaticTimeline(p.scenes);
+    expect(segs.map((s) => [s.startSec, s.endSec])).toEqual([
+      [0, 3],
+      [3, 8],
+    ]);
+    expect(segmentAtTime(segs, 0)?.index).toBe(0);
+    expect(segmentAtTime(segs, 4)?.index).toBe(1);
+    expect(segmentAtTime(segs, 99)?.index).toBe(1); // vượt cuối → cảnh cuối
+    expect(segmentAtTime([], 1)).toBeNull();
+    expect(segmentProgress(segs[1], 5.5)).toBeCloseTo(0.5);
+  });
+});
