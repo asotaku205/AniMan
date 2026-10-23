@@ -27,6 +27,13 @@ import {
   saveEpisode,
 } from "../lib/libraryStorage";
 import { MultiTrackTimeline } from "./components/MultiTrackTimeline";
+import { FPS_OPTIONS, formatTimecode, snapToFrame } from "../lib/timecode";
+import {
+  mergeCueWithNext,
+  setCueInOut,
+  splitCue,
+} from "../lib/cueEngine";
+import { extractWaveformPeaks } from "../lib/waveform";
 import { CueTable } from "./components/CueTable";
 import { CueInspector } from "./components/CueInspector";
 import { SubTab } from "./components/SubTab";
@@ -50,6 +57,25 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [fps, setFps] = useState<number>(25);
+  const [peaks, setPeaks] = useState<number[] | null>(null);
+  const [waveBusy, setWaveBusy] = useState(false);
+  const [spotIn, setSpotIn] = useState<number | null>(null);
+  const historyRef = useRef<CueV2[][]>([]);
+  const cuesRef = useRef<CueV2[]>([]);
+  cuesRef.current = cues;
+
+  /** Mọi thay đổi cue đi qua đây để có undo (Ctrl+Z). */
+  const commitCues = useCallback((next: CueV2[]) => {
+    historyRef.current = [...historyRef.current.slice(-59), cuesRef.current];
+    setCues(next);
+  }, []);
+  const undoCues = useCallback(() => {
+    const prev = historyRef.current[historyRef.current.length - 1];
+    if (!prev) return;
+    historyRef.current = historyRef.current.slice(0, -1);
+    setCues(prev);
+  }, []);
   const [notFound, setNotFound] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -94,9 +120,10 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
   /** Tabs làm việc trên DialogueLine — hợp nhất lại vào CueV2 theo id. */
   const applyCueLines = useCallback(
     (next: DialogueLine[]) => {
-      setCues((prev) => {
+      const prev = cuesRef.current;
+      {
         const byId = new Map(prev.map((c) => [c.id, c]));
-        return next.map((line) => {
+        const merged = next.map((line) => {
           const old = byId.get(line.id);
           if (old) {
             return {
@@ -111,9 +138,10 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
           cue.text = line.text;
           return cue;
         });
-      });
+        commitCues(merged);
+      }
     },
-    [episodeId],
+    [episodeId, commitCues],
   );
 
   const seek = useCallback((sec: number, cueId: string) => {
@@ -136,7 +164,83 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
     setVideoUrl(URL.createObjectURL(file));
     void patchEpisode({ videoName: file.name });
+    setWaveBusy(true);
+    void extractWaveformPeaks(file).then((result) => {
+      setPeaks(result);
+      setWaveBusy(false);
+    });
   };
+
+  const playheadFrame = () => snapToFrame(videoRef.current?.currentTime ?? currentTime, fps);
+
+  const pressIn = useCallback(() => {
+    const t = playheadFrame();
+    const selected = cuesRef.current.find((c) => c.id === selectedCueId);
+    if (selected) {
+      commitCues(setCueInOut(cuesRef.current, selected.id, t, selected.startSec + selected.durationSec));
+    } else {
+      setSpotIn(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCueId, fps, commitCues]);
+
+  const pressOut = useCallback(() => {
+    const t = playheadFrame();
+    const selected = cuesRef.current.find((c) => c.id === selectedCueId);
+    if (selected) {
+      commitCues(setCueInOut(cuesRef.current, selected.id, selected.startSec, t));
+    } else if (spotIn != null && t > spotIn + 0.3) {
+      const cue = createCue(episodeId, spotIn, t - spotIn);
+      commitCues([...cuesRef.current, cue].sort((a, b) => a.startSec - b.startSec));
+      setSelectedCueId(cue.id);
+      setSpotIn(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCueId, spotIn, fps, commitCues, episodeId]);
+
+  // Phím tắt studio: Space phát/dừng · ↑/↓ qua cue · I/O spotting · Ctrl+Z undo
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const video = videoRef.current;
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (video) {
+          if (video.paused) void video.play().catch(() => undefined);
+          else video.pause();
+        }
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const sorted = [...cuesRef.current].sort((a, b) => a.startSec - b.startSec);
+        if (sorted.length === 0) return;
+        const now = video?.currentTime ?? 0;
+        const next =
+          e.key === "ArrowDown"
+            ? (sorted.find((c) => c.startSec > now + 0.01) ?? sorted[0])
+            : ([...sorted].reverse().find((c) => c.startSec < now - 0.01) ??
+              sorted[sorted.length - 1]);
+        seek(next.startSec, next.id);
+      } else if (e.key.toLowerCase() === "i") {
+        pressIn();
+      } else if (e.key.toLowerCase() === "o") {
+        pressOut();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undoCues();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pressIn, pressOut, seek, undoCues]);
 
   const activeCue = dialogueLineAt(cues, currentTime);
   const activeCueV2 = activeCue
@@ -229,9 +333,9 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
 
   const selectedCue = cues.find((c) => c.id === selectedCueId) ?? null;
   const patchCue = (id: string, patch: Partial<CueV2>) =>
-    setCues((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    commitCues(cuesRef.current.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   const deleteCue = (id: string) => {
-    setCues((prev) => prev.filter((c) => c.id !== id));
+    commitCues(cuesRef.current.filter((c) => c.id !== id));
     setSelectedCueId(null);
   };
 
@@ -399,11 +503,78 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         )}
       </div>
 
+          {/* Thanh transport: timecode + fps + spotting I/O + tách/gộp + undo */}
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+            <span className="text-[13px] font-mono tabular-nums text-emerald-300">
+              {formatTimecode(currentTime, fps)}
+            </span>
+            <span className="text-[11px] text-white/35 font-mono tabular-nums">
+              / {formatTimecode(duration, fps)}
+            </span>
+            <select
+              value={fps}
+              onChange={(e) => setFps(Number(e.currentTarget.value))}
+              aria-label="FPS của video"
+              className="h-7 rounded-lg bg-black/50 border border-white/10 px-1.5 text-[11px] outline-none"
+            >
+              {FPS_OPTIONS.map((f) => (
+                <option key={f} value={f}>
+                  {f} fps
+                </option>
+              ))}
+            </select>
+            <span className="w-px h-5 bg-white/10" />
+            <button
+              onClick={pressIn}
+              className="px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
+              title="Phím I — đặt In tại playhead (cho cue đang chọn hoặc bắt đầu spotting)"
+            >
+              [I] In{spotIn != null && !selectedCue ? ` · ${formatTimecode(spotIn, fps)}` : ""}
+            </button>
+            <button
+              onClick={pressOut}
+              className="px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
+              title="Phím O — đặt Out tại playhead / hoàn tất cue đang spotting"
+            >
+              [O] Out
+            </button>
+            {selectedCue && (
+              <>
+                <button
+                  onClick={() =>
+                    commitCues(splitCue(cuesRef.current, selectedCue.id, videoRef.current?.currentTime ?? currentTime))
+                  }
+                  className="px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
+                  title="Tách cue đang chọn tại playhead"
+                >
+                  Tách tại playhead
+                </button>
+                <button
+                  onClick={() => commitCues(mergeCueWithNext(cuesRef.current, selectedCue.id))}
+                  className="px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
+                  title="Gộp cue đang chọn với cue ngay sau"
+                >
+                  Gộp cue sau
+                </button>
+              </>
+            )}
+            <button
+              onClick={undoCues}
+              className="px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10 ml-auto"
+              title="Ctrl+Z — hoàn tác thay đổi cue"
+            >
+              ↩ Hoàn tác
+            </button>
+            {waveBusy && <span className="text-[10px] text-white/35">Đang phân tích sóng âm…</span>}
+          </div>
+
           <MultiTrackTimeline
             cues={cues}
             durationSec={duration}
             currentTimeSec={currentTime}
             selectedCueId={selectedCueId}
+            peaks={peaks}
+            fps={fps}
             onSeek={seek}
           />
         </div>
