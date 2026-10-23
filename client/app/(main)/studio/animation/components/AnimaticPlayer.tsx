@@ -53,7 +53,28 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
     return timeSec;
   };
 
-  // Chuẩn bị tiếng (1 lần cho mỗi dự án)
+  // Chữ ký dữ liệu TIẾNG của dự án: engine phát thử phải dựng lại khi
+  // người dùng thu giọng mới / thêm clip hiệu ứng / đổi nhạc nền trong
+  // lúc trang đang mở — trước đây engine chỉ dựng 1 lần lúc mở trang
+  // nên giọng thu sau đó không bao giờ được nhận (phải tải lại trang).
+  const audioSignature = useMemo(
+    () =>
+      JSON.stringify({
+        bgm: project.bgm?.blobKey ?? "",
+        scenes: project.scenes.map((s) => ({
+          d: s.durationSec,
+          takes: (s.dialogue ?? []).map(
+            (l) => `${l.selectedTakeId ?? ""}@${l.startSec}`,
+          ),
+          clips: (s.audioClips ?? []).map(
+            (c) => `${c.id}@${c.startSec}/${c.durationSec}/${c.volume}`,
+          ),
+        })),
+      }),
+    [project],
+  );
+
+  // Chuẩn bị tiếng (dựng lại khi dữ liệu tiếng thay đổi)
   useEffect(() => {
     const audio = createFilmPreviewAudio(project);
     audioRef.current = audio;
@@ -66,7 +87,7 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
       audioRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.id]);
+  }, [project.id, audioSignature]);
 
   // Nạp trước hình layer 2D
   useEffect(() => {

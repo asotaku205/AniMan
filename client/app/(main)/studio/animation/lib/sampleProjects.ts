@@ -52,11 +52,11 @@ export const SAMPLE_DIALOGUE_3D: Array<{
 ];
 
 /**
- * Giọng mẫu đóng gói sẵn (file tĩnh trong public/sample-audio, sinh bằng
- * giọng đọc tiếng Việt): mỗi cảnh mẫu có đúng 1 dòng thoại, gắn 1 bản thu
- * với id cố định. ProjectHub nạp file âm thanh vào kho khi người dùng bấm
- * tạo mẫu — nhờ vậy dự án mẫu mở ra là CÓ TIẾNG ngay như phim mẫu gửi
- * kèm, thay vì bắt người dùng tự thu mới nghe được.
+ * Giọng mẫu đóng gói sẵn (dữ liệu base64 trong lib/sampleAudioData.ts,
+ * sinh bằng giọng đọc tiếng Việt): mỗi cảnh mẫu có đúng 1 dòng thoại,
+ * gắn 1 bản thu với id cố định. ProjectHub giải mã và nạp vào kho âm
+ * thanh khi người dùng bấm tạo mẫu — nhờ vậy dự án mẫu mở ra là CÓ
+ * TIẾNG ngay như phim mẫu gửi kèm, trên mọi máy checkout.
  */
 export const SAMPLE_VOICE_FILES: Array<{
   kind: "2d" | "3d";

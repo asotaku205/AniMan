@@ -45,6 +45,7 @@ export async function playSceneSounds(
   if (jobs.length === 0 && clipJobs.length === 0) return null;
 
   const ctx = new AudioContext();
+  void ctx.resume().catch(() => undefined);
   const startedAt = ctx.currentTime + 0.05;
   const sources: AudioBufferSourceNode[] = [];
   await Promise.all(

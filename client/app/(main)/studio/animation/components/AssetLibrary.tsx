@@ -33,6 +33,10 @@ import {
 import { createPrevizObject, createPrevizScene } from "../lib/previz";
 import { BUILTIN_IMAGE_PACK } from "../lib/builtinAssets";
 import { createSceneLayer, createSceneTimeline } from "../lib/timeline";
+import {
+  inspectGlbDataUrl,
+  inspectionSummary,
+} from "../lib/modelInspect";
 
 const ASSET_KIND_LABEL: Record<string, string> = {
   character3d: "Nhân vật 3D",
@@ -127,17 +131,35 @@ export function AssetLibrary({
     }
     const reader = new FileReader();
     reader.onload = async () => {
+      const dataUrl = String(reader.result);
+      const inspection = inspectGlbDataUrl(dataUrl) ?? undefined;
       await saveAnimAsset({
         kind: "model3d",
         id: newAssetId("model"),
         name: file.name.replace(/\.glb$/i, ""),
-        dataUrl: String(reader.result),
+        dataUrl,
         createdAt: Date.now(),
+        inspection,
       });
       await refresh();
-      setNote(`Đã nạp mô hình "${file.name}" vào thư viện.`);
+      setNote(
+        inspection
+          ? `Đã nạp mô hình "${file.name}" — ${inspectionSummary(inspection)}.`
+          : `Đã nạp mô hình "${file.name}" vào thư viện (không đọc được cấu trúc file).`,
+      );
     };
     reader.readAsDataURL(file);
+  };
+
+  const reinspectModel = async (asset: Model3DAsset) => {
+    const inspection = inspectGlbDataUrl(asset.dataUrl) ?? undefined;
+    if (inspection) {
+      await saveAnimAsset({ ...asset, inspection });
+      await refresh();
+      setNote(`Đã kiểm tra "${asset.name}" — ${inspectionSummary(inspection)}.`);
+    } else {
+      setNote(`Không đọc được cấu trúc của mô hình "${asset.name}".`);
+    }
   };
 
   const addModelToScene = (asset: Model3DAsset) => {
@@ -541,6 +563,45 @@ export function AssetLibrary({
                   </span>
                 ))}
               </div>
+            )}
+            {models.length > 0 && (
+              <ul className="space-y-1.5">
+                {models.map((m) => (
+                  <li
+                    key={m.id}
+                    className="text-[11px] leading-relaxed rounded-lg bg-black/30 border border-white/5 px-2.5 py-2"
+                  >
+                    <span className="text-white/70 font-medium">{m.name}: </span>
+                    {m.inspection ? (
+                      <>
+                        <span className="text-white/50">
+                          {inspectionSummary(m.inspection)}
+                        </span>
+                        {m.inspection.animations.length > 0 && (
+                          <span className="block text-white/40">
+                            Thời lượng clip:{" "}
+                            {m.inspection.animations
+                              .map((a) => `${a.name} ${a.durationSec.toFixed(1)}s`)
+                              .join(" · ")}
+                          </span>
+                        )}
+                        {m.inspection.warnings.map((w) => (
+                          <span key={w} className="block text-amber-300/85">
+                            Lưu ý: {w}
+                          </span>
+                        ))}
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => void reinspectModel(m)}
+                        className="text-sky-300 underline underline-offset-2"
+                      >
+                        Kiểm tra cấu trúc (xương · clip · tam giác)
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
           </LibSection>
         </>

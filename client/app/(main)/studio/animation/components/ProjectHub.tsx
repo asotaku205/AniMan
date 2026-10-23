@@ -102,25 +102,23 @@ export function ProjectHub() {
     }
   };
 
-  /** Nạp file giọng mẫu + nhạc nền mẫu (file tĩnh kèm app) vào kho âm
-   * thanh để dự án mẫu có tiếng ngay. Thiếu file thì bỏ qua lặng lẽ —
-   * dự án vẫn dùng được, người dùng tự thu giọng như trước. */
+  /** Nạp giọng mẫu + nhạc nền mẫu vào kho âm thanh để dự án mẫu có
+   * tiếng ngay. Dữ liệu âm thanh đóng gói trong mã nguồn (nạp động) nên
+   * luôn có trên mọi máy, không phụ thuộc file tĩnh trong repo. */
   const seedSampleAudio = async (sample: AnimProject) => {
-    for (const entry of SAMPLE_VOICE_FILES.filter((e) => e.kind === sample.kind)) {
-      try {
-        const res = await fetch(`/sample-audio/${entry.file}`);
-        if (res.ok) await saveVoiceBlob(entry.takeId, await res.blob());
-      } catch {
-        /* thiếu file mẫu — bỏ qua */
-      }
-    }
     try {
-      const res = await fetch("/sample-audio/bgm.mp3");
-      if (res.ok) await saveVoiceBlob(bgmBlobKey(sample.id), await res.blob());
+      const { sampleAudioBlob } = await import("../lib/sampleAudioData");
+      for (const entry of SAMPLE_VOICE_FILES.filter((e) => e.kind === sample.kind)) {
+        const blob = sampleAudioBlob(entry.file);
+        if (blob) await saveVoiceBlob(entry.takeId, blob);
+      }
+      const bgm = sampleAudioBlob("bgm.mp3");
+      if (bgm) await saveVoiceBlob(bgmBlobKey(sample.id), bgm);
     } catch {
-      /* thiếu file mẫu — bỏ qua */
+      /* không nạp được giọng mẫu — dự án vẫn dùng được, người dùng tự thu */
     }
   };
+
   const handleCreateSample = async (kind: "2d" | "3d") => {
     const sample =
       kind === "2d" ? buildSampleProject2D() : buildSampleProject3D();

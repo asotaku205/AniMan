@@ -61,6 +61,9 @@ export interface Model3DAsset {
   /** Toàn bộ file .glb dạng data URL (base64). */
   dataUrl: string;
   createdAt: number;
+  /** Kết quả kiểm tra cấu trúc lúc nạp (xương/clip/tam giác...) — mô
+   * hình nạp trước đợt này thì chưa có, bấm "Kiểm tra" để bổ sung. */
+  inspection?: import("./modelInspect").ModelInspection;
 }
 
 export type AnimAsset =
