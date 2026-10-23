@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   EyeOff,
   KeyRound,
@@ -242,6 +244,7 @@ export function TimelineEditor({
     timeline.layers[0]?.id ?? null,
   );
   const [onion, setOnion] = useState(false);
+  const [propsOpen, setPropsOpen] = useState(true);
   const [draftT, setDraftT] = useState<Transform>(IDENTITY_TRANSFORM);
   const [draftEasing, setDraftEasing] = useState<EasingId>("ease-in-out");
   const [draftDirty, setDraftDirty] = useState(false);
@@ -720,9 +723,17 @@ export function TimelineEditor({
           />
           Onion skin (bóng key trước đỏ / sau xanh)
         </label>
+        <button
+          onClick={() => setPropsOpen((v) => !v)}
+          title={propsOpen ? "Thu gọn cột thuộc tính" : "Mở cột thuộc tính"}
+          className="flex items-center gap-1 px-2.5 h-8 rounded-lg bg-white/5 border border-white/10 text-[12px] text-white/60 hover:bg-white/10 hover:text-white transition"
+        >
+          {propsOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          {propsOpen ? "Thu gọn panel" : "Mở panel"}
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0">
+      <div className={`grid grid-cols-1 ${propsOpen ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "xl:grid-cols-[minmax(0,1fr)]"} gap-4 flex-1 min-h-0`}>
         <div className="min-w-0 min-h-0 flex flex-col overflow-hidden pr-0.5">
           <div className="relative flex-1 min-h-0">
             <span className="pointer-events-none absolute left-2 top-2 z-10 rounded-md bg-black/55 px-2 py-1 text-[10.5px] text-white/70">
@@ -805,6 +816,7 @@ export function TimelineEditor({
           </div>
         </div>
 
+        {propsOpen && (
         <div className="space-y-4 text-sm overflow-y-auto min-h-0 pr-0.5">
           {/* Motion prompt — gợi ý preset theo mô tả (tool, không tốn quota AI) */}
           <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
@@ -1440,6 +1452,7 @@ export function TimelineEditor({
             </div>
           </section>
         </div>
+        )}
       </div>
       {/* Dải timeline đa track (R1): mọi thứ theo thời gian trên một trục */}
       <TimelineStrip

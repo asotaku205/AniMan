@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { ImagePlus, Landmark, Plus, Trash2, User, X } from "lucide-react";
+import { ChevronDown, ImagePlus, Landmark, Plus, Trash2, User, X } from "lucide-react";
 import type { AnimProject, AnimScene } from "../lib/animProject";
 import {
   BUILTIN_CHARACTERS,
@@ -40,6 +40,37 @@ const ASSET_KIND_LABEL: Record<string, string> = {
   image: "Hình 2D",
   model3d: "Mô hình 3D",
 };
+
+/** Mục thư viện thu gọn/mở rộng được — cột trái hẹp nên mọi mục đều có
+ * nút gập, người dùng chỉ mở mục đang cần. */
+function LibSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="rounded-xl border border-white/10 bg-black/30">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left"
+      >
+        <span className="text-[12px] font-semibold text-white/70 flex items-center gap-1.5 min-w-0">
+          {title}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 flex-none text-white/40 transition-transform ${open ? "" : "-rotate-90"}`}
+        />
+      </button>
+      {open && <div className="px-3 pb-3 space-y-2">{children}</div>}
+    </section>
+  );
+}
 
 export function AssetLibrary({
   project,
@@ -217,23 +248,20 @@ export function AssetLibrary({
   };
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-4 space-y-4">
-      <h2 className="text-sm font-semibold tracking-wide text-white/80 flex items-center gap-2">
+    <div className="space-y-3">
+      <h2 className="text-[13px] font-semibold tracking-wide text-white/80 flex items-center gap-2">
         <Landmark className="w-4 h-4 text-pink-300" />
-        THƯ VIỆN TÀI SẢN — PHONG CẢNH & NHÂN VẬT
+        THƯ VIỆN TÀI SẢN
       </h2>
 
       {assets.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
-          <h3 className="text-[12px] font-semibold text-white/70">
-            QUẢN LÝ TÀI SẢN CỦA TÔI ({assets.length})
-          </h3>
+        <LibSection title={`QUẢN LÝ TÀI SẢN CỦA TÔI (${assets.length})`} defaultOpen={false}>
           <div className="flex flex-wrap items-center gap-2">
             <input
               value={assetQuery}
               onChange={(e) => setAssetQuery(e.currentTarget.value)}
               placeholder="Tìm tài sản theo tên…"
-              className="h-9 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] w-52 placeholder:text-white/25"
+              className="h-9 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] w-full placeholder:text-white/25"
             />
             {["all", "character3d", "scenery", "image", "model3d"].map((k) => (
               <button
@@ -320,15 +348,12 @@ export function AssetLibrary({
             cảnh gửi từ World Builder có nhãn riêng — đổi tên ở đây không
             ảnh hưởng bản gốc trong World Builder.
           </p>
-        </div>
+        </LibSection>
       )}
 
       {project.kind === "3d" && (
         <>
-          <section className="space-y-2">
-            <h3 className="text-[12px] font-semibold text-white/60 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5" /> NHÂN VẬT
-            </h3>
+          <LibSection title={<><User className="w-3.5 h-3.5" /> NHÂN VẬT</>}>
             <div className="flex flex-wrap gap-2">
               {BUILTIN_CHARACTERS.map((c) => (
                 <button
@@ -405,12 +430,12 @@ export function AssetLibrary({
                 Lưu nhân vật vào thư viện
               </button>
             </div>
-          </section>
+          </LibSection>
 
-          <section className="space-y-2">
-            <h3 className="text-[12px] font-semibold text-white/60">
-              PHONG CẢNH (áp vào cảnh đang chọn — giữ nguyên nhân vật)
-            </h3>
+          <LibSection title={<>PHONG CẢNH</>} defaultOpen={false}>
+          <p className="text-[11px] text-white/35">
+            Áp vào cảnh đang chọn — giữ nguyên nhân vật trong cảnh.
+          </p>
             <div className="flex flex-wrap gap-2">
               {BUILTIN_SCENERY.map((s) => (
                 <button
@@ -461,7 +486,7 @@ export function AssetLibrary({
                 value={sceneryName}
                 onChange={(e) => setSceneryName(e.currentTarget.value)}
                 placeholder="Tên phong cảnh từ cảnh hiện tại…"
-                className="h-9 rounded-lg bg-black/40 border border-white/10 px-3 outline-none w-60"
+                className="h-9 rounded-lg bg-black/40 border border-white/10 px-3 outline-none w-full min-w-0"
               />
               <button
                 onClick={() => void saveCurrentScenery()}
@@ -471,13 +496,10 @@ export function AssetLibrary({
                 Lưu cảnh hiện tại thành phong cảnh
               </button>
             </div>
-          </section>
-          <section className="space-y-2">
-            <h3 className="text-[12px] font-semibold text-white/60">
-              MÔ HÌNH 3D CÓ SẴN (FILE .GLB)
-            </h3>
+          </LibSection>
+          <LibSection title={<>MÔ HÌNH 3D CÓ SẴN (FILE .GLB)</>} defaultOpen={false}>
             <div className="flex flex-wrap items-center gap-2 text-[12px]">
-              <label className="px-3 h-9 leading-9 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 cursor-pointer">
+              <label className="px-3 py-2 leading-snug rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 cursor-pointer">
                 Nạp mô hình .glb vào thư viện
                 <input
                   type="file"
@@ -520,15 +542,12 @@ export function AssetLibrary({
                 ))}
               </div>
             )}
-          </section>
+          </LibSection>
         </>
       )}
 
       {project.kind === "2d" && (
-        <section className="space-y-2">
-          <h3 className="text-[12px] font-semibold text-white/60 flex items-center gap-1.5">
-            <ImagePlus className="w-3.5 h-3.5" /> HÌNH DÙNG CHUNG (NỀN · NHÂN VẬT · ĐẠO CỤ)
-          </h3>
+        <LibSection title={<><ImagePlus className="w-3.5 h-3.5" /> HÌNH DÙNG CHUNG</>}>
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
             <select
               value={imageCategory}
@@ -546,7 +565,7 @@ export function AssetLibrary({
                 </option>
               ))}
             </select>
-            <label className="px-3 h-9 leading-9 rounded-lg bg-pink-500/25 border border-pink-300/35 hover:bg-pink-500/35 cursor-pointer">
+            <label className="px-3 py-2 leading-snug rounded-lg bg-pink-500/25 border border-pink-300/35 hover:bg-pink-500/35 cursor-pointer">
               Tải hình lên thư viện
               <input
                 type="file"
@@ -664,7 +683,7 @@ export function AssetLibrary({
               ))}
             </div>
           )}
-        </section>
+        </LibSection>
       )}
 
       {note && <p className="text-[12px] text-emerald-300/85">{note}</p>}

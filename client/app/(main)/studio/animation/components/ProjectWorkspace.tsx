@@ -6,6 +6,8 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Plus,
   Trash2,
@@ -80,6 +82,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [novelDrafts, setNovelDrafts] = useState<SceneDraft[] | null>(null);
   const [importNote, setImportNote] = useState<string | null>(null);
   const [railTab, setRailTab] = useState<"scenes" | "assets">("scenes");
+  const [railOpen, setRailOpen] = useState(true);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
 
@@ -221,8 +224,24 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           null;
         return (
           <div className="rounded-2xl border border-white/10 bg-[#0a0614] overflow-hidden flex h-[calc(100dvh-88px)] min-h-[620px]">
+            {!railOpen && (
+              <div className="w-[42px] flex-none border-r border-white/10 flex flex-col items-center py-2 gap-3">
+                <button
+                  onClick={() => setRailOpen(true)}
+                  title="Mở thanh công cụ (Cảnh · Tài sản)"
+                  aria-label="Mở thanh công cụ"
+                  className="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <span className="text-[10px] tracking-wide text-white/40 [writing-mode:vertical-rl]">
+                  Cảnh · Tài sản
+                </span>
+              </div>
+            )}
+            {railOpen && (
             <aside className="w-[248px] flex-none border-r border-white/10 flex flex-col min-h-0">
-              <div className="flex gap-1 p-2 pb-0">
+              <div className="flex gap-1 p-2 pb-0 items-center">
                 {(
                   [
                     { id: "scenes", label: `Cảnh (${project.scenes.length})` },
@@ -242,7 +261,17 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                   </button>
                 ))}
               </div>
-              <div className="flex-1 overflow-y-auto min-h-0 p-2.5 space-y-2">
+              <div className="px-2 pt-1.5 flex justify-end">
+                <button
+                  onClick={() => setRailOpen(false)}
+                  title="Thu gọn thanh công cụ để khung hình rộng hơn"
+                  aria-label="Thu gọn thanh công cụ"
+                  className="flex items-center gap-1 px-2 h-6 rounded-md bg-white/5 border border-white/10 text-[10.5px] text-white/50 hover:bg-white/10 hover:text-white transition"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Thu gọn
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0 p-2.5 pt-1 space-y-2">
                 {railTab === "assets" ? (
                   sc ? (
                     <AssetLibrary
@@ -328,6 +357,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 )}
               </div>
             </aside>
+            )}
             <div className="flex-1 min-w-0 min-h-0">
               {sc ? (
                 project.kind === "2d" ? (

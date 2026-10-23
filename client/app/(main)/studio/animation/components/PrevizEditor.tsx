@@ -5,6 +5,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
   Camera,
+  ChevronLeft,
+  ChevronRight,
   Download,
   KeyRound,
   Pause,
@@ -276,6 +278,7 @@ export function PrevizEditor({
   const [timeSec, setTimeSec] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [viewMode, setViewMode] = useState<"orbit" | "shot">("orbit");
+  const [propsOpen, setPropsOpen] = useState(true);
   useEffect(() => {
     if (safeFrameRef.current)
       safeFrameRef.current.style.display = viewMode === "shot" ? "block" : "none";
@@ -749,10 +752,18 @@ export function PrevizEditor({
             <Download className="w-3.5 h-3.5" />
             {recording ? "Đang render…" : "Xuất WebM cảnh này"}
           </button>
+          <button
+            onClick={() => setPropsOpen((v) => !v)}
+            title={propsOpen ? "Thu gọn cột thuộc tính" : "Mở cột thuộc tính"}
+            className="flex items-center gap-1 px-2.5 h-8 rounded-lg bg-white/5 border border-white/10 text-[12px] text-white/60 hover:bg-white/10 hover:text-white transition"
+          >
+            {propsOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            {propsOpen ? "Thu gọn panel" : "Mở panel"}
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0">
+      <div className={`grid grid-cols-1 ${propsOpen ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "xl:grid-cols-[minmax(0,1fr)]"} gap-4 flex-1 min-h-0`}>
         <div className="min-w-0 min-h-0 flex flex-col overflow-hidden">
           <div className="relative w-full flex-1 min-h-0">
             <div
@@ -799,6 +810,7 @@ export function PrevizEditor({
           </div>
         </div>
 
+        {propsOpen && (
         <div className="space-y-4 text-sm overflow-y-auto min-h-0 pr-0.5">
           <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
             <div className="flex items-center justify-between">
@@ -1252,6 +1264,7 @@ export function PrevizEditor({
             {genStatus.label}
           </div>
         </div>
+        )}
       </div>
 
       {/* Dải timeline đa track (R1) */}
