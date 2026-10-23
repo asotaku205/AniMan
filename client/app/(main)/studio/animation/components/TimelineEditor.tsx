@@ -8,6 +8,7 @@ import {
   KeyRound,
   Pause,
   Play,
+  Mic,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -48,6 +49,8 @@ import {
   newDialogueId,
   type DialogueLine,
 } from "../lib/dialogue";
+import DialogueVoice from "./DialogueVoice";
+import { playSceneVoice } from "../lib/voicePreview";
 
 const STAGE_W = 960;
 const STAGE_H = 540;
@@ -90,6 +93,7 @@ export function TimelineEditor({
   const [draftCamDirty, setDraftCamDirty] = useState(false);
   const { authenticatedFetch } = useAuth();
   const [motionQuery, setMotionQuery] = useState("");
+  const [voiceLineId, setVoiceLineId] = useState<string | null>(null);
   const [targetLang, setTargetLang] = useState<TranslationTargetLang>("en");
   const [glossary, setGlossary] = useState<string>(() =>
     typeof window === "undefined"
@@ -158,6 +162,36 @@ export function TimelineEditor({
       setDraftCam(sampleCamera(timeline.cameraKeys, timeSec));
     }
   }, [timeSec, selectedLayer, timeline.cameraKeys, draftDirty, draftCamDirty]);
+
+  const timeSecRef = useRef(0);
+  const dialogueRef = useRef<DialogueLine[]>([]);
+  dialogueRef.current = scene.dialogue ?? [];
+
+  // Phát thử KÈM TIẾNG: lên lịch các bản thu đã chọn theo mốc thoại
+  const voicePlaybackRef = useRef<{ stop: () => void } | null>(null);
+  useEffect(() => {
+    if (!playing) {
+      voicePlaybackRef.current?.stop();
+      voicePlaybackRef.current = null;
+      return;
+    }
+    timeSecRef.current = timeSec;
+    let alive = true;
+    void playSceneVoice(dialogueRef.current, timeSec).then((pb) => {
+      if (!alive) {
+        pb?.stop();
+        return;
+      }
+      voicePlaybackRef.current = pb;
+    });
+    return () => {
+      alive = false;
+      voicePlaybackRef.current?.stop();
+      voicePlaybackRef.current = null;
+    };
+    // Chỉ chạy lại khi bấm phát/dừng — mốc bắt đầu lấy tại thời điểm bấm.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing]);
 
   // Phát thử: rAF tiến thời gian, lặp vòng để xem đi xem lại
   const rafRef = useRef<number | null>(null);
@@ -778,16 +812,41 @@ export function TimelineEditor({
                     </label>
                     <button
                       onClick={() =>
+                        setVoiceLineId((v) => (v === line.id ? null : line.id))
+                      }
+                      className={`flex items-center gap-1 px-2 h-7 rounded-lg border text-[11px] ml-auto ${
+                        (line.takes ?? []).length > 0
+                          ? "bg-fuchsia-500/20 border-fuchsia-300/40 text-fuchsia-100"
+                          : "bg-white/5 border-white/10 text-white/55 hover:bg-white/10"
+                      }`}
+                    >
+                      <Mic className="w-3 h-3" />
+                      Giọng{(line.takes ?? []).length > 0 ? ` (${(line.takes ?? []).length})` : ""}
+                    </button>
+                    <button
+                      onClick={() =>
                         onDialogueChange(
                           (scene.dialogue ?? []).filter((x) => x.id !== line.id),
                         )
                       }
                       aria-label="Xoá dòng thoại"
-                      className="ml-auto text-white/35 hover:text-rose-400"
+                      className="text-white/35 hover:text-rose-400"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
+                  {voiceLineId === line.id && (
+                    <DialogueVoice
+                      line={line}
+                      onChange={(next) =>
+                        onDialogueChange(
+                          (scene.dialogue ?? []).map((x) =>
+                            x.id === next.id ? next : x,
+                          ),
+                        )
+                      }
+                    />
+                  )}
                 </div>
               ))}
               {(scene.dialogue ?? []).length === 0 && (

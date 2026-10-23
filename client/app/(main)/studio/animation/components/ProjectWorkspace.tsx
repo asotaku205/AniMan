@@ -281,6 +281,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 onChange={(previz) =>
                   void apply(updateScene(project, sc.id, { previz }))
                 }
+                onDialogueChange={(dialogue) =>
+                  void apply(updateScene(project, sc.id, { dialogue }))
+                }
               />
             );
           })()}
