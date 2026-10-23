@@ -44,3 +44,38 @@ describe("sceneSuggest — tách novel thành cảnh nháp", () => {
     expect(drafts.length).toBeGreaterThan(1);
   });
 });
+
+import { parseSrt, toSrt, formatSrtTime } from "../lib/srt";
+
+describe("srt — parse/xuất phụ đề chuẩn", () => {
+  it("parse đúng mốc thời gian + nội dung; block lỗi bị bỏ qua", () => {
+    const content = [
+      "1",
+      "00:00:01,000 --> 00:00:03,500",
+      "Xin chào mọi người",
+      "",
+      "2",
+      "00:00:04,000 --> 00:00:06,000",
+      "Dòng hai",
+      "kéo dài hai hàng",
+      "",
+      "3",
+      "thời gian hỏng --> bỏ qua",
+      "Không được tính",
+    ].join("\n");
+    const cues = parseSrt(content);
+    expect(cues).toHaveLength(2);
+    expect(cues[0].startSec).toBeCloseTo(1);
+    expect(cues[0].durationSec).toBeCloseTo(2.5);
+    expect(cues[1].text).toContain("Dòng hai");
+  });
+
+  it("xuất SRT rồi parse lại giữ nguyên mốc và nội dung (round-trip)", () => {
+    const cues = parseSrt("1\n00:01:02,250 --> 00:01:05,000\nNội dung mẫu\n");
+    const again = parseSrt(toSrt(cues));
+    expect(again[0].startSec).toBeCloseTo(62.25);
+    expect(again[0].durationSec).toBeCloseTo(2.75);
+    expect(again[0].text).toBe("Nội dung mẫu");
+    expect(formatSrtTime(3661.5)).toBe("01:01:01,500");
+  });
+});

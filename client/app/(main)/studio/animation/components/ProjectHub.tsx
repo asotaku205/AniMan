@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   BookOpen,
   Box,
@@ -83,6 +84,26 @@ export function ProjectHub() {
           <Plus className="w-4 h-4" /> Tạo dự án phim
         </button>
       </div>
+
+      <Link
+        href="/studio/animation/translate-edit"
+        className="flex flex-wrap items-center gap-4 rounded-2xl border border-fuchsia-400/25 bg-fuchsia-500/[0.06] p-5 hover:border-fuchsia-400/50 transition"
+      >
+        <span className="w-11 h-11 rounded-xl bg-fuchsia-500/20 grid place-items-center shrink-0">
+          <Clapperboard className="w-5 h-5 text-fuchsia-300" />
+        </span>
+        <span className="flex-1 min-w-[220px]">
+          <span className="block font-medium">Biên tập video có sẵn — dịch · phụ đề · lồng tiếng</span>
+          <span className="block text-[13px] text-white/45 leading-relaxed mt-0.5">
+            Có sẵn một tập phim? Tải video lên để dịch phụ đề có ngữ cảnh, sửa
+            cue theo mốc thời gian, thu lồng tiếng bằng giọng của bạn và xuất
+            WebM phụ đề cứng hoặc file .srt.
+          </span>
+        </span>
+        <span className="px-4 h-10 leading-10 rounded-xl bg-fuchsia-500/25 border border-fuchsia-400/40 text-sm font-medium">
+          Mở phòng biên tập
+        </span>
+      </Link>
 
       {loading ? (
         <p className="text-sm text-white/40">Đang tải dự án…</p>

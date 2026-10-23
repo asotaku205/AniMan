@@ -1,57 +1,136 @@
 "use client";
 
-import { Wand2 } from "lucide-react";
-import { languages, subtitleLines } from "../../data";
+import { useState } from "react";
+import { Languages } from "lucide-react";
+import type { DialogueLine } from "../../lib/dialogue";
+import {
+  TRANSLATION_TARGET_OPTIONS,
+  translateDialogue,
+  type TranslationTargetLang,
+} from "@/lib/translation-api";
+import { useAuth } from "@/app/auth/AuthProvider";
 
-interface TranslateTabProps {
-  targetLang: string;
-  setTargetLang: (s: string) => void;
-}
+/**
+ * Tab DỊCH — dùng endpoint dịch có ngữ cảnh của server (cùng tính năng
+ * với dịch thoại trong Animation Studio): dịch TOÀN BỘ cue của video
+ * trong 1 lượt kèm tiêu đề video + glossary; bản dịch là NHÁP, duyệt
+ * rồi mới áp vào phụ đề.
+ */
+export function TranslateTab({
+  title,
+  cues,
+  onCuesChange,
+}: {
+  title: string;
+  cues: DialogueLine[];
+  onCuesChange: (cues: DialogueLine[]) => void;
+}) {
+  const { authenticatedFetch } = useAuth();
+  const [targetLang, setTargetLang] = useState<TranslationTargetLang>("vi");
+  const [glossary, setGlossary] = useState<string>(() =>
+    typeof window === "undefined"
+      ? ""
+      : (window.localStorage.getItem("animan-translate-glossary") ?? ""),
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Array<{ id: string; text: string }> | null>(null);
 
-export function TranslateTab({ targetLang, setTargetLang }: TranslateTabProps) {
+  const run = async () => {
+    const lines = cues.filter((c) => c.text.trim());
+    if (lines.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      window.localStorage.setItem("animan-translate-glossary", glossary);
+      const result = await translateDialogue(authenticatedFetch, {
+        targetLang,
+        sceneName: title || "Video",
+        sceneNote: "Phụ đề của một tập phim có sẵn, dịch để lồng tiếng/phụ đề lại.",
+        glossary,
+        lines: lines.map((l) => ({ id: l.id, text: l.text, speaker: l.speaker })),
+      });
+      setDraft(result.translations);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Dịch thất bại, thử lại sau.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="text-[11px] text-white/50 shrink-0 font-medium">DỊCH SANG</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Languages className="w-4 h-4 text-fuchsia-300" />
         <select
           value={targetLang}
-          onChange={(e) => setTargetLang(e.target.value)}
-          className="flex-1 h-8 rounded-md bg-white/5 border border-white/10 text-xs px-2 focus:outline-none focus:border-fuchsia-400"
+          onChange={(e) => setTargetLang(e.currentTarget.value as TranslationTargetLang)}
+          aria-label="Ngôn ngữ đích"
+          className="h-9 rounded-lg bg-black/50 border border-white/10 px-2 text-[13px] outline-none"
         >
-          {languages.map((l: string) => (
-            <option key={l} className="bg-[#0d0817]">{l}</option>
+          {TRANSLATION_TARGET_OPTIONS.map((o) => (
+            <option key={o.id} value={o.id}>
+              Dịch sang {o.label}
+            </option>
           ))}
         </select>
-        <button className="px-2.5 h-8 rounded-md bg-gradient-to-r from-fuchsia-500 to-pink-400 text-xs flex items-center gap-1 font-medium hover:opacity-90 transition">
-          <Wand2 className="w-3.5 h-3.5" /> Auto
+        <button
+          onClick={() => void run()}
+          disabled={busy || cues.every((c) => !c.text.trim())}
+          className="px-4 h-9 rounded-lg bg-gradient-to-r from-fuchsia-500 to-pink-400 text-[13px] font-medium hover:opacity-90 disabled:opacity-40"
+        >
+          {busy ? "Đang dịch toàn bộ…" : `Dịch ${cues.filter((c) => c.text.trim()).length} cue (1 lượt AI)`}
         </button>
       </div>
-      <div className="rounded-lg border border-white/10 overflow-hidden">
-        <div className="grid grid-cols-2 text-[10px] text-white/40 bg-white/5 font-medium">
-          <div className="px-2 py-1.5 border-r border-white/10">NGUỒN (JP)</div>
-          <div className="px-2 py-1.5">{targetLang.toUpperCase()}</div>
-        </div>
-        <div>
-          {subtitleLines.map((l: typeof subtitleLines[number], i: number) => (
-            <div key={i} className="grid grid-cols-2 border-t border-white/5 text-xs">
-              <div className="px-2 py-2 border-r border-white/10 text-white/70">
-                <div className="text-[10px] text-fuchsia-300/70 tabular-nums font-mono">{l.t}</div>
-                <div className="mt-0.5" style={{ fontFamily: "Shippori Mincho, serif" }}>{l.src}</div>
-              </div>
-              <div className="px-2 py-2 text-white/90">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-emerald-400 font-medium">● {l.conf}%</span>
-                  <button className="text-[10px] text-white/40 hover:text-white transition">Sửa</button>
+      <textarea
+        value={glossary}
+        onChange={(e) => setGlossary(e.currentTarget.value)}
+        rows={2}
+        placeholder="Bảng thuật ngữ/tên riêng (tuỳ chọn) — giữ nhất quán tên nhân vật, chiêu thức, địa danh…"
+        className="w-full rounded-lg bg-black/40 border border-white/10 px-2.5 py-2 text-[13px] outline-none placeholder:text-white/25"
+      />
+      {error && <p className="text-[12px] text-rose-300 leading-relaxed">{error}</p>}
+      {draft && (
+        <div className="space-y-2">
+          <div className="max-h-[380px] overflow-y-auto space-y-1.5 pr-1">
+            {draft.map((t) => {
+              const original = cues.find((c) => c.id === t.id);
+              return (
+                <div key={t.id} className="rounded-lg bg-fuchsia-500/[0.06] border border-fuchsia-400/20 p-2.5 text-[13px] leading-relaxed">
+                  <div className="text-white/40">{original?.text}</div>
+                  <div className="text-fuchsia-100">{t.text}</div>
                 </div>
-                <div className="mt-0.5">{l.vi}</div>
-              </div>
-            </div>
-          ))}
+              );
+            })}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                onCuesChange(
+                  cues.map((c) => {
+                    const t = draft.find((x) => x.id === c.id);
+                    return t ? { ...c, text: t.text } : c;
+                  }),
+                );
+                setDraft(null);
+              }}
+              className="flex-1 h-9 rounded-lg bg-fuchsia-500/40 border border-fuchsia-300/40 text-[13px] font-medium hover:bg-fuchsia-500/55"
+            >
+              Áp dụng bản dịch vào phụ đề
+            </button>
+            <button
+              onClick={() => setDraft(null)}
+              className="px-3 h-9 rounded-lg bg-white/5 border border-white/10 text-[13px] hover:bg-white/10"
+            >
+              Bỏ qua
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="text-[10px] text-white/40 leading-relaxed">
-        AI giữ phong cách văn học, ngắt câu theo nhịp thoại gốc. Bạn có thể chỉnh tay từng dòng hoặc đổi tone (trang trọng / thân mật).
-      </div>
+      )}
+      <p className="text-[11px] text-white/30 leading-relaxed">
+        Dịch dùng chung hạn mức AI (5 lượt/phút, 30 lượt/ngày) và cần đăng
+        nhập. Mốc thời gian giữ nguyên — chỉ thay nội dung chữ.
+      </p>
     </div>
   );
 }
