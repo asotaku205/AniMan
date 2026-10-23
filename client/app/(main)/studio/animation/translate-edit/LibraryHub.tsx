@@ -43,8 +43,23 @@ export function LibraryHub() {
   const [loading, setLoading] = useState(true);
   const [newSeriesTitle, setNewSeriesTitle] = useState("");
   const [openSettingsId, setOpenSettingsId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    try {
+      await refreshInner();
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(
+        err instanceof Error
+          ? err.message
+          : "Không tải/lưu được dữ liệu thư viện",
+      );
+      setLoading(false);
+    }
+  }, []);
+
+  const refreshInner = async () => {
     await migrateLegacyIfNeeded();
     const allSeries = await listSeries();
     const out: SeriesTree[] = [];
@@ -68,7 +83,7 @@ export function LibraryHub() {
     }
     setTrees(out);
     setLoading(false);
-  }, []);
+  };
 
   useEffect(() => {
     void refresh();
@@ -98,6 +113,21 @@ export function LibraryHub() {
           mọi tập khi dịch và lồng tiếng.
         </p>
       </div>
+
+      {loadError && (
+        <div className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-[13px] text-rose-200 flex items-center gap-3">
+          <span className="flex-1">
+            ⚠ Lỗi dữ liệu: {loadError} — dữ liệu có thể chưa được lưu. Hãy
+            đóng các tab AniMan khác rồi thử lại.
+          </span>
+          <button
+            onClick={() => void refresh()}
+            className="px-3 h-8 rounded-lg bg-rose-500/25 border border-rose-400/40 text-[12px] font-medium hover:bg-rose-500/35"
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <input

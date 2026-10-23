@@ -95,6 +95,12 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
     setCues(prev);
   }, []);
   const [notFound, setNotFound] = useState(false);
+  const [saveState, setSaveState] = useState<
+    | { kind: "idle" }
+    | { kind: "saving" }
+    | { kind: "saved"; at: Date }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const loadedRef = useRef(false);
@@ -126,11 +132,21 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
     };
   }, [episodeId]);
 
-  // Lưu cue tự động (gộp thay đổi trong 400ms)
+  // Lưu cue tự động (gộp thay đổi trong 400ms) — trạng thái lưu HIỂN THỊ
+  // cho người dùng thấy, lỗi không còn bị nuốt âm thầm như trước.
   useEffect(() => {
     if (!loadedRef.current) return;
+    setSaveState({ kind: "saving" });
     const t = setTimeout(() => {
-      void replaceEpisodeCues(episodeId, cues);
+      replaceEpisodeCues(episodeId, cues)
+        .then(() => setSaveState({ kind: "saved", at: new Date() }))
+        .catch((err: unknown) =>
+          setSaveState({
+            kind: "error",
+            message:
+              err instanceof Error ? err.message : "Không lưu được dữ liệu",
+          }),
+        );
     }, 400);
     return () => clearTimeout(t);
   }, [cues, episodeId]);
@@ -175,7 +191,15 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
     if (!episode) return;
     const next = { ...episode, ...patch };
     setEpisode(next);
-    await saveEpisode(next);
+    try {
+      await saveEpisode(next);
+    } catch (err) {
+      setSaveState({
+        kind: "error",
+        message:
+          err instanceof Error ? err.message : "Không lưu được thông tin tập",
+      });
+    }
   };
 
   const onPickVideo = (file: File) => {
@@ -584,6 +608,22 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
           {series?.title}
           {seasonTitle ? ` › ${seasonTitle}` : ""} › Tập {episode.number}
         </span>
+        <span
+          className={`text-[11px] ml-auto ${
+            saveState.kind === "error"
+              ? "text-rose-300 font-medium"
+              : saveState.kind === "saved"
+                ? "text-emerald-300/80"
+                : "text-white/35"
+          }`}
+          title={saveState.kind === "error" ? saveState.message : undefined}
+        >
+          {saveState.kind === "saving" && "Đang lưu…"}
+          {saveState.kind === "saved" &&
+            `✓ Đã lưu ${saveState.at.toLocaleTimeString("vi-VN")}`}
+          {saveState.kind === "error" &&
+            `⚠ Lỗi lưu dữ liệu: ${saveState.message}`}
+        </span>
         <select
           value={episode.status}
           onChange={(e) =>
@@ -592,7 +632,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             })
           }
           aria-label="Trạng thái tập"
-          className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none ml-auto"
+          className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none"
         >
           {EPISODE_STATUS_OPTIONS.map((o) => (
             <option key={o.id} value={o.id}>

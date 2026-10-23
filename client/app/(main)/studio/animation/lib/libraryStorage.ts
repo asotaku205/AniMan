@@ -18,8 +18,20 @@ import {
 const DB_NAME = "animan_video_editor_db";
 const DB_VERSION = 2;
 
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+/**
+ * Một kết nối IndexedDB DUY NHẤT dùng chung cho cả module (trước đây
+ * mỗi thao tác mở 1 kết nối mới và không xử lý blocked/versionchange
+ * — trên trình duyệt thật, nếu còn tab cũ giữ bản DB cũ thì lần mở
+ * nâng cấp bị treo vĩnh viễn và mọi lần lưu thất bại ÂM THẦM: dữ
+ * liệu chỉ sống trong React state, F5 là mất hết). Nay: cache kết
+ * nối, đóng khi có tab khác nâng cấp, và REJECT khi bị blocked để
+ * tầng UI hiện lỗi thay vì nuốt mất.
+ */
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -48,9 +60,28 @@ function openDb(): Promise<IDBDatabase> {
         db.createObjectStore("takeBlobs");
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      dbPromise = null;
+      reject(req.error);
+    };
+    req.onblocked = () => {
+      dbPromise = null;
+      reject(
+        new Error(
+          "IndexedDB bị chặn bởi một tab/phiên bản cũ đang mở — đóng các tab AniMan khác rồi tải lại trang.",
+        ),
+      );
+    };
   });
+  return dbPromise;
 }
 
 function request<T>(
