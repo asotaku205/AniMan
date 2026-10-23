@@ -36,6 +36,13 @@ import {
   type Transform,
 } from "../lib/timeline";
 import { CAMERA_PRESETS, LAYER_PRESETS } from "../lib/motionPresets";
+import { suggestMotionPresets } from "../lib/motionPrompt";
+import {
+  TRANSLATION_TARGET_OPTIONS,
+  translateDialogue,
+  type TranslationTargetLang,
+} from "@/lib/translation-api";
+import { useAuth } from "@/app/auth/AuthProvider";
 import {
   dialogueLineAt,
   newDialogueId,
@@ -81,6 +88,44 @@ export function TimelineEditor({
   const [draftDirty, setDraftDirty] = useState(false);
   const [draftCam, setDraftCam] = useState(IDENTITY_CAMERA);
   const [draftCamDirty, setDraftCamDirty] = useState(false);
+  const { authenticatedFetch } = useAuth();
+  const [motionQuery, setMotionQuery] = useState("");
+  const [targetLang, setTargetLang] = useState<TranslationTargetLang>("en");
+  const [glossary, setGlossary] = useState<string>(() =>
+    typeof window === "undefined"
+      ? ""
+      : (window.localStorage.getItem("animan-translate-glossary") ?? ""),
+  );
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+  const [translatedDraft, setTranslatedDraft] = useState<Array<{
+    id: string;
+    text: string;
+  }> | null>(null);
+
+  const runTranslate = async () => {
+    const lines = (scene.dialogue ?? []).filter((l) => l.text.trim());
+    if (lines.length === 0 || !onDialogueChange) return;
+    setTranslating(true);
+    setTranslateError(null);
+    try {
+      window.localStorage.setItem("animan-translate-glossary", glossary);
+      const result = await translateDialogue(authenticatedFetch, {
+        targetLang,
+        sceneName: scene.name,
+        sceneNote: scene.note,
+        glossary,
+        lines: lines.map((l) => ({ id: l.id, text: l.text, speaker: l.speaker })),
+      });
+      setTranslatedDraft(result.translations);
+    } catch (error) {
+      setTranslateError(
+        error instanceof Error ? error.message : "Dịch thất bại, thử lại sau.",
+      );
+    } finally {
+      setTranslating(false);
+    }
+  };
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const [, setImageTick] = useState(0);
@@ -366,6 +411,55 @@ export function TimelineEditor({
         </div>
 
         <div className="space-y-4 text-sm">
+          {/* Motion prompt — gợi ý preset theo mô tả (tool, không tốn quota AI) */}
+          <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+            <h3 className="text-[12px] font-semibold text-white/70">
+              MÔ TẢ CHUYỂN ĐỘNG
+            </h3>
+            <input
+              value={motionQuery}
+              onChange={(e) => setMotionQuery(e.currentTarget.value)}
+              placeholder="VD: phóng to dần vào mặt nhân vật…"
+              className="w-full h-9 rounded-lg bg-black/50 border border-white/10 px-2.5 text-[12px] outline-none focus:border-pink-400/50"
+            />
+            {motionQuery.trim() && (
+              <div className="space-y-1.5">
+                {suggestMotionPresets(motionQuery).map((sug) => (
+                  <button
+                    key={sug.presetId}
+                    onClick={() => {
+                      if (sug.target === "camera") {
+                        const preset = CAMERA_PRESETS.find((p) => p.id === sug.presetId);
+                        if (preset) {
+                          update({ ...timeline, cameraKeys: preset.build(duration) });
+                          setDraftCamDirty(false);
+                        }
+                      } else if (selectedLayer) {
+                        const preset = LAYER_PRESETS.find((p) => p.id === sug.presetId);
+                        if (preset) {
+                          updateLayer(selectedLayer.id, { keys: preset.build(duration) });
+                          setDraftDirty(false);
+                        }
+                      }
+                    }}
+                    className="w-full text-left px-2.5 py-2 rounded-lg bg-pink-500/10 border border-pink-400/30 text-[12px] hover:bg-pink-500/20 transition"
+                  >
+                    {sug.name}
+                    <span className="text-white/40">
+                      {" "}
+                      — {sug.target === "camera" ? "áp cho camera" : "áp cho layer đang chọn"}
+                    </span>
+                  </button>
+                ))}
+                {suggestMotionPresets(motionQuery).length === 0 && (
+                  <p className="text-[11px] text-white/35">
+                    Chưa khớp preset nào — thử từ như "phóng to", "lia trái", "rung", "trôi vào", "mờ dần".
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* Layer */}
           <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
             <div className="flex items-center justify-between">
@@ -702,6 +796,81 @@ export function TimelineEditor({
                   hoặc thêm dòng thoại tay.
                 </p>
               )}
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <h4 className="text-[11px] font-semibold text-white/60">
+                  DỊCH CÓ NGỮ CẢNH BẰNG AI (BẢN NHÁP — DUYỆT RỒI MỚI ÁP)
+                </h4>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={targetLang}
+                    onChange={(e) => setTargetLang(e.currentTarget.value as TranslationTargetLang)}
+                    aria-label="Ngôn ngữ đích"
+                    className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none"
+                  >
+                    {TRANSLATION_TARGET_OPTIONS.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => void runTranslate()}
+                    disabled={translating || (scene.dialogue ?? []).every((l) => !l.text.trim())}
+                    className="flex-1 h-8 rounded-lg bg-violet-500/25 border border-violet-400/40 text-[12px] font-medium hover:bg-violet-500/35 disabled:opacity-40"
+                  >
+                    {translating ? "Đang dịch cả cảnh…" : "Dịch cả cảnh (1 lượt AI)"}
+                  </button>
+                </div>
+                <textarea
+                  value={glossary}
+                  onChange={(e) => setGlossary(e.currentTarget.value)}
+                  placeholder="Bảng thuật ngữ/tên riêng (tuỳ chọn) — VD: Haru = giữ nguyên; 'senpai' dịch là 'tiền bối'"
+                  rows={2}
+                  className="w-full rounded-lg bg-black/50 border border-white/10 px-2.5 py-2 text-[12px] outline-none placeholder:text-white/25"
+                />
+                {translateError && (
+                  <p className="text-[11px] text-rose-300 leading-relaxed">{translateError}</p>
+                )}
+                {translatedDraft && (
+                  <div className="space-y-1.5">
+                    {translatedDraft.map((t) => {
+                      const original = (scene.dialogue ?? []).find((l) => l.id === t.id);
+                      return (
+                        <div key={t.id} className="rounded-lg bg-violet-500/[0.07] border border-violet-400/20 p-2 text-[12px] leading-relaxed">
+                          <div className="text-white/40 line-through-none">{original?.text}</div>
+                          <div className="text-violet-200">{t.text}</div>
+                        </div>
+                      );
+                    })}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          onDialogueChange(
+                            (scene.dialogue ?? []).map((l) => {
+                              const t = translatedDraft.find((x) => x.id === l.id);
+                              return t ? { ...l, text: t.text } : l;
+                            }),
+                          );
+                          setTranslatedDraft(null);
+                        }}
+                        className="flex-1 h-8 rounded-lg bg-violet-500/40 border border-violet-300/40 text-[12px] font-medium hover:bg-violet-500/55"
+                      >
+                        Áp dụng bản dịch
+                      </button>
+                      <button
+                        onClick={() => setTranslatedDraft(null)}
+                        className="px-3 h-8 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10"
+                      >
+                        Bỏ qua
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <p className="text-[10px] text-white/30 leading-relaxed">
+                  Dịch dùng chung hạn mức AI với Manga Studio (5 lượt/phút, 30
+                  lượt/ngày). Cần đăng nhập để dùng.
+                </p>
+              </div>
             </section>
           )}
 

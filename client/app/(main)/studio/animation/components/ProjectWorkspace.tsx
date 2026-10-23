@@ -26,6 +26,11 @@ import { AnimaticPlayer } from "./AnimaticPlayer";
 import { TimelineEditor } from "./TimelineEditor";
 import { PrevizEditor } from "./PrevizEditor";
 import { ExportPanel } from "./ExportPanel";
+import {
+  sceneDraftToAnimScene,
+  suggestScenesFromText,
+  type SceneDraft,
+} from "../lib/sceneSuggest";
 import { loadMangaPanels } from "../lib/mangaImport";
 import { buildDialogueTrack } from "../lib/dialogue";
 import { createSceneLayer } from "../lib/timeline";
@@ -63,6 +68,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   );
 
   const [importing, setImporting] = useState(false);
+  const [showNovelSuggest, setShowNovelSuggest] = useState(false);
+  const [novelText, setNovelText] = useState("");
+  const [novelDrafts, setNovelDrafts] = useState<SceneDraft[] | null>(null);
   const [importNote, setImportNote] = useState<string | null>(null);
 
   /** Pipeline gợi ý Manga → Animation: panel đã vẽ → cảnh + thoại. */
@@ -271,12 +279,20 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           <h2 className="text-sm font-semibold tracking-wide text-white/80">
             BẢNG PHÂN CẢNH
           </h2>
-          <button
-            onClick={() => void apply(addScene(project))}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-lg bg-white/5 border border-white/10 text-[13px] hover:bg-white/10 transition"
-          >
-            <Plus className="w-3.5 h-3.5" /> Thêm cảnh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowNovelSuggest(true)}
+              className="px-3 h-9 rounded-lg bg-violet-500/20 border border-violet-400/35 text-[13px] hover:bg-violet-500/30 transition"
+            >
+              Gợi ý phân cảnh từ novel
+            </button>
+            <button
+              onClick={() => void apply(addScene(project))}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-lg bg-white/5 border border-white/10 text-[13px] hover:bg-white/10 transition"
+            >
+              <Plus className="w-3.5 h-3.5" /> Thêm cảnh
+            </button>
+          </div>
         </div>
         <div className="space-y-2">
           {project.scenes.map((scene, idx) => (
@@ -377,6 +393,88 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             : "Bước tiếp theo trên chính bảng cảnh này: dựng previz 3D cho từng cảnh (nhân vật, phong cảnh, camera theo mốc thời gian) rồi xuất đoạn phim."}
         </p>
       </div>
+
+      {showNovelSuggest && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-[#120a1f] border border-white/10 p-6 space-y-4">
+            <div>
+              <h3 className="text-base font-semibold">Gợi ý phân cảnh từ đoạn novel</h3>
+              <p className="text-[12px] text-white/45 leading-relaxed mt-1">
+                Dán một đoạn truyện — công cụ tách theo đoạn văn, trích thoại
+                trong ngoặc kép và ước lượng thời lượng. Đây là bản NHÁP cơ
+                học (không tốn lượt AI); bạn sửa lại ở bảng phân cảnh sau.
+              </p>
+            </div>
+            <textarea
+              value={novelText}
+              onChange={(e) => setNovelText(e.currentTarget.value)}
+              rows={8}
+              placeholder="Dán đoạn novel vào đây…"
+              className="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2.5 text-sm outline-none focus:border-violet-400/50 placeholder:text-white/25"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setNovelDrafts(suggestScenesFromText(novelText))}
+                disabled={!novelText.trim()}
+                className="px-4 h-10 rounded-xl bg-violet-500/30 border border-violet-400/40 text-sm font-medium hover:bg-violet-500/40 disabled:opacity-40"
+              >
+                Phân tích đoạn văn
+              </button>
+              <button
+                onClick={() => {
+                  setShowNovelSuggest(false);
+                  setNovelDrafts(null);
+                }}
+                className="px-4 h-10 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-white/10"
+              >
+                Đóng
+              </button>
+            </div>
+            {novelDrafts && (
+              <div className="space-y-2">
+                {novelDrafts.length === 0 ? (
+                  <p className="text-sm text-white/40">Chưa tách được cảnh nào từ đoạn văn này.</p>
+                ) : (
+                  <>
+                    {novelDrafts.map((d, i) => (
+                      <div key={i} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                        <div className="text-[13px] font-medium">
+                          {d.name}
+                          <span className="text-white/35 font-normal">
+                            {" "}· {d.durationSec.toFixed(1)}s · {d.dialogueTexts.length} câu thoại
+                          </span>
+                        </div>
+                        <p className="text-[12px] text-white/45 leading-relaxed mt-1 line-clamp-2">
+                          {d.note}
+                        </p>
+                      </div>
+                    ))}
+                    <button
+                      onClick={async () => {
+                        const stamp = Date.now().toString(36);
+                        const scenes = novelDrafts.map((d, i) =>
+                          sceneDraftToAnimScene(d, `${stamp}-${i}`),
+                        );
+                        await apply({
+                          ...project,
+                          scenes: [...project.scenes, ...scenes],
+                          updatedAt: Date.now(),
+                        });
+                        setShowNovelSuggest(false);
+                        setNovelDrafts(null);
+                        setNovelText("");
+                      }}
+                      className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-400 text-sm font-medium hover:opacity-90"
+                    >
+                      Thêm {novelDrafts.length} cảnh nháp vào dự án
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <ExportPanel project={project} />
     </div>

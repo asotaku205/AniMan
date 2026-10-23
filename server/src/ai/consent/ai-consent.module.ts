@@ -10,6 +10,8 @@ import { createGeminiDrawingProvider } from "../driver/gemini-drawing-provider.j
 import { AiDrawingController } from "./ai-drawing.controller.js";
 import { AiDrawingConsentController } from "./ai-drawing-consent.controller.js";
 import { AiDrawingConsentService } from "./ai-drawing-consent.service.js";
+import { TranslationController } from "../translation/translation.controller.js";
+import { TranslationService } from "../translation/translation.service.js";
 
 @Module({
   imports: [
@@ -32,8 +34,20 @@ import { AiDrawingConsentService } from "./ai-drawing-consent.service.js";
       },
     }),
   ],
-  controllers: [AiDrawingConsentController, AiDrawingController],
-  providers: [AiDrawingConsentService, AiDrawingRateLimiter],
+  controllers: [AiDrawingConsentController, AiDrawingController, TranslationController],
+  providers: [
+    AiDrawingConsentService,
+    AiDrawingRateLimiter,
+    {
+      provide: TranslationService,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        new TranslationService(
+          config.getOrThrow<string>("GEMINI_API_KEY"),
+          config.get<string>("GEMINI_MODEL_ID"),
+        ),
+    },
+  ],
   exports: [AiDrawingConsentService],
 })
 export class AiConsentModule {}
