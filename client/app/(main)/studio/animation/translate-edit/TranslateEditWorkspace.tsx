@@ -35,6 +35,8 @@ import {
   splitCue,
 } from "../lib/cueEngine";
 import { extractWaveformPeaks } from "../lib/waveform";
+import { toAss, toCueSheetCsv, toVtt } from "../lib/exportFormats";
+import { renderDubMix, type DubTakeInput } from "../lib/dubMix";
 import {
   applyMechanicalFixes,
   loadQcProfile,
@@ -66,6 +68,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [fps, setFps] = useState<number>(25);
   const [peaks, setPeaks] = useState<number[] | null>(null);
   const [waveBusy, setWaveBusy] = useState(false);
@@ -174,6 +177,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
 
   const onPickVideo = (file: File) => {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
+    setVideoFile(file);
     setVideoUrl(URL.createObjectURL(file));
     void patchEpisode({ videoName: file.name });
     setWaveBusy(true);
@@ -293,6 +297,138 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
     setTimeout(restore, (cue.durationSec + 1.5) * 1000);
   }, []);
 
+  const downloadBlob = (blob: Blob, name: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
+  const downloadText = (text: string, name: string, type: string) =>
+    downloadBlob(new Blob([text], { type }), name);
+
+  /**
+   * Xuất WebM LỒNG TIẾNG (S6): render bản trộn offline (tiếng gốc bị
+   * ducking trong các đoạn có thoại + take đã chọn đúng mốc, đúng âm
+   * lượng) rồi ghi hình thời gian thực kèm phụ đề cứng như bản thường.
+   * Đây là khâu trước đây bị thiếu — lồng xong không ra được sản phẩm.
+   */
+  const exportDubbedWebM = async () => {
+    const video = videoRef.current;
+    if (!video || !videoUrl || !videoFile || exporting || !episode) return;
+    const dubbedCues = cues.filter((c) => c.selectedTakeId);
+    if (dubbedCues.length === 0) return;
+    setExporting(true);
+    try {
+      const decodeCtx = new AudioContext();
+      let original: AudioBuffer | null = null;
+      try {
+        original = await decodeCtx.decodeAudioData(
+          await videoFile.arrayBuffer(),
+        );
+      } catch {
+        original = null;
+      }
+      const takes: DubTakeInput[] = [];
+      for (const cue of dubbedCues) {
+        const take = cue.takes.find((t) => t.id === cue.selectedTakeId);
+        const blob = take ? await loadTakeBlob(take.id) : null;
+        if (!take || !blob) continue;
+        try {
+          const buffer = await decodeCtx.decodeAudioData(
+            await blob.arrayBuffer(),
+          );
+          takes.push({ buffer, startSec: cue.startSec, volume: take.volume });
+        } catch {
+          /* bỏ take không decode được */
+        }
+      }
+      void decodeCtx.close();
+      if (takes.length === 0) {
+        setExporting(false);
+        return;
+      }
+      const durationSec = video.duration || duration;
+      const mixed = await renderDubMix({ original, takes, durationSec });
+
+      const W = 960;
+      const H = 540;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setExporting(false);
+        return;
+      }
+      const playCtx = new AudioContext();
+      const dest = playCtx.createMediaStreamDestination();
+      const src = playCtx.createBufferSource();
+      src.buffer = mixed;
+      src.connect(dest);
+      const stream = new MediaStream([
+        ...canvas.captureStream(30).getVideoTracks(),
+        ...dest.stream.getAudioTracks(),
+      ]);
+      const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      const stopped = new Promise<void>((r) => {
+        recorder.onstop = () => r();
+      });
+      video.pause();
+      video.currentTime = 0;
+      await new Promise((r) => setTimeout(r, 150));
+      recorder.start(200);
+      src.start(0);
+      await video.play().catch(() => undefined);
+      const draw = () => {
+        if (video.ended || video.paused) return;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, W, H);
+        const vw = video.videoWidth || W;
+        const vh = video.videoHeight || H;
+        const scale = Math.min(W / vw, H / vh);
+        const w = vw * scale;
+        const h = vh * scale;
+        ctx.drawImage(video, (W - w) / 2, (H - h) / 2, w, h);
+        const line = dialogueLineAt(cues, video.currentTime);
+        if (line?.text.trim()) {
+          ctx.font = "600 26px sans-serif";
+          ctx.textAlign = "center";
+          ctx.lineWidth = 6;
+          ctx.strokeStyle = "rgba(0,0,0,0.85)";
+          ctx.fillStyle = "#fff";
+          ctx.strokeText(line.text, W / 2, H - 26);
+          ctx.fillText(line.text, W / 2, H - 26);
+        }
+        requestAnimationFrame(draw);
+      };
+      draw();
+      await new Promise<void>((resolve) => {
+        const onEnd = () => {
+          video.removeEventListener("ended", onEnd);
+          resolve();
+        };
+        video.addEventListener("ended", onEnd);
+      });
+      recorder.stop();
+      src.stop();
+      void playCtx.close();
+      await stopped;
+      downloadBlob(
+        new Blob(chunks, { type: "video/webm" }),
+        `${(episode.title || "video").replace(/\s+/g, "-")}-long-tieng.webm`,
+      );
+      await patchEpisode({ status: "exported" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const exportBurnedWebM = async () => {
     const video = videoRef.current;
     if (!video || !videoUrl || exporting || !episode) return;
@@ -373,6 +509,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
     a.download = `${(episode.title || "video").replace(/\s+/g, "-")}-phu-de-cung.webm`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
+    void patchEpisode({ status: "exported" });
     setExporting(false);
   };
 
@@ -482,6 +619,15 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             }}
           />
           <button
+            onClick={() => void exportDubbedWebM()}
+            disabled={!videoUrl || !videoFile || exporting || !cues.some((c) => c.selectedTakeId)}
+            title="Trộn các take đã ★ với tiếng gốc bị hạ (ducking) + phụ đề cứng"
+            className="flex items-center gap-2 px-4 h-10 rounded-xl bg-emerald-500/25 border border-emerald-400/40 text-[13px] font-medium hover:bg-emerald-500/35 transition disabled:opacity-40"
+          >
+            <Download className="w-4 h-4" />
+            {exporting ? "Đang xuất…" : "Xuất WebM lồng tiếng"}
+          </button>
+          <button
             onClick={() => void exportBurnedWebM()}
             disabled={!videoUrl || exporting}
             className="flex items-center gap-2 px-4 h-10 rounded-xl bg-gradient-to-r from-fuchsia-500 to-pink-400 text-[13px] font-medium hover:opacity-90 transition disabled:opacity-40"
@@ -490,6 +636,31 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             {exporting ? "Đang xuất (phát hết video)…" : "Xuất WebM phụ đề cứng"}
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 text-[12px]">
+        <span className="text-white/35 py-1.5">Xuất định dạng:</span>
+        <button
+          onClick={() => downloadText(toVtt(cues), `${episode.title || "phu-de"}.vtt`, "text/vtt;charset=utf-8")}
+          disabled={cues.length === 0}
+          className="px-3 h-8 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-40"
+        >
+          .vtt
+        </button>
+        <button
+          onClick={() => downloadText(toAss(cues, episode.title), `${episode.title || "phu-de"}.ass`, "text/plain;charset=utf-8")}
+          disabled={cues.length === 0}
+          className="px-3 h-8 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-40"
+        >
+          .ass
+        </button>
+        <button
+          onClick={() => downloadText(toCueSheetCsv(cues, series), `${episode.title || "cue-sheet"}.csv`, "text/csv;charset=utf-8")}
+          disabled={cues.length === 0}
+          className="px-3 h-8 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-40"
+        >
+          Cue sheet CSV (cho buổi thu)
+        </button>
       </div>
 
       {/* Bố cục studio 3 vùng (S2): trái = công cụ + bảng cue · giữa = video + timeline · phải = mode + inspector */}
