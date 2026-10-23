@@ -36,6 +36,12 @@ export interface AnimScene {
    * bước chân, tiếng mưa, vỗ tay...) và đoạn nhạc riêng của cảnh. File
    * tiếng nằm ở kho Blob, key = `audio-<clipId>`. */
   audioClips?: SceneAudioClip[];
+  /** Hệ hạt tự chế của cảnh (R3) — người dùng tự đặt nguồn phát, hướng,
+   * trọng lực, màu, tuổi thọ hạt; khác thời tiết mẫu ở S2. */
+  particles?: import("./particles").ParticleSystemSettings | null;
+  /** Vệt vẽ tay trên khung hình (R3, chỉ 2D): nét vẽ xuất hiện dần theo
+   * thời gian — vệt sáng phép thuật, đường bay, gạch nhấn tự vẽ. */
+  strokes?: import("./strokes").SceneStroke[];
 }
 
 /**

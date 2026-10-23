@@ -10,6 +10,8 @@ import type { AnimScene } from "./animProject";
 import { sampleCamera, sampleLayerTransform } from "./timeline";
 import { dialogueLineAt } from "./dialogue";
 import { layerEffectAt, weatherParticles } from "./layerEffects";
+import { particlePointsAt } from "./particles";
+import { strokeVisiblePoints } from "./strokes";
 
 export function drawSceneFrame(
   ctx: CanvasRenderingContext2D,
@@ -34,6 +36,7 @@ export function drawSceneFrame(
       layer.keys.map((k) => k.timeSec),
       t,
       scene.durationSec,
+      layer.effectKeys,
     );
     ctx.save();
     ctx.translate(width / 2, height / 2);
@@ -91,6 +94,38 @@ export function drawSceneFrame(
         ctx.fill();
       }
     }
+    ctx.restore();
+  }
+
+  // Hệ hạt tự chế của cảnh (R3)
+  if (scene.particles && scene.particles.count > 0) {
+    ctx.save();
+    ctx.fillStyle = scene.particles.color;
+    for (const p of particlePointsAt(scene.particles, t)) {
+      if (p.alpha < 0.02) continue;
+      ctx.globalAlpha = p.alpha;
+      ctx.beginPath();
+      ctx.arc(p.x * width, p.y * height, Math.max(0.6, (p.size * height) / 540), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Vệt vẽ tay (R3): nét hiện dần theo tiến độ thời gian
+  for (const stroke of scene.strokes ?? []) {
+    const pts = strokeVisiblePoints(stroke, t);
+    if (pts.length < 2) continue;
+    ctx.save();
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth = Math.max(1, (stroke.widthPx * height) / 540);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.shadowColor = stroke.color;
+    ctx.shadowBlur = stroke.widthPx * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x * width, pts[0].y * height);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x * width, pts[i].y * height);
+    ctx.stroke();
     ctx.restore();
   }
 

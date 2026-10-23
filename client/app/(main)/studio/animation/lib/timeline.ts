@@ -266,6 +266,9 @@ export interface SceneLayer {
   motions: LayerMotion[];
   /** Hiệu ứng của layer (S2) — xem lib/layerEffects.ts. */
   effects?: Partial<import("./layerEffects").LayerEffects>;
+  /** Mốc hiệu ứng theo thời gian (R3) — khi có, các giá trị rung/phát
+   * sáng/phồng/độ mờ nội suy theo mốc thay cho giá trị tĩnh ở trên. */
+  effectKeys?: import("./layerEffects").LayerEffectKey[];
 }
 
 export interface SceneTimeline {

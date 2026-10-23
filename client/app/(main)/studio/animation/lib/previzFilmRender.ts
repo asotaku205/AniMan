@@ -25,6 +25,10 @@ import {
   createWeatherPoints,
   updateWeatherPoints,
 } from "./weatherPoints";
+import {
+  createParticlePoints,
+  updateParticlePoints,
+} from "./particlePoints";
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
@@ -153,6 +157,7 @@ export function createPrevizFilmRenderer(
   const loadScene = async (scene: AnimScene) => {
     current = scene.previz ?? createPrevizScene();
     syncWeather(scene);
+    syncParticles(scene);
     threeScene.background = new THREE.Color(current.backdrop);
     for (const group of groups.values()) threeScene.remove(group);
     groups.clear();
@@ -183,6 +188,20 @@ export function createPrevizFilmRenderer(
     }
   };
 
+  let particlePts: THREE.Points | null = null;
+  const syncParticles = (scene: AnimScene) => {
+    if (particlePts) {
+      threeScene.remove(particlePts);
+      particlePts.geometry.dispose();
+      (particlePts.material as THREE.Material).dispose();
+      particlePts = null;
+    }
+    if (scene.particles && scene.particles.count > 0) {
+      particlePts = createParticlePoints(scene.particles);
+      threeScene.add(particlePts);
+    }
+  };
+
   let weatherPoints: THREE.Points | null = null;
   const syncWeather = (scene: AnimScene) => {
     if (weatherPoints) {
@@ -198,6 +217,8 @@ export function createPrevizFilmRenderer(
   };
 
   const drawAt = (scene: AnimScene, t: number) => {
+    if (particlePts) updateParticlePoints(particlePts, t);
+    if (weatherPoints) updateWeatherPoints(weatherPoints, t);
     for (const obj of current.objects) {
       const group = groups.get(obj.id);
       if (!group) continue;
@@ -209,18 +230,16 @@ export function createPrevizFilmRenderer(
       );
       group.rotation.y = rad(sampled.rotationY);
       if (obj.kind === "model") group.scale.setScalar(obj.size);
-      const glow = obj.glow ?? 0;
-      if (glow > 0) {
-        group.traverse((node) => {
-          const mesh = node as THREE.Mesh;
-          if (!mesh.isMesh) return;
-          const mat = mesh.material as THREE.MeshStandardMaterial;
-          if (mat && "emissive" in mat) {
-            mat.emissive = new THREE.Color(obj.color);
-            mat.emissiveIntensity = glow * 0.55;
-          }
-        });
-      }
+      const glow = sampled.glow;
+      group.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        if (mat && "emissive" in mat) {
+          mat.emissive = new THREE.Color(obj.color);
+          mat.emissiveIntensity = glow * 0.55;
+        }
+      });
       const parts = characters.get(obj.id);
       if (parts) {
         const pose = sampled.pose;

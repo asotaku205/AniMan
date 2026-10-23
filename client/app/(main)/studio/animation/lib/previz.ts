@@ -78,6 +78,9 @@ export interface PrevizKey {
   rotationY: number;
   /** Pose tại key này (chỉ nhân vật dùng). */
   poseId: string;
+  /** Phát sáng tại key này (R3) — bỏ trống = dùng mức phát sáng chung
+   * của vật thể; đặt số ở các key để phát sáng thay đổi theo thời gian. */
+  glow?: number;
   easing: EasingId;
 }
 
@@ -167,19 +170,23 @@ export interface SampledObject {
   position: Vec3;
   rotationY: number;
   pose: CharacterPose;
+  /** Mức phát sáng nội suy tại t (R3). */
+  glow: number;
 }
 
 /** Nội suy một vật thể tại t: key đầu/cuối giữ nguyên, giữa hai key theo easing của key trước. */
 export function samplePrevizObject(obj: PrevizObject, t: number): SampledObject {
   const keys = sortKeys(obj.keys);
+  const glowOf = (k: PrevizKey): number => k.glow ?? obj.glow ?? 0;
   if (keys.length === 0) {
-    return { position: vec3(), rotationY: 0, pose: poseById("stand") };
+    return { position: vec3(), rotationY: 0, pose: poseById("stand"), glow: obj.glow ?? 0 };
   }
   if (t <= keys[0].timeSec) {
     return {
       position: { ...keys[0].position },
       rotationY: keys[0].rotationY,
       pose: poseById(keys[0].poseId),
+      glow: glowOf(keys[0]),
     };
   }
   const last = keys[keys.length - 1];
@@ -188,6 +195,7 @@ export function samplePrevizObject(obj: PrevizObject, t: number): SampledObject 
       position: { ...last.position },
       rotationY: last.rotationY,
       pose: poseById(last.poseId),
+      glow: glowOf(last),
     };
   }
   for (let i = 0; i < keys.length - 1; i++) {
@@ -201,6 +209,7 @@ export function samplePrevizObject(obj: PrevizObject, t: number): SampledObject 
         position: lerpVec(a.position, b.position, e),
         rotationY: lerp(a.rotationY, b.rotationY, e),
         pose: lerpPose(poseById(a.poseId), poseById(b.poseId), e),
+        glow: lerp(glowOf(a), glowOf(b), e),
       };
     }
   }
@@ -208,6 +217,7 @@ export function samplePrevizObject(obj: PrevizObject, t: number): SampledObject 
     position: { ...last.position },
     rotationY: last.rotationY,
     pose: poseById(last.poseId),
+    glow: glowOf(last),
   };
 }
 

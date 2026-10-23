@@ -172,8 +172,9 @@ export function SceneAudioPanel({
       </h4>
       <p className="text-[11px] leading-relaxed text-white/40">
         Tự thu hiệu ứng bằng micro (bước chân, vỗ tay, tiếng động quanh bạn)
-        hoặc nạp file — cắt, dời mốc, fade theo ý bạn. Clip ở đây phát
-        trong Phát thử và có mặt trong bản xuất phim.
+        hoặc nạp file — cắt, dời mốc, fade theo ý bạn. Bấm Phát ngay
+        trong trình dựng cảnh là nghe thấy clip cùng hình; clip cũng có
+        mặt trong Phát thử toàn phim và bản xuất.
       </p>
 
       <div className="flex flex-wrap gap-2">
@@ -297,7 +298,7 @@ function NumField({
   onChange: (v: number) => void;
 }) {
   return (
-    <label className="flex items-center justify-between gap-2">
+    <label className="flex flex-col gap-1">
       <span>{label}</span>
       <input
         type="number"
@@ -309,7 +310,7 @@ function NumField({
           const v = Number(e.currentTarget.value);
           if (Number.isFinite(v)) onChange(v);
         }}
-        className="w-[68px] h-7 px-2 rounded-md bg-black/40 border border-white/10 text-right text-white/85 outline-none"
+        className="w-full h-8 px-2 rounded-md bg-black/40 border border-white/10 text-right text-white/85 outline-none"
       />
     </label>
   );
