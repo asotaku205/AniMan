@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ImagePlus, Landmark, Plus, Trash2, User, X } from "lucide-react";
+import { ChevronDown, ImagePlus, Landmark, Paintbrush, Pencil, Plus, Trash2, User, Users, X } from "lucide-react";
 import type { AnimProject, AnimScene } from "../lib/animProject";
 import {
   BUILTIN_CHARACTERS,
@@ -19,6 +19,7 @@ import {
   characterObjectFromAsset,
   newAssetId,
   type AnimAsset,
+  type Character2DAsset,
   type Character3DAsset,
   type ImageAsset,
   type Model3DAsset,
@@ -37,12 +38,21 @@ import {
   inspectGlbDataUrl,
   inspectionSummary,
 } from "../lib/modelInspect";
+import {
+  addExpression,
+  createCharacter2D,
+  expressionProgress,
+  removeExpression,
+  setExpressionImage,
+} from "../lib/characterSheet";
+import DrawStudioModal from "./DrawStudioModal";
 
 const ASSET_KIND_LABEL: Record<string, string> = {
   character3d: "Nhân vật 3D",
   scenery: "Phong cảnh",
   image: "Hình 2D",
   model3d: "Mô hình 3D",
+  character2d: "Nhân vật 2D tự tạo",
 };
 
 /** Mục thư viện thu gọn/mở rộng được — cột trái hẹp nên mọi mục đều có
@@ -120,6 +130,16 @@ export function AssetLibrary({
     (a): a is SceneryAsset => a.kind === "scenery",
   );
   const images = assets.filter((a): a is ImageAsset => a.kind === "image");
+  const characters2d = assets.filter(
+    (a): a is Character2DAsset => a.kind === "character2d",
+  );
+  const [newCharName, setNewCharName] = useState("");
+  const [exprDrafts, setExprDrafts] = useState<Record<string, string>>({});
+  const [drawTarget, setDrawTarget] = useState<
+    | { type: "free" }
+    | { type: "expression"; charId: string; label: string }
+    | null
+  >(null);
   const models = assets.filter(
     (a): a is Model3DAsset => a.kind === "model3d",
   );
@@ -254,14 +274,58 @@ export function AssetLibrary({
     reader.readAsDataURL(file);
   };
 
-  const addImageToScene = (asset: ImageAsset) => {
+  const addImageDataToScene = (name: string, dataUrl: string) => {
     const timeline = scene.timeline ?? createSceneTimeline();
-    const layer = createSceneLayer(asset.name, "#2b2440");
-    layer.imageDataUrl = asset.dataUrl;
+    const layer = createSceneLayer(name, "#2b2440");
+    layer.imageDataUrl = dataUrl;
     onUpdateScene({
       timeline: { ...timeline, layers: [...timeline.layers, layer] },
     });
-    setNote(`Đã thêm hình "${asset.name}" thành một lớp trong cảnh "${scene.name}".`);
+    setNote(`Đã thêm "${name}" thành một lớp trong cảnh "${scene.name}".`);
+  };
+
+  const addImageToScene = (asset: ImageAsset) =>
+    addImageDataToScene(asset.name, asset.dataUrl);
+
+  const saveCharacter2D = async (char: Character2DAsset) => {
+    await saveAnimAsset(char);
+    await refresh();
+  };
+
+  const createCharacter = async () => {
+    const char = createCharacter2D(newCharName);
+    await saveCharacter2D(char);
+    setNewCharName("");
+    setNote(
+      `Đã tạo nhân vật "${char.name}" với ${char.expressions.length} biểu cảm chờ vẽ.`,
+    );
+  };
+
+  const handleDrawSave = async (dataUrl: string) => {
+    if (!drawTarget) return;
+    if (drawTarget.type === "free") {
+      await saveAnimAsset({
+        kind: "image",
+        id: newAssetId("image"),
+        name: `Hình tự vẽ ${images.length + 1}`,
+        category: imageCategory,
+        dataUrl,
+        createdAt: Date.now(),
+      });
+      await refresh();
+      setNote("Đã lưu hình tự vẽ vào thư viện.");
+    } else {
+      const char = characters2d.find((c) => c.id === drawTarget.charId);
+      if (char) {
+        await saveCharacter2D(
+          setExpressionImage(char, drawTarget.label, dataUrl),
+        );
+        setNote(
+          `Đã lưu biểu cảm "${drawTarget.label}" cho nhân vật "${char.name}".`,
+        );
+      }
+    }
+    setDrawTarget(null);
   };
 
   const removeAsset = async (asset: AnimAsset) => {
@@ -608,6 +672,136 @@ export function AssetLibrary({
       )}
 
       {project.kind === "2d" && (
+        <>
+        <LibSection title={<><Users className="w-3.5 h-3.5" /> NHÂN VẬT TỰ TẠO — BỘ BIỂU CẢM</>}>
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            <input
+              value={newCharName}
+              onChange={(e) => setNewCharName(e.currentTarget.value)}
+              placeholder="Tên nhân vật mới…"
+              className="h-9 flex-1 min-w-28 rounded-lg bg-black/40 border border-white/10 px-2.5 outline-none"
+            />
+            <button
+              onClick={() => void createCharacter()}
+              className="px-3 py-2 leading-snug rounded-lg bg-pink-500/25 border border-pink-300/35 hover:bg-pink-500/35"
+            >
+              Tạo nhân vật
+            </button>
+          </div>
+          <p className="text-[11px] leading-relaxed text-white/40">
+            Tự vẽ nhân vật một lần với nhiều biểu cảm (nền trong suốt), rồi
+            thêm vào từng cảnh với biểu cảm phù hợp — đổi nét mặt giữa các
+            cảnh là cách làm phim kể chuyện kinh điển.
+          </p>
+          {characters2d.map((char) => {
+            const prog = expressionProgress(char);
+            return (
+              <div
+                key={char.id}
+                className="rounded-xl border border-white/8 bg-black/25 p-2.5 space-y-2"
+              >
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="font-medium text-white/85">{char.name}</span>
+                  <span className="text-white/40">
+                    đã vẽ {prog.drawn}/{prog.total} biểu cảm
+                  </span>
+                  <button
+                    onClick={() => void removeAsset(char)}
+                    title="Xoá nhân vật khỏi thư viện"
+                    className="ml-auto text-white/35 hover:text-rose-400"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {char.expressions.map((expr) => (
+                    <div key={expr.label} className="w-[76px] space-y-1">
+                      <div className="aspect-square rounded-lg overflow-hidden border border-white/10 [background:repeating-conic-gradient(#2a2a2e_0%_25%,#1c1c1f_0%_50%)_0_0/12px_12px] flex items-center justify-center">
+                        {expr.dataUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={expr.dataUrl}
+                            alt={`${char.name} — ${expr.label}`}
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-white/35 px-1 text-center">
+                            Chưa vẽ
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-white/60 truncate">
+                        {expr.label}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() =>
+                            setDrawTarget({
+                              type: "expression",
+                              charId: char.id,
+                              label: expr.label,
+                            })
+                          }
+                          title={expr.dataUrl ? "Vẽ lại biểu cảm này" : "Vẽ biểu cảm này"}
+                          className="p-1.5 rounded bg-white/5 border border-white/10 text-pink-300 hover:text-pink-100"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        {expr.dataUrl && (
+                          <button
+                            onClick={() =>
+                              addImageDataToScene(
+                                `${char.name} – ${expr.label}`,
+                                expr.dataUrl!,
+                              )
+                            }
+                            title="Thêm vào cảnh đang chọn với biểu cảm này"
+                            className="p-1.5 rounded bg-white/5 border border-white/10 text-emerald-300 hover:text-emerald-100"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() =>
+                            void saveCharacter2D(removeExpression(char, expr.label))
+                          }
+                          title="Xoá biểu cảm này"
+                          className="p-1.5 rounded bg-white/5 border border-white/10 text-white/40 hover:text-rose-400"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <input
+                    value={exprDrafts[char.id] ?? ""}
+                    onChange={(e) =>
+                      setExprDrafts((d) => ({
+                        ...d,
+                        [char.id]: e.currentTarget.value,
+                      }))
+                    }
+                    placeholder="Biểu cảm mới (VD: Cười lớn, Suy tư…)"
+                    className="h-8 flex-1 min-w-24 rounded-lg bg-black/40 border border-white/10 px-2 outline-none text-[11px]"
+                  />
+                  <button
+                    onClick={() => {
+                      void saveCharacter2D(
+                        addExpression(char, exprDrafts[char.id] ?? ""),
+                      );
+                      setExprDrafts((d) => ({ ...d, [char.id]: "" }));
+                    }}
+                    className="px-2.5 py-1.5 leading-snug rounded-lg bg-white/5 border border-white/10 text-white/70"
+                  >
+                    Thêm biểu cảm
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </LibSection>
         <LibSection title={<><ImagePlus className="w-3.5 h-3.5" /> HÌNH DÙNG CHUNG</>}>
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
             <select
@@ -626,6 +820,12 @@ export function AssetLibrary({
                 </option>
               ))}
             </select>
+            <button
+              onClick={() => setDrawTarget({ type: "free" })}
+              className="flex items-center gap-1.5 px-3 py-2 leading-snug rounded-lg bg-sky-500/25 border border-sky-300/35 hover:bg-sky-500/35"
+            >
+              <Paintbrush className="w-3.5 h-3.5" /> Vẽ hình mới
+            </button>
             <label className="px-3 py-2 leading-snug rounded-lg bg-pink-500/25 border border-pink-300/35 hover:bg-pink-500/35 cursor-pointer">
               Tải hình lên thư viện
               <input
@@ -745,6 +945,32 @@ export function AssetLibrary({
             </div>
           )}
         </LibSection>
+        </>
+      )}
+
+      {drawTarget && (
+        <DrawStudioModal
+          title={
+            drawTarget.type === "free"
+              ? "Vẽ hình mới cho thư viện"
+              : `Vẽ biểu cảm "${drawTarget.label}" — ${
+                  characters2d.find((c) => c.id === drawTarget.charId)?.name ??
+                  "nhân vật"
+                }`
+          }
+          initialDataUrl={
+            drawTarget.type === "expression"
+              ? (characters2d
+                  .find((c) => c.id === drawTarget.charId)
+                  ?.expressions.find((e) => e.label === drawTarget.label)
+                  ?.dataUrl ?? null)
+              : null
+          }
+          canvasWidth={drawTarget.type === "free" ? 960 : 720}
+          canvasHeight={drawTarget.type === "free" ? 540 : 720}
+          onClose={() => setDrawTarget(null)}
+          onSave={(dataUrl) => void handleDrawSave(dataUrl)}
+        />
       )}
 
       {note && <p className="text-[12px] text-emerald-300/85">{note}</p>}

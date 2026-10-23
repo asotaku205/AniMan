@@ -57,6 +57,7 @@ import {
   type SceneStroke,
 } from "../lib/strokes";
 import { SceneParticlesPanel } from "./SceneParticlesPanel";
+import DrawStudioModal from "./DrawStudioModal";
 import { suggestMotionPresets } from "../lib/motionPrompt";
 import {
   TRANSLATION_TARGET_OPTIONS,
@@ -284,6 +285,7 @@ export function TimelineEditor({
   const duration = Math.max(0.5, scene.durationSec);
   const [timeSec, setTimeSec] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [drawingLayer, setDrawingLayer] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     timeline.layers[0]?.id ?? null,
   );
@@ -1103,7 +1105,26 @@ export function TimelineEditor({
                     reader.readAsDataURL(file);
                   }}
                 />
+                <button
+                  onClick={() => setDrawingLayer(true)}
+                  className="mt-2 px-3 py-2 leading-snug rounded-lg bg-sky-500/25 border border-sky-300/35 hover:bg-sky-500/35 text-[12px] text-white"
+                >
+                  Vẽ / sửa hình bằng bút vẽ
+                </button>
               </label>
+            )}
+            {drawingLayer && selectedLayer && (
+              <DrawStudioModal
+                title={`Vẽ hình cho layer "${selectedLayer.name}"`}
+                initialDataUrl={selectedLayer.imageDataUrl}
+                canvasWidth={960}
+                canvasHeight={540}
+                onClose={() => setDrawingLayer(false)}
+                onSave={(dataUrl) => {
+                  updateLayer(selectedLayer.id, { imageDataUrl: dataUrl });
+                  setDrawingLayer(false);
+                }}
+              />
             )}
           </section>
 

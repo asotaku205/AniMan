@@ -66,11 +66,22 @@ export interface Model3DAsset {
   inspection?: import("./modelInspect").ModelInspection;
 }
 
+/** Nhân vật 2D người dùng tự vẽ trong app (R4): gồm bộ biểu cảm, mỗi
+ * biểu cảm là một hình vẽ riêng nền trong suốt (xem characterSheet.ts). */
+export interface Character2DAsset {
+  kind: "character2d";
+  id: string;
+  name: string;
+  expressions: Array<{ label: string; dataUrl: string | null }>;
+  createdAt: number;
+}
+
 export type AnimAsset =
   | Character3DAsset
   | SceneryAsset
   | ImageAsset
-  | Model3DAsset;
+  | Model3DAsset
+  | Character2DAsset;
 
 let assetCounter = 0;
 export function newAssetId(prefix: string): string {
