@@ -150,6 +150,20 @@ export function PrevizEditor({
 
   const selected = previz.objects.find((o) => o.id === selectedId) ?? null;
 
+  // Tương tác trực tiếp trên khung 3D (S3): bấm chọn vật thể, kéo trên mặt đất
+  const stageInteractRef = useRef<{
+    onPick: (id: string) => void;
+    onDrag: (id: string, pos: { x: number; y: number; z: number }) => void;
+  } | null>(null);
+  stageInteractRef.current = {
+    onPick: (id) => setSelectedId(id),
+    onDrag: (id, pos) => {
+      setSelectedId(id);
+      setDraftPos(pos);
+      setDraftDirty(true);
+    },
+  };
+
   // Draft cho vật thể đang chọn (vị trí/pose tại playhead, sửa rồi đặt key)
   const [draftPos, setDraftPos] = useState<Vec3>(vec3());
   const [draftRotY, setDraftRotY] = useState(0);
@@ -228,7 +242,74 @@ export function PrevizEditor({
       characters: new Map(),
       weatherPoints: null,
     };
+
+    // Chọn/kéo vật thể ngay trên khung 3D (S3)
+    const raycaster = new THREE.Raycaster();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    let dragId: string | null = null;
+    let downAt: { x: number; y: number } | null = null;
+    const ndcOf = (e: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      return new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+    };
+    const pickAt = (e: PointerEvent): string | null => {
+      const ctxNow = threeRef.current;
+      if (!ctxNow) return null;
+      raycaster.setFromCamera(ndcOf(e), ctxNow.orbitCam);
+      const hits = raycaster.intersectObjects(
+        [...ctxNow.groups.values()],
+        true,
+      );
+      for (const hit of hits) {
+        let node: THREE.Object3D | null = hit.object;
+        while (node) {
+          if (typeof node.userData.objectId === "string")
+            return node.userData.objectId;
+          node = node.parent;
+        }
+      }
+      return null;
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (stateRef.current.viewMode !== "orbit") return;
+      downAt = { x: e.clientX, y: e.clientY };
+      const id = pickAt(e);
+      if (id) {
+        dragId = id;
+        controls.enabled = false;
+        stageInteractRef.current?.onPick(id);
+      }
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!dragId) return;
+      const ctxNow = threeRef.current;
+      if (!ctxNow) return;
+      raycaster.setFromCamera(ndcOf(e), ctxNow.orbitCam);
+      const point = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(groundPlane, point)) {
+        stageInteractRef.current?.onDrag(dragId, {
+          x: Math.max(-14, Math.min(14, point.x)),
+          y: 0,
+          z: Math.max(-14, Math.min(14, point.z)),
+        });
+      }
+    };
+    const onPointerUp = () => {
+      dragId = null;
+      downAt = null;
+      controls.enabled = stateRef.current.viewMode === "orbit";
+    };
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+
     return () => {
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
       controls.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
@@ -261,6 +342,8 @@ export function PrevizEditor({
     const seen = new Set<string>();
     for (const obj of previz.objects) {
       seen.add(obj.id);
+      const existing = ctx.groups.get(obj.id);
+      if (existing) existing.userData.objectId = obj.id;
       if (!ctx.groups.has(obj.id)) {
         if (obj.kind === "model") {
           // Mô hình glTF: đặt nhóm giữ chỗ trước, nạp xong gắn vào sau
@@ -500,6 +583,11 @@ export function PrevizEditor({
             ref={mountRef}
             className="w-full aspect-video rounded-xl border border-white/10 overflow-hidden bg-black [&>canvas]:w-full [&>canvas]:h-full"
           />
+          <p className="mt-2 text-[11px] text-white/35">
+            Mẹo: ở góc nhìn tự do, bấm thẳng vào vật thể trên khung để chọn,
+            kéo để dời trên mặt đất — xong bấm "Đặt key" để ghi vị trí vào
+            mốc thời gian hiện tại. Kéo ở vùng trống để xoay camera.
+          </p>
           <div className="mt-3 flex items-center gap-2">
             <button
               onClick={() => setPlaying((v) => !v)}

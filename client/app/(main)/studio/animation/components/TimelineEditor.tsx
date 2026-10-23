@@ -39,6 +39,7 @@ import {
   type Transform,
 } from "../lib/timeline";
 import { CAMERA_PRESETS, LAYER_PRESETS } from "../lib/motionPresets";
+import { layerAtPoint, stageToWorld } from "../lib/stageHitTest";
 import {
   layerEffectAt,
   layerEffectsOf,
@@ -142,6 +143,61 @@ export function TimelineEditor({
     }
   };
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Kéo layer trực tiếp trên sân khấu (S3)
+  const stageDragRef = useRef<{
+    layerId: string;
+    startWorld: { x: number; y: number };
+    startT: Transform;
+  } | null>(null);
+  const [stageDragging, setStageDragging] = useState(false);
+
+  const stagePointOf = (e: React.PointerEvent): { x: number; y: number } | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    return {
+      x: (e.clientX - rect.left) / rect.width,
+      y: (e.clientY - rect.top) / rect.height,
+    };
+  };
+
+  const onStagePointerDown = (e: React.PointerEvent) => {
+    const point = stagePointOf(e);
+    if (!point) return;
+    const hit = layerAtPoint(timeline, timeSec, point);
+    if (!hit) return;
+    setSelectedLayerId(hit.id);
+    const base = sampleTransform(hit.keys, timeSec);
+    setDraftT(base);
+    setDraftDirty(false);
+    stageDragRef.current = {
+      layerId: hit.id,
+      startWorld: stageToWorld(timeline, timeSec, point),
+      startT: base,
+    };
+    setStageDragging(true);
+    canvasRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  const onStagePointerMove = (e: React.PointerEvent) => {
+    const drag = stageDragRef.current;
+    if (!drag) return;
+    const point = stagePointOf(e);
+    if (!point) return;
+    const world = stageToWorld(timeline, timeSec, point);
+    setDraftT({
+      ...drag.startT,
+      x: Math.max(-0.5, Math.min(1.5, drag.startT.x + (world.x - drag.startWorld.x))),
+      y: Math.max(-0.5, Math.min(1.5, drag.startT.y + (world.y - drag.startWorld.y))),
+    });
+    setDraftDirty(true);
+  };
+
+  const onStagePointerUp = () => {
+    stageDragRef.current = null;
+    setStageDragging(false);
+  };
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const [, setImageTick] = useState(0);
 
@@ -521,7 +577,12 @@ export function TimelineEditor({
             ref={canvasRef}
             width={STAGE_W}
             height={STAGE_H}
-            className="w-full aspect-video rounded-xl border border-white/10 bg-black"
+            onPointerDown={onStagePointerDown}
+            onPointerMove={onStagePointerMove}
+            onPointerUp={onStagePointerUp}
+            className={`w-full aspect-video rounded-xl border border-white/10 bg-black touch-none ${
+              stageDragging ? "cursor-grabbing" : "cursor-grab"
+            }`}
           />
           <div className="mt-3 flex items-center gap-2">
             <button
