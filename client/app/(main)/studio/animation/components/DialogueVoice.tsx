@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, Play, Square, Star, Trash2 } from "lucide-react";
+import { Mic, Play, Square, Star, Trash2, Volume2 } from "lucide-react";
 import {
   addDialogueTake,
   newTakeId,
@@ -22,6 +22,7 @@ import {
   loadVoiceBlob,
   saveVoiceBlob,
 } from "../lib/animStorage";
+import { speakPreview, stopPreview, voiceGenStatus } from "../lib/voiceGen";
 
 function beep(ctx: AudioContext, at: number, freq = 880) {
   const osc = ctx.createOscillator();
@@ -75,6 +76,7 @@ export default function DialogueVoice({
       if (autoStopRef.current) clearTimeout(autoStopRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       audioRef.current?.pause();
+      stopPreview();
     },
     [],
   );
@@ -220,6 +222,17 @@ export default function DialogueVoice({
             </button>
           </>
         )}
+        <button
+          onClick={() => {
+            if (!speakPreview(line.text)) {
+              setError("Trình duyệt này không có giọng đọc thử.");
+            }
+          }}
+          title="Nghe giọng đọc có sẵn của trình duyệt để kiểm tra nhịp thoại — chỉ nghe thử, không vào bản xuất"
+          className="flex items-center gap-1 px-2 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
+        >
+          <Volume2 className="w-3 h-3" /> Đọc thử
+        </button>
         {takes.length === 0 && (
           <span className="text-[11px] text-white/35">
             Chưa có bản thu — dòng này sẽ chỉ hiện phụ đề khi xuất phim.
@@ -290,6 +303,9 @@ export default function DialogueVoice({
       })}
 
       {error && <p className="text-[11px] text-rose-300">{error}</p>}
+      <p className="text-[10px] leading-relaxed text-white/30">
+        Tạo giọng bằng AI: {voiceGenStatus().label}
+      </p>
     </div>
   );
 }
