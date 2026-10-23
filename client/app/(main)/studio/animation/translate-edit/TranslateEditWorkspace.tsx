@@ -48,7 +48,10 @@ import { CueTable } from "./components/CueTable";
 import { CueInspector } from "./components/CueInspector";
 import { QcPanel } from "./components/QcPanel";
 import { SubTab } from "./components/SubTab";
-import { TranslateTab } from "./components/TranslateTab";
+import {
+  TranslateTab,
+  FLAG_AI_TRANSLATION,
+} from "./components/TranslateTab";
 import { DubTab } from "./components/DubTab";
 
 /**
@@ -515,7 +518,24 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
 
   const selectedCue = cues.find((c) => c.id === selectedCueId) ?? null;
   const patchCue = (id: string, patch: Partial<CueV2>) =>
-    commitCues(cuesRef.current.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    commitCues(
+      cuesRef.current.map((c) => {
+        if (c.id !== id) return c;
+        const next = { ...c, ...patch };
+        // Tự tay sửa lời dịch = đã xem lại → gỡ cờ của AI (trừ khi patch đặt cờ)
+        if ("text" in patch && !("flag" in patch)) next.flag = undefined;
+        return next;
+      }),
+    );
+  const markTranslated = useCallback(
+    (ids: string[]) =>
+      commitCues(
+        cuesRef.current.map((c) =>
+          ids.includes(c.id) ? { ...c, flag: FLAG_AI_TRANSLATION } : c,
+        ),
+      ),
+    [commitCues],
+  );
   const deleteCue = (id: string) => {
     commitCues(cuesRef.current.filter((c) => c.id !== id));
     setSelectedCueId(null);
@@ -830,7 +850,14 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             </p>
           ))}
         {tab === "translate" && (
-          <TranslateTab title={episode.title} cues={cues} onCuesChange={applyCueLines} />
+          <TranslateTab
+            title={episode.title}
+            cues={cues}
+            series={series}
+            onCuesChange={applyCueLines}
+            onPatchCue={patchCue}
+            onTranslated={markTranslated}
+          />
         )}
         {tab === "dub" && (
           <DubTab
