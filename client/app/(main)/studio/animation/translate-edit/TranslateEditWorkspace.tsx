@@ -12,59 +12,107 @@ import {
 } from "lucide-react";
 import { dialogueLineAt, type DialogueLine } from "../lib/dialogue";
 import {
-  loadVideoProject,
-  saveVideoProject,
-} from "../lib/videoEditorStorage";
+  characterName,
+  createCue,
+  EPISODE_STATUS_OPTIONS,
+  type CueV2,
+  type Episode,
+  type Series,
+} from "../lib/library";
+import {
+  getEpisode,
+  getSeriesOfEpisode,
+  listCues,
+  replaceEpisodeCues,
+  saveEpisode,
+} from "../lib/libraryStorage";
 import { MultiTrackTimeline } from "./components/MultiTrackTimeline";
 import { SubTab } from "./components/SubTab";
 import { TranslateTab } from "./components/TranslateTab";
 import { DubTab } from "./components/DubTab";
 
 /**
- * PHÒNG BIÊN TẬP VIDEO CÓ SẴN — dịch / phụ đề / lồng tiếng cho một tập
- * phim người dùng tự tải lên (video chạy ngay trên máy, không tải lên
- * server). Cue phụ đề + bản thu lồng tiếng lưu trong IndexedDB; xuất
- * .srt ở tab Phụ đề, xuất WebM phụ đề cứng ở đây.
- * (Bản cũ của trang này là mock tĩnh — đã thay toàn bộ bằng tool thật.)
+ * Editor biên tập MỘT TẬP (dữ liệu v2 — thư viện Series/Season/Episode).
+ * Cue lưu theo episode trong `libraryStorage`; bản thu lồng tiếng tạm
+ * vẫn qua store cũ theo cueId (Slice S5 sẽ chuyển hẳn sang takes v2).
+ * Layout 3 vùng chuẩn studio thuộc Slice S2 — bản này giữ khung cũ.
  */
-export function TranslateEditWorkspace() {
+export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
   const [tab, setTab] = useState<"sub" | "translate" | "dub">("sub");
-  const [title, setTitle] = useState("");
-  const [cues, setCues] = useState<DialogueLine[]>([]);
+  const [episode, setEpisode] = useState<Episode | null>(null);
+  const [series, setSeries] = useState<Series | null>(null);
+  const [seasonTitle, setSeasonTitle] = useState("");
+  const [cues, setCues] = useState<CueV2[]>([]);
   const [selectedCueId, setSelectedCueId] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [videoName, setVideoName] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [notFound, setNotFound] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const loadedRef = useRef(false);
 
-  // Nạp dự án đã lưu (cue + tiêu đề) khi mở trang
   useEffect(() => {
-    void loadVideoProject().then((p) => {
-      if (p) {
-        setTitle(p.title);
-        setCues(p.cues);
+    let cancelled = false;
+    void (async () => {
+      const ep = await getEpisode(episodeId);
+      if (cancelled) return;
+      if (!ep) {
+        setNotFound(true);
+        return;
       }
-      loadedRef.current = true;
-    });
-  }, []);
+      setEpisode(ep);
+      setDuration(ep.durationSec || 0);
+      const ctx = await getSeriesOfEpisode(ep);
+      if (ctx && !cancelled) {
+        setSeries(ctx.series);
+        setSeasonTitle(ctx.series.useSeasons ? ctx.season.title : "");
+      }
+      const loaded = await listCues(episodeId);
+      if (!cancelled) {
+        setCues(loaded);
+        loadedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [episodeId]);
 
-  // Lưu tự động mỗi khi cue/tiêu đề đổi
+  // Lưu cue tự động (gộp thay đổi trong 400ms)
   useEffect(() => {
     if (!loadedRef.current) return;
     const t = setTimeout(() => {
-      void saveVideoProject({
-        id: "current",
-        title,
-        cues,
-        updatedAt: Date.now(),
-      });
+      void replaceEpisodeCues(episodeId, cues);
     }, 400);
     return () => clearTimeout(t);
-  }, [title, cues]);
+  }, [cues, episodeId]);
+
+  /** Tabs làm việc trên DialogueLine — hợp nhất lại vào CueV2 theo id. */
+  const applyCueLines = useCallback(
+    (next: DialogueLine[]) => {
+      setCues((prev) => {
+        const byId = new Map(prev.map((c) => [c.id, c]));
+        return next.map((line) => {
+          const old = byId.get(line.id);
+          if (old) {
+            return {
+              ...old,
+              text: line.text,
+              startSec: line.startSec,
+              durationSec: line.durationSec,
+            };
+          }
+          const cue = createCue(episodeId, line.startSec, line.durationSec);
+          cue.id = line.id;
+          cue.text = line.text;
+          return cue;
+        });
+      });
+    },
+    [episodeId],
+  );
 
   const seek = useCallback((sec: number, cueId: string) => {
     setSelectedCueId(cueId);
@@ -75,19 +123,28 @@ export function TranslateEditWorkspace() {
     }
   }, []);
 
+  const patchEpisode = async (patch: Partial<Episode>) => {
+    if (!episode) return;
+    const next = { ...episode, ...patch };
+    setEpisode(next);
+    await saveEpisode(next);
+  };
+
   const onPickVideo = (file: File) => {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
     setVideoUrl(URL.createObjectURL(file));
-    setVideoName(file.name);
-    if (!title) setTitle(file.name.replace(/\.[^.]+$/, ""));
+    void patchEpisode({ videoName: file.name });
   };
 
   const activeCue = dialogueLineAt(cues, currentTime);
+  const activeCueV2 = activeCue
+    ? (cues.find((c) => c.id === activeCue.id) ?? null)
+    : null;
+  const activeSpeaker = characterName(series, activeCueV2?.speakerId);
 
-  /** Xuất WebM: vẽ khung video + phụ đề lên canvas, giữ nguyên tiếng gốc. */
   const exportBurnedWebM = async () => {
     const video = videoRef.current;
-    if (!video || !videoUrl || exporting) return;
+    if (!video || !videoUrl || exporting || !episode) return;
     setExporting(true);
     const W = 960;
     const H = 540;
@@ -105,9 +162,7 @@ export function TranslateEditWorkspace() {
       captureStream?: () => MediaStream;
     };
     if (typeof capturable.captureStream === "function") {
-      const audio = capturable
-        .captureStream()
-        .getAudioTracks()[0];
+      const audio = capturable.captureStream().getAudioTracks()[0];
       if (audio) tracks.push(audio);
     }
     const recorder = new MediaRecorder(new MediaStream(tracks), {
@@ -120,7 +175,6 @@ export function TranslateEditWorkspace() {
     const stopped = new Promise<void>((r) => {
       recorder.onstop = () => r();
     });
-
     video.pause();
     video.currentTime = 0;
     await new Promise((r) => setTimeout(r, 150));
@@ -138,13 +192,16 @@ export function TranslateEditWorkspace() {
       ctx.drawImage(video, (W - w) / 2, (H - h) / 2, w, h);
       const line = dialogueLineAt(cues, video.currentTime);
       if (line?.text.trim()) {
+        const cue = cues.find((c) => c.id === line.id);
+        const name = characterName(series, cue?.speakerId);
+        const label = name ? `${name}: ${line.text}` : line.text;
         ctx.font = "600 26px sans-serif";
         ctx.textAlign = "center";
         ctx.lineWidth = 6;
         ctx.strokeStyle = "rgba(0,0,0,0.85)";
         ctx.fillStyle = "#fff";
-        ctx.strokeText(line.text, W / 2, H - 26);
-        ctx.fillText(line.text, W / 2, H - 26);
+        ctx.strokeText(label, W / 2, H - 26);
+        ctx.fillText(label, W / 2, H - 26);
       }
       requestAnimationFrame(draw);
     };
@@ -162,17 +219,13 @@ export function TranslateEditWorkspace() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(title || "video").replace(/\s+/g, "-")}-phu-de-cung.webm`;
+    a.download = `${(episode.title || "video").replace(/\s+/g, "-")}-phu-de-cung.webm`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
     setExporting(false);
   };
 
-  const tabBtn = (
-    id: typeof tab,
-    icon: React.ReactNode,
-    label: string,
-  ) => (
+  const tabBtn = (id: typeof tab, icon: React.ReactNode, label: string) => (
     <button
       onClick={() => setTab(id)}
       className={`flex items-center gap-2 px-4 h-10 rounded-xl text-[13px] font-medium border transition ${
@@ -185,33 +238,69 @@ export function TranslateEditWorkspace() {
     </button>
   );
 
+  if (notFound) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-10 text-center">
+        <p className="text-white/70 font-medium">Không tìm thấy tập này trong thư viện</p>
+        <Link
+          href="/studio/animation/translate-edit"
+          className="inline-block mt-4 px-4 h-10 leading-10 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-white/10"
+        >
+          Về thư viện
+        </Link>
+      </div>
+    );
+  }
+  if (!episode) {
+    return <p className="text-sm text-white/40">Đang tải tập…</p>;
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
         <Link
-          href="/studio/animation"
+          href="/studio/animation/translate-edit"
           className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition"
         >
-          <ArrowLeft className="w-4 h-4" /> Animation Studio
+          <ArrowLeft className="w-4 h-4" /> Thư viện
         </Link>
-        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide bg-fuchsia-500/20 text-fuchsia-300">
-          BIÊN TẬP VIDEO CÓ SẴN
+        <span className="text-[12px] text-white/40">
+          {series?.title}
+          {seasonTitle ? ` › ${seasonTitle}` : ""} › Tập {episode.number}
         </span>
+        <select
+          value={episode.status}
+          onChange={(e) =>
+            void patchEpisode({
+              status: e.currentTarget.value as Episode["status"],
+            })
+          }
+          aria-label="Trạng thái tập"
+          className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none ml-auto"
+        >
+          {EPISODE_STATUS_OPTIONS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex-1 min-w-[240px]">
           <input
-            value={title}
-            onChange={(e) => setTitle(e.currentTarget.value)}
-            placeholder="Tên tập phim / dự án biên tập…"
-            aria-label="Tên dự án biên tập"
+            value={episode.title}
+            onChange={(e) => setEpisode({ ...episode, title: e.currentTarget.value })}
+            onBlur={(e) => void patchEpisode({ title: e.currentTarget.value })}
+            placeholder="Tên tập…"
+            aria-label="Tên tập"
             className="w-full bg-transparent text-2xl font-semibold outline-none border-b border-transparent focus:border-fuchsia-400/50 pb-1 placeholder:text-white/25"
           />
           <p className="text-[12px] text-white/40 mt-1 leading-relaxed">
-            Dịch, làm phụ đề và lồng tiếng cho tập phim có sẵn. Video chạy
-            ngay trên máy của bạn — không tải lên server; phụ đề và bản thu
-            được lưu trong trình duyệt này.
+            Video chạy ngay trên máy của bạn — không tải lên server.
+            {episode.videoName
+              ? ` Lần trước đã dùng file: ${episode.videoName} — chọn lại đúng file đó để xem tiếp.`
+              : ""}
           </p>
         </div>
         <div className="flex gap-2">
@@ -220,7 +309,7 @@ export function TranslateEditWorkspace() {
             className="flex items-center gap-2 px-4 h-10 rounded-xl bg-white/5 border border-white/10 text-[13px] hover:bg-white/10 transition"
           >
             <Upload className="w-4 h-4" />
-            {videoName ? "Đổi video" : "Tải video lên"}
+            {episode.videoName ? "Chọn video" : "Tải video lên"}
           </button>
           <input
             ref={fileRef}
@@ -244,7 +333,6 @@ export function TranslateEditWorkspace() {
         </div>
       </div>
 
-      {/* Khung video + phụ đề phủ trực tiếp */}
       <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-black aspect-video">
         {videoUrl ? (
           <>
@@ -253,13 +341,17 @@ export function TranslateEditWorkspace() {
               src={videoUrl}
               controls
               className="w-full h-full"
-              onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+              onLoadedMetadata={(e) => {
+                const d = e.currentTarget.duration || 0;
+                setDuration(d);
+                void patchEpisode({ durationSec: d });
+              }}
               onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
             />
             {activeCue && (
               <div className="absolute bottom-12 inset-x-0 text-center pointer-events-none px-6">
                 <span className="inline-block px-3 py-1 rounded bg-black/60 text-white text-lg font-medium leading-snug">
-                  {activeCue.speaker ? `${activeCue.speaker}: ` : ""}
+                  {activeSpeaker ? `${activeSpeaker}: ` : ""}
                   {activeCue.text}
                 </span>
               </div>
@@ -271,12 +363,9 @@ export function TranslateEditWorkspace() {
             className="absolute inset-0 w-full flex flex-col items-center justify-center gap-2 text-white/40 hover:text-white/70 transition"
           >
             <Upload className="w-10 h-10" />
-            <span className="text-sm">
-              Chọn file video của tập phim (mp4/webm/mkv…)
-            </span>
+            <span className="text-sm">Chọn file video của tập này (mp4/webm/mkv…)</span>
             <span className="text-[12px] text-white/30">
-              Nếu đã biên tập trước đó: phụ đề và bản thu cũ vẫn còn — chỉ cần
-              chọn lại đúng file video.
+              Phụ đề và bản thu của tập đã được lưu — chọn lại đúng file video là làm tiếp được.
             </span>
           </button>
         )}
@@ -302,12 +391,12 @@ export function TranslateEditWorkspace() {
             cues={cues}
             currentTimeSec={currentTime}
             selectedCueId={selectedCueId}
-            onCuesChange={setCues}
+            onCuesChange={applyCueLines}
             onSeek={seek}
           />
         )}
         {tab === "translate" && (
-          <TranslateTab title={title} cues={cues} onCuesChange={setCues} />
+          <TranslateTab title={episode.title} cues={cues} onCuesChange={applyCueLines} />
         )}
         {tab === "dub" && <DubTab cues={cues} onSeek={seek} />}
       </div>
