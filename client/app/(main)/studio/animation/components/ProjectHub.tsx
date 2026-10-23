@@ -264,7 +264,7 @@ function CreateProjectDialog({
               "3d",
               <Box className="w-4 h-4 text-sky-300" />,
               "Phim 3D",
-              "Dựng cảnh previz 3D, đặt nhân vật/đạo cụ, camera theo mốc thời gian, xuất đoạn phim.",
+              "Dựng cảnh 3D xem trước, đặt nhân vật và đạo cụ, di chuyển camera theo mốc thời gian, xuất đoạn phim.",
             )}
           </div>
         </div>

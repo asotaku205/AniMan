@@ -94,7 +94,7 @@ export function TranslateTab({
       setError(
         err instanceof Error
           ? err.message
-          : "Dịch thất bại — thử lại sau ít phút (giới hạn lượt AI/ngày).",
+          : "Dịch chưa thành công — vui lòng thử lại sau ít phút.",
       );
       return null;
     }
@@ -176,8 +176,8 @@ export function TranslateTab({
   if (!user) {
     return (
       <p className="text-[13px] text-white/50 leading-relaxed">
-        Cần đăng nhập để dùng dịch AI (endpoint dùng chung hạn mức AI của
-        tài khoản). Các tính năng phụ đề và lồng tiếng vẫn dùng bình thường.
+        Cần đăng nhập để dùng tính năng dịch bằng AI. Các tính năng phụ
+        đề và lồng tiếng vẫn dùng bình thường.
       </p>
     );
   }

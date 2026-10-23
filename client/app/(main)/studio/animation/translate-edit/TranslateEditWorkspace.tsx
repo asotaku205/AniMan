@@ -813,14 +813,14 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             <button
               onClick={pressIn}
               className="px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
-              title="Phím I — đặt In tại playhead (cho cue đang chọn hoặc bắt đầu spotting)"
+              title="Phím I — đặt điểm bắt đầu tại vị trí đang phát (cho cue đang chọn hoặc bắt đầu đánh dấu đoạn mới)"
             >
               [I] In{spotIn != null && !selectedCue ? ` · ${formatTimecode(spotIn, fps)}` : ""}
             </button>
             <button
               onClick={pressOut}
               className="px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
-              title="Phím O — đặt Out tại playhead / hoàn tất cue đang spotting"
+              title="Phím O — đặt điểm kết thúc tại vị trí đang phát / hoàn tất đoạn đang đánh dấu"
             >
               [O] Out
             </button>
@@ -954,7 +954,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
           <button
             onClick={() => void exportDubbedWebM()}
             disabled={!videoUrl || !videoFile || exporting || !cues.some((c) => c.selectedTakeId)}
-            title="Trộn các take đã ★ với tiếng gốc bị hạ (ducking) + phụ đề cứng"
+            title="Xuất video gồm giọng lồng tiếng đã chọn và phụ đề cứng"
             className="flex items-center gap-2 px-4 h-10 rounded-xl bg-emerald-500/25 border border-emerald-400/40 text-[13px] font-medium hover:bg-emerald-500/35 transition disabled:opacity-40"
           >
             <Download className="w-4 h-4" />
@@ -1009,7 +1009,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
           ) : (
             <Maximize2 className="w-4 h-4" />
           )}
-          {layoutMode === "a" ? "Thu gọn video (kiểu B)" : "Mở rộng video (kiểu A)"}
+          {layoutMode === "a" ? "Thu gọn video" : "Mở rộng video"}
         </button>
       </div>
 

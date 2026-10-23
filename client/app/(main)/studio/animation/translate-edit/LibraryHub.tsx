@@ -110,9 +110,9 @@ export function LibraryHub() {
         </div>
         <h1 className="text-[28px] font-bold tracking-tight mt-1.5 bg-gradient-to-r from-fuchsia-300 via-pink-200 to-rose-200 bg-clip-text text-transparent">Dịch & lồng tiếng — thư viện series</h1>
         <p className="text-sm text-white/50 mt-1 max-w-2xl leading-relaxed">
-          Quản lý theo cây Series → Mùa → Tập như studio localization chuyên
-          nghiệp. Mỗi series có glossary và dàn nhân vật riêng dùng chung cho
-          mọi tập khi dịch và lồng tiếng.
+          Quản lý series theo cấu trúc Series → Mùa → Tập. Mỗi series có
+          bảng thuật ngữ và dàn nhân vật riêng, dùng chung cho mọi tập khi
+          dịch và lồng tiếng.
         </p>
       </div>
 
@@ -175,7 +175,7 @@ export function LibraryHub() {
                 }
                 className="px-3 h-9 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10"
               >
-                Glossary & nhân vật
+                Thuật ngữ & nhân vật
               </button>
               {series.useSeasons && (
                 <button
@@ -399,7 +399,7 @@ function SeriesSettings({
     <div className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-500/[0.04] p-4 space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <label className="block text-[12px] text-white/50">
-          Glossary / thuật ngữ của series (tự đính kèm khi dịch)
+          Bảng thuật ngữ của series (tự động đính kèm khi dịch)
           <textarea
             value={draft.glossary}
             onChange={(e) => setDraft({ ...draft, glossary: e.currentTarget.value })}

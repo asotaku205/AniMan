@@ -44,7 +44,7 @@ export function videoGenStatus(): { connected: boolean; label: string } {
     return {
       connected: false,
       label:
-        "Chưa kết nối nhà cung cấp AI sinh video — bản demo đang dùng render previz trong trình duyệt.",
+        "Chưa kết nối dịch vụ AI tạo video — bạn vẫn có thể dựng cảnh và xuất bản xem trước ngay trong trình duyệt.",
     };
   }
   return {

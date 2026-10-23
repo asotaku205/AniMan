@@ -81,7 +81,7 @@ function openDb(): Promise<IDBDatabase> {
       dbPromise = null;
       reject(
         new Error(
-          "IndexedDB bị chặn bởi một tab/phiên bản cũ đang mở — đóng các tab AniMan khác rồi tải lại trang.",
+          "Không truy cập được dữ liệu đã lưu — hãy đóng các tab AniMan khác rồi tải lại trang.",
         ),
       );
     };

@@ -242,7 +242,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       {project.kind === "3d" && project.scenes.length > 0 && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[12px] text-white/45">Dựng previz cảnh:</span>
+            <span className="text-[12px] text-white/45">Dựng cảnh 3D:</span>
             {project.scenes.map((sc) => (
               <button
                 key={sc.id}
@@ -390,7 +390,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         <p className="mt-3 text-[12px] text-white/35 leading-relaxed">
           {project.kind === "2d"
             ? "Bước tiếp theo trên chính bảng cảnh này: phát thử animatic để chốt nhịp, rồi mở timeline keyframe cho từng cảnh."
-            : "Bước tiếp theo trên chính bảng cảnh này: dựng previz 3D cho từng cảnh (nhân vật, phong cảnh, camera theo mốc thời gian) rồi xuất đoạn phim."}
+            : "Bước tiếp theo trên chính bảng cảnh này: dựng cảnh 3D xem trước cho từng cảnh (nhân vật, phong cảnh, camera theo mốc thời gian) rồi xuất đoạn phim."}
         </p>
       </div>
 
