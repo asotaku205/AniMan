@@ -34,6 +34,13 @@ import { createPrevizObject, createPrevizScene } from "../lib/previz";
 import { BUILTIN_IMAGE_PACK } from "../lib/builtinAssets";
 import { createSceneLayer, createSceneTimeline } from "../lib/timeline";
 
+const ASSET_KIND_LABEL: Record<string, string> = {
+  character3d: "Nhân vật 3D",
+  scenery: "Phong cảnh",
+  image: "Hình 2D",
+  model3d: "Mô hình 3D",
+};
+
 export function AssetLibrary({
   project,
   scene,
@@ -51,6 +58,11 @@ export function AssetLibrary({
   const [sceneryName, setSceneryName] = useState("");
   const [imageCategory, setImageCategory] =
     useState<ImageAssetCategory>("background");
+  // Quản lý tài sản của tôi (Đ4): tìm kiếm + lọc loại + đổi tên
+  const [assetQuery, setAssetQuery] = useState("");
+  const [assetKindFilter, setAssetKindFilter] = useState<string>("all");
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const [packUrls, setPackUrls] = useState<Record<string, string>>({});
   useEffect(() => {
     if (project.kind !== "2d") return;
@@ -210,6 +222,106 @@ export function AssetLibrary({
         <Landmark className="w-4 h-4 text-pink-300" />
         THƯ VIỆN TÀI SẢN — PHONG CẢNH & NHÂN VẬT
       </h2>
+
+      {assets.length > 0 && (
+        <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+          <h3 className="text-[12px] font-semibold text-white/70">
+            QUẢN LÝ TÀI SẢN CỦA TÔI ({assets.length})
+          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={assetQuery}
+              onChange={(e) => setAssetQuery(e.currentTarget.value)}
+              placeholder="Tìm tài sản theo tên…"
+              className="h-9 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] w-52 placeholder:text-white/25"
+            />
+            {["all", "character3d", "scenery", "image", "model3d"].map((k) => (
+              <button
+                key={k}
+                onClick={() => setAssetKindFilter(k)}
+                className={`px-2.5 h-8 rounded-lg border text-[11px] transition ${
+                  assetKindFilter === k
+                    ? "bg-pink-500/25 border-pink-400/50"
+                    : "bg-white/5 border-white/10 text-white/50 hover:bg-white/10"
+                }`}
+              >
+                {k === "all" ? "Tất cả" : ASSET_KIND_LABEL[k]}
+              </button>
+            ))}
+          </div>
+          <ul className="divide-y divide-white/5">
+            {assets
+              .filter(
+                (a) =>
+                  (assetKindFilter === "all" || a.kind === assetKindFilter) &&
+                  a.name.toLowerCase().includes(assetQuery.trim().toLowerCase()),
+              )
+              .map((a) => (
+                <li key={a.id} className="flex items-center gap-2 py-1.5 text-[12px]">
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-white/45 text-[10px] shrink-0">
+                    {ASSET_KIND_LABEL[a.kind]}
+                  </span>
+                  {a.id.startsWith("wb-") && (
+                    <span className="px-2 py-0.5 rounded-md bg-purple-500/15 border border-purple-300/25 text-purple-200 text-[10px] shrink-0">
+                      Từ World Builder
+                    </span>
+                  )}
+                  {editingAssetId === a.id ? (
+                    <>
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.currentTarget.value)}
+                        autoFocus
+                        className="h-8 px-2 rounded-lg bg-white/5 border border-pink-400/40 text-[12px] flex-1 min-w-[120px]"
+                      />
+                      <button
+                        onClick={() => {
+                          if (editName.trim()) {
+                            void saveAnimAsset({ ...a, name: editName.trim() }).then(() => refresh());
+                          }
+                          setEditingAssetId(null);
+                        }}
+                        className="text-emerald-300 text-[11px] font-medium"
+                      >
+                        Lưu
+                      </button>
+                      <button
+                        onClick={() => setEditingAssetId(null)}
+                        className="text-white/40 text-[11px]"
+                      >
+                        Huỷ
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 truncate text-white/75">{a.name}</span>
+                      <button
+                        onClick={() => {
+                          setEditingAssetId(a.id);
+                          setEditName(a.name);
+                        }}
+                        className="text-white/40 hover:text-white text-[11px]"
+                      >
+                        Đổi tên
+                      </button>
+                      <button
+                        onClick={() => void removeAsset(a)}
+                        className="text-white/40 hover:text-rose-400 text-[11px]"
+                      >
+                        Xoá
+                      </button>
+                    </>
+                  )}
+                </li>
+              ))}
+          </ul>
+          <p className="text-[11px] text-white/30">
+            Tài sản ở đây dùng chung cho mọi dự án phim. Nhân vật và phong
+            cảnh gửi từ World Builder có nhãn riêng — đổi tên ở đây không
+            ảnh hưởng bản gốc trong World Builder.
+          </p>
+        </div>
+      )}
 
       {project.kind === "3d" && (
         <>

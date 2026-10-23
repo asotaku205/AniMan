@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AI_REGION_DESCRIPTIONS, COLS, DEFAULT_CHARACTERS, DEFAULT_MAP,
   HEX_R, REGION_NAMES, ROWS, TERRAIN_LIST, hexCenter,
@@ -8,13 +8,36 @@ import {
   type TerrainType, type WorldCharacter, type WorldMode,
 } from "../data";
 
+const WORLD_STORAGE_KEY = "animan-world-builder-v1";
+
+interface SavedWorld {
+  hexMap: HexCell[][];
+  characters: WorldCharacter[];
+}
+
+function loadSavedWorld(): SavedWorld | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(WORLD_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SavedWorld;
+    if (!Array.isArray(parsed.hexMap) || !Array.isArray(parsed.characters))
+      return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export function useWorldBuilder() {
-  // Map state
-  const [hexMap, setHexMap] = useState<HexCell[][]>(() =>
-    DEFAULT_MAP.map((row, r) => row.map((terrain, c) => ({
-      col: c, row: r, terrain,
-      name: REGION_NAMES[`${c}-${r}`],
-    })))
+  // Map state — khôi phục từ bản đã lưu (trước đây F5 là mất hết)
+  const [hexMap, setHexMap] = useState<HexCell[][]>(
+    () =>
+      loadSavedWorld()?.hexMap ??
+      DEFAULT_MAP.map((row, r) => row.map((terrain, c) => ({
+        col: c, row: r, terrain,
+        name: REGION_NAMES[`${c}-${r}`],
+      })))
   );
   const [brushTerrain, setBrushTerrain] = useState<TerrainType>("plains");
   const [isPainting, setIsPainting] = useState(false);
@@ -25,7 +48,26 @@ export function useWorldBuilder() {
   const [mode, setMode] = useState<WorldMode>("map");
 
   // Characters
-  const [characters, setCharacters] = useState<WorldCharacter[]>(DEFAULT_CHARACTERS);
+  const [characters, setCharacters] = useState<WorldCharacter[]>(
+    () => loadSavedWorld()?.characters ?? DEFAULT_CHARACTERS,
+  );
+
+  // Lưu bền: bản đồ + nhân vật tự ghi lại mỗi khi thay đổi
+  const firstSaveRef = useRef(true);
+  useEffect(() => {
+    if (firstSaveRef.current) {
+      firstSaveRef.current = false;
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        WORLD_STORAGE_KEY,
+        JSON.stringify({ hexMap, characters } satisfies SavedWorld),
+      );
+    } catch {
+      // Hết dung lượng hoặc trình duyệt chặn — bỏ qua, không chặn thao tác
+    }
+  }, [hexMap, characters]);
   const [selectedChar, setSelectedChar] = useState<string | null>(null);
   const [addCharAt, setAddCharAt] = useState<{ col: number; row: number } | null>(null);
   const [placingChar, setPlacingChar] = useState(false);

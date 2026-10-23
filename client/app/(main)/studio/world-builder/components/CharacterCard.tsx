@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Navigation, X } from "lucide-react";
+import { Library, Navigation, X } from "lucide-react";
 import type { WorldCharacter } from "../data";
 
 interface CharacterCardProps {
@@ -9,9 +9,10 @@ interface CharacterCardProps {
   selected: boolean;
   onClick: () => void;
   onDelete: () => void;
+  onSendToLibrary?: () => void;
 }
 
-export function CharacterCard({ char, selected, onClick, onDelete }: CharacterCardProps) {
+export function CharacterCard({ char, selected, onClick, onDelete, onSendToLibrary }: CharacterCardProps) {
   return (
     <motion.div
       layout
@@ -47,6 +48,14 @@ export function CharacterCard({ char, selected, onClick, onDelete }: CharacterCa
           <div className="text-[10px] text-white/30 flex items-center gap-1">
             <Navigation size={9} /> Vị trí: Cột {char.hexCol}, Hàng {char.hexRow}
           </div>
+          {onSendToLibrary && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onSendToLibrary(); }}
+              className="flex items-center gap-1.5 text-[11px] font-medium text-pink-300 hover:text-pink-200 transition-colors"
+            >
+              <Library size={11} /> Đưa vào thư viện tài sản (dùng làm nhân vật 3D trong phim)
+            </button>
+          )}
         </motion.div>
       )}
     </motion.div>

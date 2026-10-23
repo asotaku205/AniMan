@@ -7,6 +7,10 @@ import {
   Sparkles, Users, Wand2, X,
 } from "lucide-react";
 import { CharacterCard } from "./CharacterCard";
+import {
+  sendWorldCharacterToLibrary,
+  sendWorldRegionToLibrary,
+} from "../lib/worldToAssets";
 import { ScenePreview } from "./ScenePreview";
 import {
   EXAMPLE_DESCS, TERRAIN, TERRAIN_LIST, type TerrainType, type WorldMode,
@@ -151,6 +155,16 @@ export function WorldBuilderSidebar({ s }: { s: WorldBuilderState }) {
                       <p className="text-white/40 text-[10px]">C{s.selectedHex!.col} · R{s.selectedHex!.row}</p>
                     </div>
                   </div>
+                  <button
+                    onClick={() => {
+                      void sendWorldRegionToLibrary(s.selectedCell!)
+                        .then((msg) => s.showToast(msg))
+                        .catch(() => s.showToast("Không tạo được phong cảnh — thử lại sau."));
+                    }}
+                    className="flex items-center gap-1.5 text-[11px] font-medium text-pink-300 hover:text-pink-200 transition-colors"
+                  >
+                    Tạo phong cảnh cho phim từ vùng này
+                  </button>
                   {s.aiDescription && (
                     <p className="text-white/60 text-[11px] leading-relaxed border-t border-white/5 pt-2">{s.aiDescription}</p>
                   )}
@@ -187,6 +201,11 @@ export function WorldBuilderSidebar({ s }: { s: WorldBuilderState }) {
             <div className="space-y-2">
               {s.characters.map(char => (
                 <CharacterCard key={char.id} char={char} selected={s.selectedChar === char.id}
+                  onSendToLibrary={() => {
+                    void sendWorldCharacterToLibrary(char)
+                      .then((msg) => s.showToast(msg))
+                      .catch(() => s.showToast("Không đưa được vào thư viện — thử lại sau."));
+                  }}
                   onClick={() => s.setSelectedChar(s.selectedChar === char.id ? null : char.id)}
                   onDelete={() => { s.setCharacters(p => p.filter(c => c.id !== char.id)); if (s.selectedChar === char.id) s.setSelectedChar(null); }} />
               ))}
