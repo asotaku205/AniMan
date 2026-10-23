@@ -39,6 +39,13 @@ import {
   type Transform,
 } from "../lib/timeline";
 import { CAMERA_PRESETS, LAYER_PRESETS } from "../lib/motionPresets";
+import {
+  layerEffectAt,
+  layerEffectsOf,
+  weatherParticles,
+  type SceneWeather,
+  type WeatherType,
+} from "../lib/layerEffects";
 import { suggestMotionPresets } from "../lib/motionPrompt";
 import {
   TRANSLATION_TARGET_OPTIONS,
@@ -72,10 +79,12 @@ export function TimelineEditor({
   scene,
   onChange,
   onDialogueChange,
+  onWeatherChange,
 }: {
   scene: AnimScene;
   onChange: (timeline: SceneTimeline) => void;
   onDialogueChange?: (lines: DialogueLine[]) => void;
+  onWeatherChange?: (weather: SceneWeather | null) => void;
 }) {
   const timeline = useMemo<SceneTimeline>(
     () => scene.timeline ?? createSceneTimeline(),
@@ -305,14 +314,32 @@ export function TimelineEditor({
       if (!ghost && draftDirty && layer.id === selectedLayerId) {
         tr = applyLayerMotions(draftT, layer.motions, t);
       }
+      const fx = ghost
+        ? null
+        : layerEffectAt(
+            layer.effects,
+            layer.keys.map((k) => k.timeSec),
+            t,
+            scene.durationSec,
+          );
       ctx.save();
       ctx.translate(STAGE_W / 2, STAGE_H / 2);
       ctx.scale(cam.zoom, cam.zoom);
       ctx.translate(-cam.x * STAGE_W, -cam.y * STAGE_H);
-      ctx.translate(tr.x * STAGE_W, tr.y * STAGE_H);
+      ctx.translate(
+        (tr.x + (fx?.shakeX ?? 0)) * STAGE_W,
+        (tr.y + (fx?.shakeY ?? 0)) * STAGE_H,
+      );
       ctx.rotate((tr.rotation * Math.PI) / 180);
-      ctx.scale(tr.scale, tr.scale);
-      ctx.globalAlpha = (ghost ? 0.3 : 1) * Math.max(0, Math.min(1, tr.opacity));
+      ctx.scale(tr.scale * (fx?.scaleMul ?? 1), tr.scale * (fx?.scaleMul ?? 1));
+      ctx.globalAlpha =
+        (ghost ? 0.3 : 1) *
+        Math.max(0, Math.min(1, tr.opacity)) *
+        (fx?.opacityMul ?? 1);
+      if (fx && fx.glowPx > 0) {
+        ctx.shadowColor = "rgba(255,240,200,0.95)";
+        ctx.shadowBlur = fx.glowPx;
+      }
       const img = layer.imageDataUrl
         ? imageCacheRef.current.get(layer.imageDataUrl)
         : undefined;
@@ -356,6 +383,32 @@ export function TimelineEditor({
       drawLayer(layer, timeSec);
     }
 
+    // Thời tiết của cảnh (S2) — cùng hàm tất định với bản xuất
+    if (scene.weather && scene.weather.intensity > 0) {
+      ctx.save();
+      for (const p of weatherParticles(scene.weather, timeSec)) {
+        const x = p.x * STAGE_W;
+        const y = p.y * STAGE_H;
+        if (scene.weather.type === "rain") {
+          ctx.strokeStyle = `rgba(170,205,255,${p.alpha})`;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + p.drift * p.size * STAGE_H * 0.4, y + p.size * STAGE_H);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle =
+            scene.weather.type === "snow"
+              ? `rgba(255,255,255,${p.alpha})`
+              : `rgba(255,235,170,${p.alpha})`;
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(1, p.size * STAGE_H), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
     // Phụ đề: dòng thoại đang hiệu lực, vẽ ở đáy sân khấu (màn hình-space)
     const activeLine = dialogueLineAt(scene.dialogue ?? [], timeSec);
     if (activeLine) {
@@ -373,7 +426,7 @@ export function TimelineEditor({
       ctx.restore();
     }
 
-  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue]);
+  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue, scene.weather, scene.durationSec]);
 
   // ── Thao tác keyframe ──────────────────────────────────────────────────────
   const placeLayerKey = () => {
@@ -666,6 +719,57 @@ export function TimelineEditor({
             )}
           </section>
 
+          {/* Thời tiết của cảnh (S2) */}
+          {onWeatherChange && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+              <h3 className="text-[12px] font-semibold text-white/70">
+                HIỆU ỨNG CẢNH — THỜI TIẾT & KHÔNG KHÍ
+              </h3>
+              <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                <select
+                  value={scene.weather?.type ?? "none"}
+                  onChange={(e) => {
+                    const v = e.currentTarget.value;
+                    if (v === "none") onWeatherChange(null);
+                    else
+                      onWeatherChange({
+                        type: v as WeatherType,
+                        intensity: scene.weather?.intensity ?? 0.7,
+                      });
+                  }}
+                  className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80"
+                >
+                  <option value="none">Không có</option>
+                  <option value="rain">Mưa</option>
+                  <option value="snow">Tuyết rơi</option>
+                  <option value="sparkles">Lấp lánh</option>
+                </select>
+                {scene.weather && (
+                  <label className="flex items-center gap-2 text-white/50 flex-1 min-w-[160px]">
+                    Mật độ
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      value={scene.weather.intensity}
+                      onChange={(e) =>
+                        onWeatherChange({
+                          ...scene.weather!,
+                          intensity: Number(e.currentTarget.value),
+                        })
+                      }
+                      className="flex-1 accent-sky-400"
+                    />
+                  </label>
+                )}
+              </div>
+              <p className="text-[11px] text-white/35">
+                Thời tiết hiện ở cả lúc dựng, lúc phát thử và trong bản xuất.
+              </p>
+            </section>
+          )}
+
           {/* Transform + keyframe */}
           {selectedLayer && (
             <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
@@ -677,6 +781,31 @@ export function TimelineEditor({
               {slider("Cỡ", draftT.scale, 0.1, 3, 0.01, (v) => { setDraftT({ ...draftT, scale: v }); setDraftDirty(true); }, (v) => `${Math.round(v * 100)}%`)}
               {slider("Xoay", draftT.rotation, -180, 180, 1, (v) => { setDraftT({ ...draftT, rotation: v }); setDraftDirty(true); }, (v) => `${Math.round(v)}°`)}
               {slider("Mờ", draftT.opacity, 0, 1, 0.01, (v) => { setDraftT({ ...draftT, opacity: v }); setDraftDirty(true); }, (v) => `${Math.round(v * 100)}%`)}
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <h4 className="text-[11px] font-semibold text-white/60">
+                  HIỆU ỨNG CỦA LAYER NÀY
+                </h4>
+                {slider("Mờ hiện dần", layerEffectsOf(selectedLayer.effects).fadeInSec, 0, 3, 0.1, (v) =>
+                  updateLayer(selectedLayer.id, {
+                    effects: { ...layerEffectsOf(selectedLayer.effects), fadeInSec: v },
+                  }), (v) => `${v.toFixed(1)}s`)}
+                {slider("Mờ khuất dần", layerEffectsOf(selectedLayer.effects).fadeOutSec, 0, 3, 0.1, (v) =>
+                  updateLayer(selectedLayer.id, {
+                    effects: { ...layerEffectsOf(selectedLayer.effects), fadeOutSec: v },
+                  }), (v) => `${v.toFixed(1)}s`)}
+                {slider("Rung", layerEffectsOf(selectedLayer.effects).shake, 0, 1, 0.05, (v) =>
+                  updateLayer(selectedLayer.id, {
+                    effects: { ...layerEffectsOf(selectedLayer.effects), shake: v },
+                  }), (v) => `${Math.round(v * 100)}%`)}
+                {slider("Phát sáng", layerEffectsOf(selectedLayer.effects).glow, 0, 1, 0.05, (v) =>
+                  updateLayer(selectedLayer.id, {
+                    effects: { ...layerEffectsOf(selectedLayer.effects), glow: v },
+                  }), (v) => `${Math.round(v * 100)}%`)}
+                {slider("Nhịp phồng", layerEffectsOf(selectedLayer.effects).pulse, 0, 1, 0.05, (v) =>
+                  updateLayer(selectedLayer.id, {
+                    effects: { ...layerEffectsOf(selectedLayer.effects), pulse: v },
+                  }), (v) => `${Math.round(v * 100)}%`)}
+              </div>
               <div className="flex items-center gap-2 pt-1">
                 {easingSelect}
                 <svg width="56" height="30" className="rounded bg-black/50 border border-white/10">

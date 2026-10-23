@@ -21,6 +21,10 @@ import {
 } from "./previz";
 import { dialogueLineAt } from "./dialogue";
 import { loadModelForScene } from "./modelLoader";
+import {
+  createWeatherPoints,
+  updateWeatherPoints,
+} from "./weatherPoints";
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
@@ -148,6 +152,7 @@ export function createPrevizFilmRenderer(
 
   const loadScene = async (scene: AnimScene) => {
     current = scene.previz ?? createPrevizScene();
+    syncWeather(scene);
     threeScene.background = new THREE.Color(current.backdrop);
     for (const group of groups.values()) threeScene.remove(group);
     groups.clear();
@@ -178,6 +183,20 @@ export function createPrevizFilmRenderer(
     }
   };
 
+  let weatherPoints: THREE.Points | null = null;
+  const syncWeather = (scene: AnimScene) => {
+    if (weatherPoints) {
+      threeScene.remove(weatherPoints);
+      weatherPoints.geometry.dispose();
+      (weatherPoints.material as THREE.Material).dispose();
+      weatherPoints = null;
+    }
+    if (scene.weather && scene.weather.intensity > 0) {
+      weatherPoints = createWeatherPoints(scene.weather);
+      threeScene.add(weatherPoints);
+    }
+  };
+
   const drawAt = (scene: AnimScene, t: number) => {
     for (const obj of current.objects) {
       const group = groups.get(obj.id);
@@ -190,6 +209,18 @@ export function createPrevizFilmRenderer(
       );
       group.rotation.y = rad(sampled.rotationY);
       if (obj.kind === "model") group.scale.setScalar(obj.size);
+      const glow = obj.glow ?? 0;
+      if (glow > 0) {
+        group.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const mat = mesh.material as THREE.MeshStandardMaterial;
+          if (mat && "emissive" in mat) {
+            mat.emissive = new THREE.Color(obj.color);
+            mat.emissiveIntensity = glow * 0.55;
+          }
+        });
+      }
       const parts = characters.get(obj.id);
       if (parts) {
         const pose = sampled.pose;

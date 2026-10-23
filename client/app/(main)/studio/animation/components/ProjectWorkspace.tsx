@@ -255,6 +255,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 onDialogueChange={(dialogue) =>
                   void apply(updateScene(project, sc.id, { dialogue }))
                 }
+                onWeatherChange={(weather) =>
+                  void apply(updateScene(project, sc.id, { weather }))
+                }
                 />
               </>
             );
@@ -301,6 +304,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 }
                 onDialogueChange={(dialogue) =>
                   void apply(updateScene(project, sc.id, { dialogue }))
+                }
+                onWeatherChange={(weather) =>
+                  void apply(updateScene(project, sc.id, { weather }))
                 }
                 />
               </>

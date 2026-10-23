@@ -9,6 +9,7 @@
 import type { AnimScene } from "./animProject";
 import { sampleCamera, sampleLayerTransform } from "./timeline";
 import { dialogueLineAt } from "./dialogue";
+import { layerEffectAt, weatherParticles } from "./layerEffects";
 
 export function drawSceneFrame(
   ctx: CanvasRenderingContext2D,
@@ -28,14 +29,24 @@ export function drawSceneFrame(
   for (const layer of timeline.layers) {
     if (!layer.visible) continue;
     const tr = sampleLayerTransform(layer, t);
+    const fx = layerEffectAt(
+      layer.effects,
+      layer.keys.map((k) => k.timeSec),
+      t,
+      scene.durationSec,
+    );
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.scale(cam.zoom, cam.zoom);
     ctx.translate(-cam.x * width, -cam.y * height);
-    ctx.translate(tr.x * width, tr.y * height);
+    ctx.translate((tr.x + fx.shakeX) * width, (tr.y + fx.shakeY) * height);
     ctx.rotate((tr.rotation * Math.PI) / 180);
-    ctx.scale(tr.scale, tr.scale);
-    ctx.globalAlpha = Math.max(0, Math.min(1, tr.opacity));
+    ctx.scale(tr.scale * fx.scaleMul, tr.scale * fx.scaleMul);
+    ctx.globalAlpha = Math.max(0, Math.min(1, tr.opacity * fx.opacityMul));
+    if (fx.glowPx > 0) {
+      ctx.shadowColor = "rgba(255,240,200,0.95)";
+      ctx.shadowBlur = fx.glowPx;
+    }
     const img = layer.imageDataUrl ? getImage(layer.imageDataUrl) : null;
     if (img && img.complete && img.naturalWidth > 0) {
       const scale = Math.max(width / img.naturalWidth, height / img.naturalHeight);
@@ -53,6 +64,32 @@ export function drawSceneFrame(
       ctx.font = `600 ${Math.round(height * 0.041)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(layer.name, 0, 8);
+    }
+    ctx.restore();
+  }
+
+  // Thời tiết của cảnh (S2): hạt tất định theo t — phát thử khớp bản xuất
+  if (scene.weather && scene.weather.intensity > 0) {
+    ctx.save();
+    for (const p of weatherParticles(scene.weather, t)) {
+      const x = p.x * width;
+      const y = p.y * height;
+      if (scene.weather.type === "rain") {
+        ctx.strokeStyle = `rgba(170,205,255,${p.alpha})`;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + p.drift * p.size * height * 0.4, y + p.size * height);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle =
+          scene.weather.type === "snow"
+            ? `rgba(255,255,255,${p.alpha})`
+            : `rgba(255,235,170,${p.alpha})`;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1, p.size * height), 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     ctx.restore();
   }

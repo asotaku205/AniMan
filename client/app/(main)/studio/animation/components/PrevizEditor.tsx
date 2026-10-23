@@ -32,6 +32,11 @@ import {
 import { videoGenStatus } from "../lib/videoGen";
 import { newDialogueId, type DialogueLine } from "../lib/dialogue";
 import { loadModelForScene } from "../lib/modelLoader";
+import {
+  createWeatherPoints,
+  updateWeatherPoints,
+} from "../lib/weatherPoints";
+import type { SceneWeather, WeatherType } from "../lib/layerEffects";
 import DialogueVoice from "./DialogueVoice";
 import { playSceneVoice } from "../lib/voicePreview";
 
@@ -112,10 +117,12 @@ export function PrevizEditor({
   scene,
   onChange,
   onDialogueChange,
+  onWeatherChange,
 }: {
   scene: AnimScene;
   onChange: (previz: PrevizScene) => void;
   onDialogueChange?: (lines: DialogueLine[]) => void;
+  onWeatherChange?: (weather: SceneWeather | null) => void;
 }) {
   const previz = useMemo<PrevizScene>(
     () => scene.previz ?? createPrevizScene(),
@@ -138,6 +145,7 @@ export function PrevizEditor({
     controls: OrbitControls;
     groups: Map<string, THREE.Object3D>;
     characters: Map<string, CharacterParts>;
+    weatherPoints: THREE.Points | null;
   } | null>(null);
 
   const selected = previz.objects.find((o) => o.id === selectedId) ?? null;
@@ -218,6 +226,7 @@ export function PrevizEditor({
       controls,
       groups: new Map(),
       characters: new Map(),
+      weatherPoints: null,
     };
     return () => {
       controls.dispose();
@@ -226,6 +235,23 @@ export function PrevizEditor({
       threeRef.current = null;
     };
   }, []);
+
+  // ── Thời tiết 3D (S2): gắn hạt vào scene khi thời tiết thay đổi ──────────
+  useEffect(() => {
+    const ctx = threeRef.current;
+    if (!ctx) return;
+    if (ctx.weatherPoints) {
+      ctx.scene.remove(ctx.weatherPoints);
+      ctx.weatherPoints.geometry.dispose();
+      (ctx.weatherPoints.material as THREE.Material).dispose();
+      ctx.weatherPoints = null;
+    }
+    if (scene.weather && scene.weather.intensity > 0) {
+      const points = createWeatherPoints(scene.weather);
+      ctx.weatherPoints = points;
+      ctx.scene.add(points);
+    }
+  }, [scene.weather]);
 
   // ── Đồng bộ vật thể vào scene Three ────────────────────────────────────────
   useEffect(() => {
@@ -315,6 +341,7 @@ export function PrevizEditor({
         : samplePrevizCamera(st.previz.cameraKeys, st.timeSec);
       ctx.shotCam.position.set(cam.position.x, cam.position.y, cam.position.z);
       ctx.shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
+      if (ctx.weatherPoints) updateWeatherPoints(ctx.weatherPoints, st.timeSec);
       ctx.controls.enabled = st.viewMode === "orbit";
       ctx.renderer.render(
         ctx.scene,
@@ -627,6 +654,30 @@ export function PrevizEditor({
                   {Math.round(draftRotY)}°
                 </span>
               </label>
+              <label className="flex items-center gap-2 text-[11px] text-white/45">
+                <span className="w-14">Phát sáng</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={selected.glow ?? 0}
+                  onChange={(e) =>
+                    onChange({
+                      ...previz,
+                      objects: previz.objects.map((o) =>
+                        o.id === selected.id
+                          ? { ...o, glow: Number(e.currentTarget.value) }
+                          : o,
+                      ),
+                    })
+                  }
+                  className="flex-1 accent-amber-400"
+                />
+                <span className="w-9 text-right tabular-nums text-white/70">
+                  {Math.round((selected.glow ?? 0) * 100)}%
+                </span>
+              </label>
               {selected.kind === "character" && (
                 <label className="flex items-center gap-2 text-[11px] text-white/45">
                   <span className="w-14">Pose</span>
@@ -767,6 +818,56 @@ export function PrevizEditor({
           </section>
         </div>
       </div>
+
+      {onWeatherChange && (
+        <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+          <h3 className="text-[12px] font-semibold text-white/70">
+            HIỆU ỨNG CẢNH — THỜI TIẾT & KHÔNG KHÍ
+          </h3>
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            <select
+              value={scene.weather?.type ?? "none"}
+              onChange={(e) => {
+                const v = e.currentTarget.value;
+                if (v === "none") onWeatherChange(null);
+                else
+                  onWeatherChange({
+                    type: v as WeatherType,
+                    intensity: scene.weather?.intensity ?? 0.7,
+                  });
+              }}
+              className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80"
+            >
+              <option value="none">Không có</option>
+              <option value="rain">Mưa</option>
+              <option value="snow">Tuyết rơi</option>
+              <option value="sparkles">Lấp lánh</option>
+            </select>
+            {scene.weather && (
+              <label className="flex items-center gap-2 text-white/50 flex-1 min-w-[160px]">
+                Mật độ
+                <input
+                  type="range"
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  value={scene.weather.intensity}
+                  onChange={(e) =>
+                    onWeatherChange({
+                      ...scene.weather!,
+                      intensity: Number(e.currentTarget.value),
+                    })
+                  }
+                  className="flex-1 accent-sky-400"
+                />
+              </label>
+            )}
+          </div>
+          <p className="text-[11px] text-white/35">
+            Thời tiết hiện ở cả lúc dựng, lúc phát thử và trong bản xuất.
+          </p>
+        </section>
+      )}
 
       {onDialogueChange && (
         <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">

@@ -30,6 +30,8 @@ export interface AnimScene {
   dialogue?: import("./dialogue").DialogueLine[];
   /** Cảnh previz 3D (vật thể/camera keyframe) — chỉ dự án 3d dùng. */
   previz?: import("./previz").PrevizScene;
+  /** Thời tiết/hiệu ứng không khí của cảnh (S2) — cả 2D lẫn 3D dùng. */
+  weather?: import("./layerEffects").SceneWeather | null;
 }
 
 /** Nhạc nền của toàn phim — file tiếng nằm ở kho Blob, key = `blobKey`. */

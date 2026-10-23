@@ -87,6 +87,8 @@ export interface PrevizObject {
   name: string;
   /** Mã tài sản mô hình (chỉ kind "model" dùng) — trỏ vào thư viện tài sản. */
   modelAssetId?: string;
+  /** Phát sáng 0..1 (S2) — áp emissive cho vật thể 3D. */
+  glow?: number;
   color: string;
   /** Kích thước cơ sở (mét) — nhân vật dùng chiều cao tổng. */
   size: number;

@@ -264,6 +264,8 @@ export interface SceneLayer {
   visible: boolean;
   keys: TransformKey[];
   motions: LayerMotion[];
+  /** Hiệu ứng của layer (S2) — xem lib/layerEffects.ts. */
+  effects?: Partial<import("./layerEffects").LayerEffects>;
 }
 
 export interface SceneTimeline {
