@@ -8,6 +8,7 @@ import {
   Box,
   Clapperboard,
   Clock,
+  Download,
   Film,
   Layers,
   Plus,
@@ -29,6 +30,10 @@ import {
   listMangaProjectOptions,
   saveAnimProject,
 } from "../lib/animStorage";
+import {
+  exportProjectPackage,
+  importProjectPackage,
+} from "../lib/projectTransfer";
 
 /**
  * Hub Animation Studio — danh sách DỰ ÁN PHIM THẬT của người dùng
@@ -55,6 +60,40 @@ export function ProjectHub() {
     void listMangaProjectOptions().then(setMangaOptions);
   }, [refresh]);
 
+  const [transferNote, setTransferNote] = useState<string | null>(null);
+
+  const handleExportProject = async (p: AnimProject) => {
+    const json = await exportProjectPackage(p);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${p.name.replace(/\s+/g, "-")}.animan-project.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    const sizeMb = blob.size / (1024 * 1024);
+    setTransferNote(
+      sizeMb > 100
+        ? `Đã xuất dự án "${p.name}" (file nặng ${sizeMb.toFixed(0)}MB — cân nhắc khi gửi đi).`
+        : `Đã xuất dự án "${p.name}" — mang file này sang máy khác và dùng nút Nhập dự án.`,
+    );
+  };
+
+  const handleImportProject = async (file: File) => {
+    setTransferNote(null);
+    try {
+      const imported = await importProjectPackage(await file.text());
+      await refresh();
+      setTransferNote(
+        `Đã nhập dự án "${imported.name}" — mở workspace để làm tiếp.`,
+      );
+    } catch (err) {
+      setTransferNote(
+        err instanceof Error ? err.message : "Không nhập được dự án.",
+      );
+    }
+  };
+
   const handleDelete = async (p: AnimProject) => {
     if (!window.confirm(`Xoá dự án phim "${p.name}"? Hành động này không hoàn tác được.`)) {
       return;
@@ -77,13 +116,34 @@ export function ProjectHub() {
             đủ các bước.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 h-11 rounded-xl bg-gradient-to-r from-pink-500 to-rose-400 text-sm font-medium hover:opacity-90 transition"
-        >
-          <Plus className="w-4 h-4" /> Tạo dự án phim
-        </button>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 px-4 h-11 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-white/10 transition cursor-pointer">
+            <Download className="w-4 h-4 rotate-180" /> Nhập dự án
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0];
+                e.currentTarget.value = "";
+                if (file) void handleImportProject(file);
+              }}
+            />
+          </label>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 h-11 rounded-xl bg-gradient-to-r from-pink-500 to-rose-400 text-sm font-medium hover:opacity-90 transition"
+          >
+            <Plus className="w-4 h-4" /> Tạo dự án phim
+          </button>
+        </div>
       </div>
+
+      {transferNote && (
+        <p className="text-[13px] text-pink-200/85 rounded-xl border border-pink-400/25 bg-pink-500/[0.06] px-4 py-3">
+          {transferNote}
+        </p>
+      )}
 
       <Link
         href="/studio/animation/translate-edit"
@@ -167,6 +227,12 @@ export function ProjectHub() {
                 className="mt-4 w-full h-10 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-pink-500/20 hover:border-pink-400/40 transition"
               >
                 Mở workspace
+              </button>
+              <button
+                onClick={() => void handleExportProject(p)}
+                className="mt-2 w-full h-9 rounded-xl text-[12px] text-white/45 hover:text-white/80 hover:bg-white/5 transition flex items-center justify-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" /> Xuất dự án (sao lưu / chuyển máy)
               </button>
             </div>
           ))}

@@ -8,6 +8,7 @@
 
 import { projectDurationSec, type AnimProject } from "./animProject";
 import { selectedDialogueTake } from "./dialogue";
+import { samplePrevizCamera, samplePrevizObject } from "./previz";
 
 export type ExportIssueLevel = "error" | "warn";
 
@@ -68,6 +69,59 @@ export function checkProjectForExport(project: AnimProject): ExportIssue[] {
           level: "error",
           message: `Cảnh "${scene.name}" chưa dựng vật thể 3D nào.`,
         });
+      }
+      // Kiểm tra không gian (học từ quy trình dựng cảnh 3D của topview):
+      // vật thể dưới mặt đất/lơ lửng và camera quay vào khung trống.
+      const previz = scene.previz;
+      if (previz && previz.objects.length > 0) {
+        for (const obj of previz.objects) {
+          const ys = obj.keys.map((k) => k.position.y);
+          if (ys.length > 0 && Math.min(...ys) < -0.05) {
+            issues.push({
+              ...at,
+              level: "warn",
+              message: `Cảnh "${scene.name}": vật thể "${obj.name}" có vị trí nằm dưới mặt đất.`,
+            });
+          } else if (
+            obj.kind !== "wall" &&
+            ys.length > 0 &&
+            Math.min(...ys) > 0.6
+          ) {
+            issues.push({
+              ...at,
+              level: "warn",
+              message: `Cảnh "${scene.name}": vật thể "${obj.name}" có vẻ đang lơ lửng trên không (mọi vị trí đều cao hơn mặt đất 0,6m).`,
+            });
+          }
+        }
+        const cam = samplePrevizCamera(previz.cameraKeys, 0);
+        const anyInFrame = previz.objects.some((obj) => {
+          const pos = samplePrevizObject(obj, 0).position;
+          const toObj = {
+            x: pos.x - cam.position.x,
+            y: pos.y - cam.position.y,
+            z: pos.z - cam.position.z,
+          };
+          const toTarget = {
+            x: cam.target.x - cam.position.x,
+            y: cam.target.y - cam.position.y,
+            z: cam.target.z - cam.position.z,
+          };
+          const dot =
+            toObj.x * toTarget.x + toObj.y * toTarget.y + toObj.z * toTarget.z;
+          const lenA = Math.hypot(toObj.x, toObj.y, toObj.z);
+          const lenB = Math.hypot(toTarget.x, toTarget.y, toTarget.z);
+          if (lenA === 0 || lenB === 0) return true;
+          // cos góc < ~35° coi như vật thể nằm trong khung hình
+          return dot / (lenA * lenB) > 0.82;
+        });
+        if (!anyInFrame) {
+          issues.push({
+            ...at,
+            level: "warn",
+            message: `Cảnh "${scene.name}": camera dường như không hướng vào vật thể nào — khung hình có thể trống.`,
+          });
+        }
       }
       if ((scene.previz?.cameraKeys.length ?? 0) === 0) {
         issues.push({

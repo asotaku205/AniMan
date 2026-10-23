@@ -78,3 +78,34 @@ describe("exportCheck — kiểm tra trước xuất", () => {
     expect(() => checkProjectForExport(p)).not.toThrow();
   });
 });
+
+describe("exportCheck — kiểm tra không gian 3D (Slice B6)", () => {
+  it("vật thể lơ lửng + camera không hướng vào vật thể → cảnh báo", async () => {
+    const { createPrevizScene, vec3 } = await import("../lib/previz");
+    let p = createAnimProject("S", "3d");
+    const previz = createPrevizScene();
+    // Nhân vật bay lên 2m ở key duy nhất
+    previz.objects[0].keys[0].position = vec3(0, 2, 0);
+    // Camera nhìn về hướng ngược hẳn
+    previz.cameraKeys[0].position = vec3(0, 1.6, 6);
+    previz.cameraKeys[0].target = vec3(0, 1.6, 20);
+    p = updateScene(p, p.scenes[0].id, { previz });
+    const issues = checkProjectForExport(p);
+    expect(issues.some((i) => i.message.includes("lơ lửng"))).toBe(true);
+    expect(issues.some((i) => i.message.includes("khung hình có thể trống"))).toBe(
+      true,
+    );
+  });
+
+  it("cảnh 3D bình thường → không cảnh báo không gian", async () => {
+    const { createPrevizScene } = await import("../lib/previz");
+    let p = createAnimProject("S2", "3d");
+    p = updateScene(p, p.scenes[0].id, { previz: createPrevizScene() });
+    const issues = checkProjectForExport(p);
+    expect(issues.some((i) => i.message.includes("lơ lửng"))).toBe(false);
+    expect(issues.some((i) => i.message.includes("dưới mặt đất"))).toBe(false);
+    expect(issues.some((i) => i.message.includes("khung hình có thể trống"))).toBe(
+      false,
+    );
+  });
+});
