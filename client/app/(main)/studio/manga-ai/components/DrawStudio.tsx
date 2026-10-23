@@ -87,6 +87,9 @@ export function DrawStudio({
         onShapeFillChange={s.setShapeFill}
         shapeSides={s.shapeSides}
         onShapeSidesChange={s.setShapeSides}
+        onAddBubbleShape={(kind) => {
+          s.addBubbleShape(kind);
+        }}
       />
       {/* Center Canvas area */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -158,8 +161,6 @@ export function DrawStudio({
           zoomBy={s.zoomBy}
           resetView={s.resetView}
           panelBackingSize={s.panelBackingSize}
-          ghostType={s.ghostType}
-          ghostId={s.ghostId}
           ghostOpacity={s.ghostOpacity}
           aiStrokeLayers={s.aiStrokeLayers}
           aiOverlayAbove={s.aiOverlayAbove}
@@ -170,10 +171,7 @@ export function DrawStudio({
           ghostStrokesSummary={s.ghostStrokesSummary}
           drawingPlaceholder={s.drawingPlaceholder}
           setDrawingPlaceholder={s.setDrawingPlaceholder}
-          setGhostType={s.setGhostType}
-          setGhostId={s.setGhostId}
           setGhostOpacity={s.setGhostOpacity}
-          setSelectedComp={s.setSelectedComp}
           activeGuides={s.activeGuides}
           aiConsentEligible={aiConsentEligible}
           showTextInput={s.showTextInput}
@@ -197,18 +195,9 @@ export function DrawStudio({
           onCommitTextItems={s.commitTextItems}
           onRemoveTextItem={s.removeTextItem}
           shapes={s.activeShapes}
-          onAddShape={s.addBubbleShape}
           onUpdateShape={s.updateBubbleShape}
           onCommitShapes={s.commitBubbleShapes}
           onRemoveShape={s.removeBubbleShape}
-          sceneType={s.sceneType}
-          selectedComp={s.selectedComp}
-          showPanelSuggestions={s.showPanelSuggestions}
-          setShowPanelSuggestions={s.setShowPanelSuggestions}
-          panelSuggestPulse={s.panelSuggestPulse}
-          showSuggestBtn={s.showSuggestBtn}
-          setShowSuggestBtn={s.setShowSuggestBtn}
-          applyComp={s.applyComp}
           enterPanel={s.enterPanel}
           setPanelFullscreen={s.setPanelFullscreen}
         />

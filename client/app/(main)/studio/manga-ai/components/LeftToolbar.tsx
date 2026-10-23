@@ -24,7 +24,15 @@ import {
   Type as TypeIcon,
   Hand,
   Check,
+  MessageCircle,
+  MessageSquare,
+  Cloud,
+  Zap,
 } from "lucide-react";
+import {
+  BUBBLE_SHAPE_OPTIONS,
+  type BubbleShapeKind,
+} from "../lib/bubbleShapes";
 import { TOOL_NAMES, TOOL_SHORTCUTS } from "../hooks/useDrawStudio";
 import {
   clampSides,
@@ -112,6 +120,8 @@ type Props = {
   /** Số cạnh đa giác / số cánh sao (BRD T-1 #6). */
   shapeSides?: number;
   onShapeSidesChange?: (n: number) => void;
+  /** Thêm hình bóng thoại mẫu vào khung đang mở (nhóm "Bóng thoại" dưới thanh công cụ). */
+  onAddBubbleShape?: (kind: BubbleShapeKind) => void;
 };
 
 export function LeftToolbar({
@@ -124,6 +134,7 @@ export function LeftToolbar({
   onShapeFillChange,
   shapeSides = 5,
   onShapeSidesChange,
+  onAddBubbleShape,
 }: Props) {
   /**
    * Công cụ đang được rê chuột (kèm toạ độ nút) → hiện bảng hướng dẫn. Bảng được
@@ -238,6 +249,39 @@ export function LeftToolbar({
             ))}
           </React.Fragment>
         ))}
+
+        {/* Bóng thoại mẫu — thêm thẳng vào khung đang mở, chỉnh trên canvas */}
+        {onAddBubbleShape && (
+          <>
+            <div className="flex items-center gap-0.5 my-0.5">
+              <div className="w-4 h-px bg-white/10" />
+              <span className="text-[8px] uppercase tracking-wider text-white/30 font-semibold">
+                Bóng thoại
+              </span>
+              <div className="w-4 h-px bg-white/10" />
+            </div>
+            {BUBBLE_SHAPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.kind}
+                onClick={() => onAddBubbleShape(opt.kind)}
+                disabled={disabled}
+                aria-label={`Thêm ${opt.label}`}
+                title={`${opt.label} — bấm để thêm vào khung, kéo/đổi cỡ/chỉnh đuôi ngay trên tranh`}
+                className="w-11 h-10 rounded-xl flex items-center justify-center text-white/40 hover:bg-white/5 hover:text-white/80 transition-all disabled:cursor-not-allowed"
+              >
+                {opt.kind === "ellipse" ? (
+                  <MessageCircle size={16} />
+                ) : opt.kind === "rect" ? (
+                  <MessageSquare size={16} />
+                ) : opt.kind === "thought" ? (
+                  <Cloud size={16} />
+                ) : (
+                  <Zap size={16} />
+                )}
+              </button>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Bảng hướng dẫn công cụ (portal ra body để không bị overflow cắt) */}

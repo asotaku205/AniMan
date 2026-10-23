@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   AlertCircle,
@@ -9,18 +9,12 @@ import {
   Bot,
   Brush,
   Check,
-  ChevronDown,
-  ChevronRight,
-  Lightbulb,
   Minimize2,
   X,
 } from "lucide-react";
 import { GuideOverlay } from "./SvgComponent";
-import { CompThumb } from "./SvgComponent";
 import { AiGhostStrokeOverlay, type AiOverlayLayerView } from "./AiGhostStrokeOverlay";
 import {
-  SCENE_TYPE_LABEL,
-  COMP_SUGGESTIONS,
   PRINCIPLE_LABELS,
   KNOWLEDGE_SOURCE_TITLES,
   type DrawTool,
@@ -28,7 +22,6 @@ import {
   type GuideId,
   type LayoutDef,
 } from "../data";
-import type { SceneType } from "../data";
 import type {
   AiDrawingFinding,
   AiDrawingReviewResponse,
@@ -80,8 +73,6 @@ type Props = {
   /** Cỡ pixel thật của panel khi xuất PNG (null khi chưa mở khung) */
   panelBackingSize: { w: number; h: number } | null;
   // Ghost / guides (AI dynamic strokes)
-  ghostType: "comp" | "pose" | null;
-  ghostId: string | null;
   ghostOpacity: number;
   /** Các lớp AI đang hiện của khung — nét AI là vector, không bấm được (5C.1/5C.3) */
   aiStrokeLayers?: readonly AiOverlayLayerView[];
@@ -96,10 +87,7 @@ type Props = {
   ghostStrokesSummary?: string | null;
   drawingPlaceholder?: DrawingPlaceholderId | null;
   setDrawingPlaceholder?: (v: DrawingPlaceholderId | null) => void;
-  setGhostType: (v: "comp" | "pose" | null) => void;
-  setGhostId: (v: string | null) => void;
   setGhostOpacity: (v: number) => void;
-  setSelectedComp: (v: string | null) => void;
   activeGuides: GuideId[];
   aiConsentEligible: boolean;
   // Text tool inline placement
@@ -135,15 +123,6 @@ type Props = {
   onUpdateShape?: (id: string, patch: Partial<BubbleShape>) => void;
   onCommitShapes?: () => void;
   onRemoveShape?: (id: string) => void;
-  // Suggestion widget
-  sceneType: SceneType;
-  selectedComp: string | null;
-  showPanelSuggestions: boolean;
-  setShowPanelSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
-  panelSuggestPulse: boolean;
-  showSuggestBtn: boolean;
-  setShowSuggestBtn: (v: boolean) => void;
-  applyComp: (id: string) => void;
   // Panel interactions
   enterPanel: (id: string) => void;
   setPanelFullscreen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -167,8 +146,6 @@ export function CanvasArea({
   zoomBy,
   resetView,
   panelBackingSize,
-  ghostType,
-  ghostId,
   ghostOpacity,
   aiStrokeLayers,
   aiOverlayAbove,
@@ -179,10 +156,7 @@ export function CanvasArea({
   ghostStrokesSummary,
   drawingPlaceholder,
   setDrawingPlaceholder,
-  setGhostType,
-  setGhostId,
   setGhostOpacity,
-  setSelectedComp,
   activeGuides,
   aiConsentEligible,
   showTextInput,
@@ -210,14 +184,6 @@ export function CanvasArea({
   onUpdateShape,
   onCommitShapes,
   onRemoveShape,
-  sceneType,
-  selectedComp,
-  showPanelSuggestions,
-  setShowPanelSuggestions,
-  panelSuggestPulse,
-  showSuggestBtn,
-  setShowSuggestBtn,
-  applyComp,
   enterPanel,
   setPanelFullscreen,
 }: Props) {
@@ -233,7 +199,34 @@ export function CanvasArea({
     orig: TextItem;
   } | null>(null);
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
-  const [showShapeMenu, setShowShapeMenu] = useState(false);
+  /** Cờ huỷ sửa: nhấn ra ngoài khi đang sửa chữ thì bỏ thay đổi, không lưu. */
+  const cancelEditRef = useRef(false);
+
+  // Nhấn ra ngoài khối chữ/bóng đang chọn → huỷ chỉnh sửa + bỏ chọn (Sơn chốt 23/10)
+  useEffect(() => {
+    if (!selectedTextId && !selectedShapeId && !editingTextId) return;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement).closest("[data-object-ui]")) return;
+      if (editingTextId) cancelEditRef.current = true;
+      setEditingTextId(null);
+      setSelectedTextId(null);
+      setSelectedShapeId(null);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [selectedTextId, selectedShapeId, editingTextId]);
+
+  // Bóng vừa thêm từ thanh công cụ → tự chọn luôn để kéo/đổi cỡ ngay
+  const prevShapeCountRef = useRef(0);
+  useEffect(() => {
+    const list = shapes ?? [];
+    if (list.length === prevShapeCountRef.current + 1 && list.length > 0) {
+      setSelectedShapeId(list[list.length - 1].id);
+      setSelectedTextId(null);
+    }
+    prevShapeCountRef.current = list.length;
+  }, [shapes]);
+
   const shapeDragRef = useRef<{
     id: string;
     mode: "move" | "resize" | "tail";
@@ -511,36 +504,7 @@ export function CanvasArea({
             {/* Lớp tương tác cho hình bóng + khối chữ: tay nắm trong suốt phủ
                 đúng vị trí; hình thật nằm ở composite canvas phía dưới. */}
             {activePanel && (texts || shapes) && (
-              <div className="absolute inset-0 z-40 pointer-events-none">
-                {/* Thêm hình bóng thoại mẫu */}
-                {onAddShape && (
-                  <div className="pointer-events-auto absolute left-2 top-2">
-                    <button
-                      onClick={() => setShowShapeMenu((v) => !v)}
-                      className="px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 border border-white/15 text-white/85 text-[10px] font-medium backdrop-blur-md transition-colors"
-                    >
-                      + Bóng thoại
-                    </button>
-                    {showShapeMenu && (
-                      <div className="mt-1.5 flex flex-col gap-1 bg-black/80 border border-white/10 rounded-xl p-1.5 backdrop-blur-md">
-                        {BUBBLE_SHAPE_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.kind}
-                            onClick={() => {
-                              const created = onAddShape(opt.kind);
-                              if (created) setSelectedShapeId(created.id);
-                              setShowShapeMenu(false);
-                            }}
-                            className="px-2.5 py-1 rounded-lg hover:bg-white/10 text-white/85 text-[10px] text-left transition-colors"
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
+              <div data-object-ui className="absolute inset-0 z-40 pointer-events-none">
                 {/* Thanh công cụ chữ (chuẩn tool lớn) — hiện khi đang chọn một khối chữ */}
                 {(() => {
                   const sel = texts?.find((t) => t.id === selectedTextId);
@@ -776,6 +740,7 @@ export function CanvasArea({
                       onPointerDown={(e) => onTextPointerDown(e, item)}
                       onDoubleClick={(e) => {
                         e.stopPropagation();
+                        cancelEditRef.current = false;
                         setEditingTextId(item.id);
                       }}
                       title="Kéo để dời · nhấp đúp để sửa chữ"
@@ -787,6 +752,12 @@ export function CanvasArea({
                           className="absolute left-0 top-0 min-w-[160px] min-h-[52px] bg-white text-black text-[12px] p-1.5 rounded-md resize outline-none shadow-xl"
                           onPointerDown={(e) => e.stopPropagation()}
                           onBlur={(e) => {
+                            if (cancelEditRef.current) {
+                              // Đã huỷ bằng nhấn ra ngoài/Esc — không lưu thay đổi
+                              cancelEditRef.current = false;
+                              setEditingTextId(null);
+                              return;
+                            }
                             onUpdateTextItem?.(item.id, {
                               text: e.currentTarget.value,
                             });
@@ -794,7 +765,10 @@ export function CanvasArea({
                             onCommitTextItems?.();
                           }}
                           onKeyDown={(e) => {
-                            if (e.key === "Escape") setEditingTextId(null);
+                            if (e.key === "Escape") {
+                              cancelEditRef.current = true;
+                              setEditingTextId(null);
+                            }
                           }}
                         />
                       ) : (
@@ -1015,115 +989,6 @@ export function CanvasArea({
             {aiConsentEligible && activeGuides.length > 0 && (
               <div className="absolute inset-0 z-10 pointer-events-none">
                 <GuideOverlay guides={activeGuides} />
-              </div>
-            )}
-
-            {/* In-panel suggestion widget */}
-            {aiConsentEligible && showSuggestBtn && (
-              <div className="absolute top-2 left-2" style={{ zIndex: 45 }}>
-                <button
-                  onClick={() => setShowPanelSuggestions((v) => !v)}
-                  className={`flex items-center gap-1 px-2 py-1.5 rounded-xl text-[10px] font-medium transition-all shadow-lg backdrop-blur-sm ${
-                    showPanelSuggestions
-                      ? "bg-purple-600 text-white shadow-purple-500/30"
-                      : panelSuggestPulse
-                        ? "bg-purple-500/25 text-purple-300 ring-1 ring-purple-400/70 animate-pulse"
-                        : "bg-black/40 text-purple-300/80 border border-purple-500/25 hover:border-purple-400/60 hover:text-purple-200"
-                  }`}
-                >
-                  <Lightbulb size={10} />
-                  <span>Gợi ý vẽ</span>
-                  {showPanelSuggestions ? (
-                    <ChevronDown size={9} />
-                  ) : (
-                    <ChevronRight size={9} />
-                  )}
-                </button>
-
-                <AnimatePresence>
-                  {showPanelSuggestions && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                      transition={{ duration: 0.14 }}
-                      className="mt-1.5 bg-[#0d0817]/96 backdrop-blur-md border border-purple-500/25 rounded-2xl p-3 shadow-2xl"
-                      style={{ width: 228 }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <Bot size={10} className="text-purple-400" />
-                          <span className="text-purple-300 text-[10px] font-medium">
-                            Gợi ý cho cảnh {SCENE_TYPE_LABEL[sceneType]}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => setShowPanelSuggestions(false)}
-                          className="text-white/20 hover:text-white/60 transition-colors"
-                        >
-                          <X size={10} />
-                        </button>
-                      </div>
-
-                      {/* Comp thumbnails */}
-                      <div className="grid grid-cols-3 gap-1.5 mb-2.5">
-                        {COMP_SUGGESTIONS[sceneType].slice(0, 3).map((c) => (
-                          <button
-                            key={c.id}
-                            onClick={() => {
-                              applyComp(c.id);
-                              setShowPanelSuggestions(false);
-                            }}
-                            className={`rounded-xl overflow-hidden border-2 transition-all group ${
-                              selectedComp === c.id
-                                ? "border-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.5)]"
-                                : "border-white/10 hover:border-purple-400/60"
-                            }`}
-                          >
-                            <div className="h-14 bg-white flex items-center justify-center p-1">
-                              <CompThumb id={c.id} />
-                            </div>
-                            <div
-                              className={`py-1 px-1 transition-colors ${selectedComp === c.id ? "bg-purple-700" : "bg-[#1a1226] group-hover:bg-purple-900/40"}`}
-                            >
-                              <p className="text-[8px] text-white leading-tight text-center truncate">
-                                {c.name}
-                              </p>
-                              <p className="text-[7px] text-white/40 leading-tight text-center truncate">
-                                {c.desc}
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Bottom actions */}
-                      <div className="mt-2 flex items-center gap-2">
-                        {aiConsentEligible && ghostType && ghostId && (
-                          <button
-                            onClick={() => {
-                              setGhostType(null);
-                              setGhostId(null);
-                              setSelectedComp(null);
-                            }}
-                            className="flex-1 text-center text-[9px] text-white/25 hover:text-white/50 transition-colors"
-                          >
-                            Tắt gợi ý mờ ✕
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setShowPanelSuggestions(false);
-                            setShowSuggestBtn(false);
-                          }}
-                          className="flex-1 text-center text-[9px] text-white/20 hover:text-red-400/60 transition-colors"
-                        >
-                          Ẩn nút này
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </div>
             )}
 
