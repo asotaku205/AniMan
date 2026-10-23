@@ -21,6 +21,7 @@ import {
 } from "../lib/library";
 import {
   getEpisode,
+  loadTakeBlob,
   getSeriesOfEpisode,
   listCues,
   replaceEpisodeCues,
@@ -259,6 +260,39 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
     : null;
   const activeSpeaker = characterName(series, activeCueV2?.speakerId);
 
+  const segmentEndRef = useRef<number | null>(null);
+  const playSegment = useCallback((startSec: number, endSec: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    segmentEndRef.current = endSec;
+    video.currentTime = startSec;
+    void video.play().catch(() => undefined);
+  }, []);
+
+  /** Nghe thử take đã chọn kèm video: tiếng gốc hạ xuống (ducking). */
+  const previewDub = useCallback(async (cue: CueV2) => {
+    const video = videoRef.current;
+    const take = cue.takes.find((t) => t.id === cue.selectedTakeId);
+    if (!video || !take) return;
+    const blob = await loadTakeBlob(take.id);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.volume = Math.min(1, take.volume);
+    const originalVolume = video.volume;
+    video.volume = 0.15;
+    video.currentTime = cue.startSec;
+    segmentEndRef.current = cue.startSec + cue.durationSec;
+    await video.play().catch(() => undefined);
+    await audio.play().catch(() => undefined);
+    const restore = () => {
+      video.volume = originalVolume;
+      URL.revokeObjectURL(url);
+    };
+    audio.onended = restore;
+    setTimeout(restore, (cue.durationSec + 1.5) * 1000);
+  }, []);
+
   const exportBurnedWebM = async () => {
     const video = videoRef.current;
     if (!video || !videoUrl || exporting || !episode) return;
@@ -490,7 +524,17 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
                 setDuration(d);
                 void patchEpisode({ durationSec: d });
               }}
-              onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+              onTimeUpdate={(e) => {
+                const v = e.currentTarget;
+                setCurrentTime(v.currentTime);
+                if (
+                  segmentEndRef.current != null &&
+                  v.currentTime >= segmentEndRef.current
+                ) {
+                  segmentEndRef.current = null;
+                  v.pause();
+                }
+              }}
             />
             {activeCue && (
               <div className="absolute bottom-12 inset-x-0 text-center pointer-events-none px-6">
@@ -617,7 +661,16 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         {tab === "translate" && (
           <TranslateTab title={episode.title} cues={cues} onCuesChange={applyCueLines} />
         )}
-        {tab === "dub" && <DubTab cues={cues} onSeek={seek} />}
+        {tab === "dub" && (
+          <DubTab
+            cues={cues}
+            series={series}
+            onPatchCue={patchCue}
+            onSeek={seek}
+            playSegment={playSegment}
+            previewDub={previewDub}
+          />
+        )}
       </div>
 
           <QcPanel

@@ -1,9 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, Play, Square, Trash2, Volume2 } from "lucide-react";
-import type { DialogueLine } from "../../lib/dialogue";
-import { deleteTake, loadTake, saveTake } from "../../lib/videoEditorStorage";
+import {
+  Circle,
+  Play,
+  Square,
+  Star,
+  Trash2,
+  Volume2,
+} from "lucide-react";
+import {
+  newLibraryId,
+  type CueV2,
+  type Series,
+  type TakeMeta,
+} from "../../lib/library";
+import {
+  deleteTakeBlob,
+  loadTakeBlob,
+  saveTakeBlob,
+} from "../../lib/libraryStorage";
 
 const TTS_LANGS = [
   { id: "vi-VN", label: "Tiếng Việt" },
@@ -12,61 +28,123 @@ const TTS_LANGS = [
   { id: "ko-KR", label: "Tiếng Hàn" },
 ];
 
+/** 3 tiếng beep cách nhau 1s bằng oscillator; nhịp thứ 4 câm = điểm vào câu (chuẩn ADR). */
+function playCountInBeeps(): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const ctx = new AudioContext();
+      for (let i = 0; i < 3; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.frequency.value = 880;
+        gain.gain.value = 0.15;
+        osc.connect(gain).connect(ctx.destination);
+        const at = ctx.currentTime + i;
+        osc.start(at);
+        osc.stop(at + 0.12);
+      }
+      setTimeout(() => {
+        void ctx.close();
+        resolve();
+      }, 3000);
+    } catch {
+      resolve();
+    }
+  });
+}
+
 /**
- * Tab LỒNG TIẾNG — cho từng cue:
- * - Nghe thử bằng giọng máy (Web Speech, miễn phí, chạy ngay trên máy).
- * - Tự thu giọng của bạn qua micro (MediaRecorder); bản thu lưu bền
- *   trong IndexedDB để mở lại vẫn còn.
- * Ghép bản thu thành track hoàn chỉnh là bước xuất bản sau; ở đây nghe
- * lại từng câu và so với đoạn video tương ứng.
+ * Panel LỒNG TIẾNG chuẩn ADR (Slice S5) trên dữ liệu takes v2: mỗi cue
+ * thu NHIỀU takes, ★ chọn bản tốt nhất, chỉnh âm lượng từng take, thu
+ * theo loop có beep dẫn nhịp, nghe thử TTS và nghe thử kèm video với
+ * tiếng gốc bị hạ (ducking) — do workspace điều khiển qua callback.
+ * Blob bản thu nằm ở store takeBlobs của thư viện (không còn store cũ).
  */
 export function DubTab({
   cues,
+  series,
+  onPatchCue,
   onSeek,
+  playSegment,
+  previewDub,
 }: {
-  cues: DialogueLine[];
+  cues: CueV2[];
+  series: Series | null;
+  onPatchCue: (cueId: string, patch: Partial<CueV2>) => void;
   onSeek: (sec: number, cueId: string) => void;
+  /** Phát đoạn video [start, end] — workspace sở hữu thẻ video. */
+  playSegment: (startSec: number, endSec: number) => void;
+  /** Nghe thử take đã chọn kèm video, tiếng gốc bị hạ (ducking). */
+  previewDub: (cue: CueV2) => void;
 }) {
-  const [ttsLang, setTtsLang] = useState("vi-VN");
+  const [ttsLang, setTtsLang] = useState(
+    series?.targetLang === "en"
+      ? "en-US"
+      : series?.targetLang === "ja"
+        ? "ja-JP"
+        : series?.targetLang === "ko"
+          ? "ko-KR"
+          : "vi-VN",
+  );
+  const [recordingCueId, setRecordingCueId] = useState<string | null>(null);
+  const [countInCueId, setCountInCueId] = useState<string | null>(null);
   const [takeUrls, setTakeUrls] = useState<Record<string, string>>({});
-  const [recordingId, setRecordingId] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordStartRef = useRef(0);
 
-  // Nạp các bản thu đã lưu
+  // Nạp URL phát cho mọi take hiện có
+  const takeIdsKey = cues
+    .flatMap((c) => c.takes.map((t) => t.id))
+    .join(",");
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      const ids = takeIdsKey ? takeIdsKey.split(",") : [];
       const urls: Record<string, string> = {};
-      for (const cue of cues) {
-        const blob = await loadTake(cue.id);
-        if (blob) urls[cue.id] = URL.createObjectURL(blob);
+      for (const id of ids) {
+        const blob = await loadTakeBlob(id);
+        if (blob) urls[id] = URL.createObjectURL(blob);
       }
-      if (!cancelled) setTakeUrls(urls);
+      if (!cancelled) {
+        setTakeUrls((prev) => {
+          for (const url of Object.values(prev)) URL.revokeObjectURL(url);
+          return urls;
+        });
+      } else {
+        for (const url of Object.values(urls)) URL.revokeObjectURL(url);
+      }
     })();
     return () => {
       cancelled = true;
     };
-    // chỉ nạp khi danh sách cue đổi id (không chạy lại theo nội dung chữ)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cues.map((c) => c.id).join(",")]);
+  }, [takeIdsKey]);
 
   const speak = (text: string) => {
-    if (!("speechSynthesis" in window)) return;
+    if (!text.trim() || typeof window === "undefined") return;
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = ttsLang;
     window.speechSynthesis.speak(utter);
   };
 
-  const toggleRecord = async (cue: DialogueLine) => {
-    if (recordingId === cue.id) {
-      recorderRef.current?.stop();
-      setRecordingId(null);
-      return;
-    }
+  const stopRecording = () => {
+    recorderRef.current?.stop();
+    recorderRef.current = null;
+    setRecordingCueId(null);
+  };
+
+  const startRecording = async (cue: CueV2, withCountIn: boolean) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (withCountIn) {
+        setCountInCueId(cue.id);
+        playSegment(cue.startSec, cue.startSec + cue.durationSec);
+        await playCountInBeeps();
+        setCountInCueId(null);
+      } else {
+        onSeek(cue.startSec, cue.id);
+      }
       const recorder = new MediaRecorder(stream);
       chunksRef.current = [];
       recorder.ondataavailable = (e) => {
@@ -74,111 +152,214 @@ export function DubTab({
       };
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
-        await saveTake(cue.id, blob);
-        setTakeUrls((prev) => ({
-          ...prev,
-          [cue.id]: URL.createObjectURL(blob),
-        }));
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        const durationSec = (Date.now() - recordStartRef.current) / 1000;
+        const take: TakeMeta = {
+          id: newLibraryId("take"),
+          durationSec,
+          volume: 1,
+          createdAt: Date.now(),
+        };
+        await saveTakeBlob(take.id, blob);
+        onPatchCue(cue.id, {
+          takes: [...cue.takes, take],
+          selectedTakeId: take.id,
+        });
       };
       recorderRef.current = recorder;
-      recorder.start();
-      setRecordingId(cue.id);
+      recordStartRef.current = Date.now();
+      recorder.start(200);
+      setRecordingCueId(cue.id);
+      // Tự dừng sau thời lượng cue + 1s đệm
+      setTimeout(() => {
+        if (recorderRef.current === recorder && recorder.state !== "inactive") {
+          stopRecording();
+        }
+      }, (cue.durationSec + 1) * 1000);
     } catch {
-      setRecordingId(null);
+      setRecordingCueId(null);
+      setCountInCueId(null);
     }
+  };
+
+  const removeTake = async (cue: CueV2, takeId: string) => {
+    await deleteTakeBlob(takeId);
+    const takes = cue.takes.filter((t) => t.id !== takeId);
+    onPatchCue(cue.id, {
+      takes,
+      selectedTakeId:
+        cue.selectedTakeId === takeId ? takes[0]?.id : cue.selectedTakeId,
+    });
   };
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-[12px] text-white/50">Giọng máy nghe thử:</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[12px] text-white/50 leading-relaxed flex-1 min-w-[180px]">
+          Thu nhiều takes cho mỗi câu, ★ là bản sẽ dùng khi xuất. "Thu theo
+          loop" phát đoạn phim + 3 tiếng beep dẫn nhịp như phòng thu ADR.
+        </p>
         <select
           value={ttsLang}
           onChange={(e) => setTtsLang(e.currentTarget.value)}
+          aria-label="Ngôn ngữ nghe thử TTS"
           className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none"
         >
           {TTS_LANGS.map((l) => (
             <option key={l.id} value={l.id}>
-              {l.label}
+              TTS: {l.label}
             </option>
           ))}
         </select>
       </div>
-      <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-        {cues.map((cue) => (
-          <div
-            key={cue.id}
-            className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2"
-          >
-            <div className="flex items-start gap-2">
+
+      <div className="space-y-2.5 max-h-[560px] overflow-y-auto pr-0.5">
+        {cues.map((cue, i) => {
+          const recording = recordingCueId === cue.id;
+          const counting = countInCueId === cue.id;
+          return (
+            <div
+              key={cue.id}
+              className="rounded-xl border border-white/[0.08] bg-black/30 p-3 space-y-2"
+            >
               <button
                 onClick={() => onSeek(cue.startSec, cue.id)}
-                className="px-2 h-6 rounded bg-white/5 border border-white/10 text-[11px] tabular-nums hover:bg-white/10 shrink-0"
+                className="text-left w-full"
               >
-                ▶ {cue.startSec.toFixed(1)}s
+                <span className="text-[10px] text-white/35 tabular-nums">
+                  #{i + 1} · {cue.startSec.toFixed(1)}s · {cue.durationSec.toFixed(1)}s
+                  {cue.takes.length > 0 ? ` · ${cue.takes.length} takes` : ""}
+                </span>
+                <span className="block text-[13px] text-white/85 leading-snug">
+                  {cue.text || <span className="text-white/30">(chưa có lời thoại)</span>}
+                </span>
               </button>
-              <p className="text-[13px] leading-relaxed flex-1">
-                {cue.text || <span className="text-white/30">(cue trống)</span>}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => speak(cue.text)}
-                disabled={!cue.text.trim()}
-                className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10 disabled:opacity-40"
-              >
-                <Volume2 className="w-3.5 h-3.5" /> Nghe giọng máy
-              </button>
-              <button
-                onClick={() => void toggleRecord(cue)}
-                className={`flex items-center gap-1.5 px-2.5 h-8 rounded-lg border text-[11px] font-medium ${
-                  recordingId === cue.id
-                    ? "bg-rose-500/30 border-rose-400/50 text-rose-100"
-                    : "bg-white/5 border-white/10 hover:bg-white/10"
-                }`}
-              >
-                {recordingId === cue.id ? (
-                  <>
+
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  onClick={() => speak(cue.text)}
+                  className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
+                >
+                  <Volume2 className="w-3.5 h-3.5" /> Nghe thử TTS
+                </button>
+                {recording ? (
+                  <button
+                    onClick={stopRecording}
+                    className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-rose-500/30 border border-rose-400/50 text-[11px] font-medium animate-pulse"
+                  >
                     <Square className="w-3.5 h-3.5" /> Dừng thu
-                  </>
+                  </button>
                 ) : (
                   <>
-                    <Mic className="w-3.5 h-3.5" /> Thu giọng của bạn
+                    <button
+                      onClick={() => void startRecording(cue, false)}
+                      disabled={counting}
+                      className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-rose-500/20 border border-rose-400/40 text-[11px] hover:bg-rose-500/30 disabled:opacity-40"
+                    >
+                      <Circle className="w-3.5 h-3.5" /> Thu giọng
+                    </button>
+                    <button
+                      onClick={() => void startRecording(cue, true)}
+                      disabled={counting}
+                      className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-fuchsia-500/20 border border-fuchsia-400/40 text-[11px] hover:bg-fuchsia-500/30 disabled:opacity-40"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      {counting ? "Đang beep dẫn nhịp…" : "Thu theo loop"}
+                    </button>
                   </>
                 )}
-              </button>
-              {takeUrls[cue.id] && (
-                <>
-                  <audio src={takeUrls[cue.id]} controls className="h-8 max-w-[220px]" />
+                {cue.selectedTakeId && (
                   <button
-                    onClick={async () => {
-                      await deleteTake(cue.id);
-                      setTakeUrls((prev) => {
-                        const next = { ...prev };
-                        delete next[cue.id];
-                        return next;
-                      });
-                    }}
-                    aria-label="Xoá bản thu"
-                    className="text-white/35 hover:text-rose-400"
+                    onClick={() => previewDub(cue)}
+                    className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-[11px] hover:bg-emerald-500/25"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Play className="w-3.5 h-3.5" /> Nghe kèm video (ducking)
                   </button>
-                </>
-              )}
-              {!takeUrls[cue.id] && recordingId !== cue.id && (
-                <span className="text-[11px] text-white/30 flex items-center gap-1">
-                  <Play className="w-3 h-3" /> Chưa có bản thu
-                </span>
+                )}
+              </div>
+
+              {cue.takes.length > 0 && (
+                <div className="space-y-1.5">
+                  {cue.takes.map((take, ti) => (
+                    <div
+                      key={take.id}
+                      className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${
+                        cue.selectedTakeId === take.id
+                          ? "border-amber-300/40 bg-amber-400/[0.06]"
+                          : "border-white/[0.07] bg-white/[0.02]"
+                      }`}
+                    >
+                      <button
+                        onClick={() =>
+                          onPatchCue(cue.id, { selectedTakeId: take.id })
+                        }
+                        aria-label="Chọn take này để xuất bản"
+                        className={
+                          cue.selectedTakeId === take.id
+                            ? "text-amber-300"
+                            : "text-white/30 hover:text-amber-200"
+                        }
+                      >
+                        <Star
+                          className="w-4 h-4"
+                          fill={cue.selectedTakeId === take.id ? "currentColor" : "none"}
+                        />
+                      </button>
+                      <span className="text-[11px] text-white/60 w-14">
+                        Take {ti + 1}
+                        {take.durationSec > 0
+                          ? ` · ${take.durationSec.toFixed(1)}s`
+                          : ""}
+                      </span>
+                      {takeUrls[take.id] ? (
+                        <audio
+                          src={takeUrls[take.id]}
+                          controls
+                          className="h-7 flex-1 min-w-[90px]"
+                          ref={(el) => {
+                            if (el) el.volume = take.volume;
+                          }}
+                        />
+                      ) : (
+                        <span className="flex-1 text-[11px] text-white/30">Đang tải bản thu…</span>
+                      )}
+                      <input
+                        type="range"
+                        min={0}
+                        max={1.5}
+                        step={0.05}
+                        value={take.volume}
+                        onChange={(e) =>
+                          onPatchCue(cue.id, {
+                            takes: cue.takes.map((t) =>
+                              t.id === take.id
+                                ? { ...t, volume: Number(e.currentTarget.value) }
+                                : t,
+                            ),
+                          })
+                        }
+                        aria-label="Âm lượng take"
+                        className="w-16 accent-fuchsia-400"
+                      />
+                      <button
+                        onClick={() => void removeTake(cue, take.id)}
+                        aria-label="Xoá take"
+                        className="text-white/35 hover:text-rose-400"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
-        ))}
+          );
+        })}
         {cues.length === 0 && (
-          <p className="text-[13px] text-white/35">
-            Chưa có cue nào — thêm phụ đề ở tab Phụ đề trước, rồi quay lại đây
-            để lồng tiếng theo từng câu.
+          <p className="text-[12px] text-white/35">
+            Chưa có cue nào — tạo cue ở mode Phụ đề trước rồi quay lại đây thu.
           </p>
         )}
       </div>
