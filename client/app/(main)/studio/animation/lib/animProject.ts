@@ -12,6 +12,8 @@
  * để kiểm thử được; lưu trữ nằm ở `animStorage.ts`.
  */
 
+import { DEFAULT_POST, type PostSettings } from "./postFx";
+
 export type AnimProjectKind = "2d" | "3d";
 
 export interface AnimScene {
@@ -57,6 +59,8 @@ export interface AnimProject {
   scenes: AnimScene[];
   /** Nhạc nền toàn phim (Slice B1); null = không có nhạc nền. */
   bgm?: ProjectBgm | null;
+  /** Cài đặt hậu kỳ bản xuất (Đợt Đ3): chuyển cảnh, màu, màn hình tiêu đề. */
+  post?: PostSettings;
 }
 
 export const ANIM_KIND_LABEL: Record<AnimProjectKind, string> = {
@@ -81,6 +85,11 @@ export function createAnimScene(name: string, durationSec = 3): AnimScene {
     source: null,
     note: "",
   };
+}
+
+/** Cài đặt hậu kỳ hiệu lực của dự án (có mặc định cho dự án đời cũ). */
+export function postSettingsOf(project: AnimProject): PostSettings {
+  return project.post ?? DEFAULT_POST;
 }
 
 export function createAnimProject(

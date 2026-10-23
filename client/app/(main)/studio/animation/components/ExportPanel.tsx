@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Download, Music, ShieldCheck, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clapperboard, Download, Music, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import {
   formatDuration,
   projectDurationSec,
@@ -9,6 +9,16 @@ import {
 } from "../lib/animProject";
 import { checkProjectForExport, hasExportErrors } from "../lib/exportCheck";
 import { drawSceneFrame } from "../lib/renderFrame";
+import { postSettingsOf } from "../lib/animProject";
+import {
+  GRADE_FILTERS,
+  TITLE_CARD_SEC,
+  crossfadeBlend,
+  drawTitleCard,
+  fadeBlackAlpha,
+  type ColorGrade,
+  type TransitionType,
+} from "../lib/postFx";
 import { buildFilmAudioPlan, renderFilmAudioMix } from "../lib/filmAudio";
 import { createPrevizFilmRenderer } from "../lib/previzFilmRender";
 import {
@@ -75,12 +85,73 @@ export function ExportPanel({
     );
     const getImage = (url: string) => imageCache.get(url) ?? null;
 
+    // Hậu kỳ (Đ3): hợp thành khung hình qua canvas riêng để áp chuyển
+    // cảnh + chỉnh màu + màn hình tiêu đề
+    const post = postSettingsOf(project);
+    const titleSec = post.titleCard ? TITLE_CARD_SEC : 0;
+    const out = document.createElement("canvas");
+    out.width = W;
+    out.height = H;
+    const octx = out.getContext("2d")!;
+    let prevSnapshot: HTMLCanvasElement | null = null;
+    const snapshotOut = () => {
+      const snap = document.createElement("canvas");
+      snap.width = W;
+      snap.height = H;
+      snap.getContext("2d")!.drawImage(out, 0, 0);
+      prevSnapshot = snap;
+    };
+    const composite = (
+      source: HTMLCanvasElement,
+      tInScene: number,
+      sceneIndex: number,
+      sceneDur: number,
+    ) => {
+      octx.save();
+      octx.filter = GRADE_FILTERS[post.grade];
+      octx.globalAlpha = 1;
+      octx.drawImage(source, 0, 0);
+      octx.restore();
+      const blend = crossfadeBlend(tInScene, sceneIndex, post);
+      if (blend > 0 && prevSnapshot) {
+        octx.save();
+        octx.globalAlpha = blend;
+        octx.drawImage(prevSnapshot, 0, 0);
+        octx.restore();
+      }
+      const black = fadeBlackAlpha(
+        tInScene,
+        sceneDur,
+        sceneIndex === 0,
+        sceneIndex === project.scenes.length - 1,
+        post,
+      );
+      if (black > 0) {
+        octx.fillStyle = `rgba(0,0,0,${black})`;
+        octx.fillRect(0, 0, W, H);
+      }
+    };
+    const playTitleCard = async () => {
+      if (!post.titleCard) return;
+      const start = performance.now();
+      await new Promise<void>((resolve) => {
+        const step = () => {
+          if (cancelRef.current) return resolve();
+          const t = (performance.now() - start) / 1000;
+          if (t >= TITLE_CARD_SEC) return resolve();
+          drawTitleCard(octx, W, H, project.name, "Một bộ phim làm bằng AniMan");
+          requestAnimationFrame(step);
+        };
+        step();
+      });
+    };
+
     // Trộn tiếng (thoại đã chọn + nhạc nền) TRƯỚC khi ghi hình
     setProgress("Đang trộn tiếng cho phim…");
-    const mix = await renderFilmAudioMix(project).catch(() => null);
+    const mix = await renderFilmAudioMix(project, titleSec).catch(() => null);
     const audioPlan = buildFilmAudioPlan(project);
     let audioCtx: AudioContext | null = null;
-    let stream: MediaStream = canvas.captureStream(30);
+    let stream: MediaStream = out.captureStream(30);
     if (mix) {
       try {
         audioCtx = new AudioContext();
@@ -105,7 +176,7 @@ export function ExportPanel({
         });
       } catch {
         audioCtx = null;
-        stream = canvas.captureStream(30);
+        stream = out.captureStream(30);
       }
     }
     const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
@@ -117,6 +188,7 @@ export function ExportPanel({
       recorder.onstop = () => r();
     });
     recorder.start(200);
+    await playTitleCard();
 
     const startedAt = performance.now();
     let elapsed = 0;
@@ -131,10 +203,12 @@ export function ExportPanel({
           const t = (performance.now() - sceneStart) / 1000;
           if (t >= scene.durationSec) return resolve();
           drawSceneFrame(ctx, scene, t, W, H, getImage);
+          composite(canvas, t, i, scene.durationSec);
           requestAnimationFrame(step);
         };
         step();
       });
+      snapshotOut();
       elapsed = (performance.now() - startedAt) / 1000;
     }
     recorder.stop();
@@ -170,11 +244,47 @@ export function ExportPanel({
     cancelRef.current = false;
     setDoneNote("");
     setProgress("Đang trộn tiếng cho phim…");
-    const mix = await renderFilmAudioMix(project).catch(() => null);
+    const post = postSettingsOf(project);
+    const titleSec = post.titleCard ? TITLE_CARD_SEC : 0;
+    const mix = await renderFilmAudioMix(project, titleSec).catch(() => null);
     const audioPlan = buildFilmAudioPlan(project);
     const film = createPrevizFilmRenderer(960, 540);
+    const out = document.createElement("canvas");
+    out.width = 960;
+    out.height = 540;
+    const octx = out.getContext("2d")!;
+    let prevSnapshot: HTMLCanvasElement | null = null;
+    const composite3D = (
+      tInScene: number,
+      sceneIndex: number,
+      sceneDur: number,
+    ) => {
+      octx.save();
+      octx.filter = GRADE_FILTERS[post.grade];
+      octx.globalAlpha = 1;
+      octx.drawImage(film.canvas, 0, 0);
+      octx.restore();
+      const blend = crossfadeBlend(tInScene, sceneIndex, post);
+      if (blend > 0 && prevSnapshot) {
+        octx.save();
+        octx.globalAlpha = blend;
+        octx.drawImage(prevSnapshot, 0, 0);
+        octx.restore();
+      }
+      const black = fadeBlackAlpha(
+        tInScene,
+        sceneDur,
+        sceneIndex === 0,
+        sceneIndex === project.scenes.length - 1,
+        post,
+      );
+      if (black > 0) {
+        octx.fillStyle = `rgba(0,0,0,${black})`;
+        octx.fillRect(0, 0, 960, 540);
+      }
+    };
     let audioCtx: AudioContext | null = null;
-    let stream: MediaStream = film.canvas.captureStream(30);
+    let stream: MediaStream = out.captureStream(30);
     if (mix) {
       try {
         audioCtx = new AudioContext();
@@ -198,7 +308,7 @@ export function ExportPanel({
         });
       } catch {
         audioCtx = null;
-        stream = film.canvas.captureStream(30);
+        stream = out.captureStream(30);
       }
     }
     const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
@@ -210,6 +320,20 @@ export function ExportPanel({
       recorder.onstop = () => r();
     });
     recorder.start(200);
+    if (post.titleCard) {
+      setProgress("Đang dựng màn hình tiêu đề…");
+      const start = performance.now();
+      await new Promise<void>((resolve) => {
+        const step = () => {
+          if (cancelRef.current) return resolve();
+          const t = (performance.now() - start) / 1000;
+          if (t >= TITLE_CARD_SEC) return resolve();
+          drawTitleCard(octx, 960, 540, project.name, "Một bộ phim làm bằng AniMan");
+          requestAnimationFrame(step);
+        };
+        step();
+      });
+    }
     for (let i = 0; i < project.scenes.length; i++) {
       const scene = project.scenes[i];
       if (cancelRef.current) break;
@@ -224,10 +348,16 @@ export function ExportPanel({
           const t = (performance.now() - sceneStart) / 1000;
           if (t >= scene.durationSec) return resolve();
           film.drawAt(scene, t);
+          composite3D(t, i, scene.durationSec);
           requestAnimationFrame(step);
         };
         step();
       });
+      const snap = document.createElement("canvas");
+      snap.width = 960;
+      snap.height = 540;
+      snap.getContext("2d")!.drawImage(out, 0, 0);
+      prevSnapshot = snap;
     }
     recorder.stop();
     await stopped;
@@ -371,6 +501,79 @@ export function ExportPanel({
               />
             </label>
           )}
+        </div>
+      )}
+
+      {onProjectChange && (
+        <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+          <h3 className="text-[12px] font-semibold text-white/70 flex items-center gap-1.5">
+            <Clapperboard className="w-3.5 h-3.5" /> HẬU KỲ BẢN XUẤT
+          </h3>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-white/55">
+            <label className="flex items-center gap-2">
+              Chuyển cảnh
+              <select
+                value={postSettingsOf(project).transition}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    post: {
+                      ...postSettingsOf(project),
+                      transition: e.currentTarget.value as TransitionType,
+                    },
+                  })
+                }
+                className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80"
+              >
+                <option value="none">Không chuyển cảnh</option>
+                <option value="crossfade">Hoà tan (khuyên dùng)</option>
+                <option value="fade">Mờ qua đen</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              Tông màu
+              <select
+                value={postSettingsOf(project).grade}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    post: {
+                      ...postSettingsOf(project),
+                      grade: e.currentTarget.value as ColorGrade,
+                    },
+                  })
+                }
+                className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80"
+              >
+                <option value="none">Nguyên bản</option>
+                <option value="fresh">Tươi sáng</option>
+                <option value="warm">Ấm áp</option>
+                <option value="cool">Mát lạnh</option>
+                <option value="cinema">Điện ảnh</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={postSettingsOf(project).titleCard}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    post: {
+                      ...postSettingsOf(project),
+                      titleCard: e.currentTarget.checked,
+                    },
+                  })
+                }
+                className="accent-pink-400"
+              />
+              Màn hình tiêu đề đầu phim
+            </label>
+          </div>
+          <p className="text-[11px] text-white/35">
+            Hậu kỳ chỉ áp khi xuất phim — không thay đổi cảnh gốc, đổi ý thì
+            xuất lại là xong.
+          </p>
         </div>
       )}
 

@@ -92,12 +92,14 @@ export function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
  */
 export async function renderFilmAudioMix(
   project: AnimProject,
+  /** Đẩy toàn bộ tiếng lùi lại (khi phim có màn hình tiêu đề đầu phim). */
+  offsetSec = 0,
 ): Promise<Blob | null> {
   if (typeof window === "undefined") return null;
   const plan = buildFilmAudioPlan(project);
   const bgm = project.bgm ?? null;
   if (plan.clips.length === 0 && !bgm) return null;
-  const total = Math.max(1, plan.totalSec);
+  const total = Math.max(1, plan.totalSec + offsetSec);
   const sampleRate = 44100;
   const ctx = new OfflineAudioContext(
     2,
@@ -124,7 +126,7 @@ export async function renderFilmAudioMix(
     gain.gain.value = clip.volume;
     src.connect(gain);
     gain.connect(ctx.destination);
-    src.start(clip.atSec);
+    src.start(clip.atSec + offsetSec);
   }
 
   if (bgm) {
@@ -140,7 +142,7 @@ export async function renderFilmAudioMix(
       gain.gain.linearRampToValueAtTime(0.0001, total);
       src.connect(gain);
       gain.connect(ctx.destination);
-      src.start(0);
+      src.start(offsetSec);
       if (!bgm.loop && buf.duration < total) {
         // Không lặp: nhạc kết thúc tự nhiên trước khi hết phim.
       } else {
