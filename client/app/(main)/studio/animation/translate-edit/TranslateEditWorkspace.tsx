@@ -764,7 +764,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             <Upload className="w-10 h-10" />
             <span className="text-sm">Chọn file video của tập này (mp4/webm/mkv…)</span>
             <span className="text-[12px] text-white/30">
-              Chọn file một lần — phụ đề, bản thu và cả file video đều được lưu trong trình duyệt.
+              File được lưu lại cho các lần mở sau.
             </span>
           </button>
         )}
@@ -926,10 +926,9 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             className="w-full bg-transparent text-[26px] font-bold tracking-tight outline-none border-b border-transparent focus:border-fuchsia-400/50 pb-1 placeholder:text-white/25"
           />
           <p className="text-[12px] text-white/40 mt-1 leading-relaxed">
-            Video chạy ngay trên máy của bạn — không tải lên server.
             {episode.videoName
-              ? ` Đang dùng file: ${episode.videoName} — file được lưu trong trình duyệt, quay lại sau vẫn còn.`
-              : ""}
+              ? `File video: ${episode.videoName}`
+              : "Chưa chọn file video cho tập này."}
           </p>
         </div>
         <div className="flex gap-2">
