@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment, type ReactNode } from "react";
 import { Flag, Star } from "lucide-react";
 import { characterName, type CueV2, type Series } from "../../lib/library";
 import { cueCps } from "./CueTable";
@@ -23,6 +24,7 @@ export function CueScriptList({
   selectedCueId,
   onSelect,
   qcMaxCps,
+  selectedPanel,
 }: {
   cues: CueV2[];
   series: Series | null;
@@ -31,6 +33,8 @@ export function CueScriptList({
   onSelect: (cue: CueV2) => void;
   /** Ngưỡng CPS của QC — vượt ngưỡng thì chip CPS tô đỏ. */
   qcMaxCps: number;
+  /** Panel sửa (Inspector) — hiển thị NGAY DƯỚI thẻ cue đang chọn, không cố định ở nơi khác. */
+  selectedPanel?: ReactNode;
 }) {
   if (cues.length === 0) {
     return (
@@ -41,7 +45,7 @@ export function CueScriptList({
     );
   }
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2.5 max-h-[min(560px,62vh)] overflow-y-auto pr-1.5 [scrollbar-width:thin] [scrollbar-color:rgba(232,121,249,0.35)_transparent]">
       {cues.map((cue) => {
         const active =
           currentTimeSec >= cue.startSec &&
@@ -54,8 +58,8 @@ export function CueScriptList({
           (c) => c.id === cue.speakerId,
         )?.color;
         return (
+          <Fragment key={cue.id}>
           <button
-            key={cue.id}
             onClick={() => onSelect(cue)}
             className={`w-full text-left rounded-2xl border p-3.5 transition-all duration-200 hover:-translate-y-0.5 ${
               selected
@@ -131,6 +135,12 @@ export function CueScriptList({
               </div>
             </div>
           </button>
+          {selected && selectedPanel && (
+            <div className="rounded-2xl border border-fuchsia-400/30 bg-[#150b24] px-3.5 py-3 shadow-[0_14px_30px_rgba(0,0,0,0.45)]">
+              {selectedPanel}
+            </div>
+          )}
+          </Fragment>
         );
       })}
     </div>
