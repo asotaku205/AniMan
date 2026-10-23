@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown,
@@ -79,6 +79,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [novelText, setNovelText] = useState("");
   const [novelDrafts, setNovelDrafts] = useState<SceneDraft[] | null>(null);
   const [importNote, setImportNote] = useState<string | null>(null);
+  const [railTab, setRailTab] = useState<"scenes" | "assets">("scenes");
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const exportRef = useRef<HTMLDivElement | null>(null);
 
   /** Pipeline gợi ý Manga → Animation: panel đã vẽ → cảnh + thoại. */
   const importFromManga = async () => {
@@ -146,8 +149,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="space-y-4">
+      {/* Thanh công cụ cố định (bố cục R1) */}
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-[#0d0817] px-4 py-3">
         <Link
           href="/studio/animation"
           className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition"
@@ -163,26 +167,43 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         >
           {ANIM_KIND_LABEL[project.kind]}
         </span>
+        <input
+          value={project.name}
+          onChange={(e) =>
+            setProject({ ...project, name: e.currentTarget.value })
+          }
+          onBlur={(e) => {
+            const name = e.currentTarget.value.trim();
+            if (name && name !== project.name) {
+              void apply({ ...project, name, updatedAt: Date.now() });
+            }
+          }}
+          aria-label="Tên dự án"
+          className="flex-1 min-w-[160px] bg-transparent text-lg font-semibold outline-none border-b border-transparent focus:border-pink-400/50"
+        />
         <span className="text-[12px] text-white/40">
           {project.scenes.length} cảnh · {formatDuration(projectDurationSec(project))} ·{" "}
           {project.fps} fps · {project.width}×{project.height}
         </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() =>
+              previewRef.current?.scrollIntoView({ behavior: "smooth" })
+            }
+            className="px-3 h-9 rounded-lg bg-white/5 border border-white/10 text-[13px] hover:bg-white/10 transition"
+          >
+            Phát thử toàn phim
+          </button>
+          <button
+            onClick={() =>
+              exportRef.current?.scrollIntoView({ behavior: "smooth" })
+            }
+            className="px-3 h-9 rounded-lg bg-gradient-to-r from-pink-500 to-rose-400 text-[13px] font-medium hover:opacity-90 transition"
+          >
+            Xuất bản
+          </button>
+        </div>
       </div>
-
-      <input
-        value={project.name}
-        onChange={(e) =>
-          setProject({ ...project, name: e.currentTarget.value })
-        }
-        onBlur={(e) => {
-          const name = e.currentTarget.value.trim();
-          if (name && name !== project.name) {
-            void apply({ ...project, name, updatedAt: Date.now() });
-          }
-        }}
-        aria-label="Tên dự án"
-        className="w-full bg-transparent text-2xl font-semibold outline-none border-b border-transparent focus:border-pink-400/50 pb-1"
-      />
 
       {saveError && (
         <div className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-[13px] text-rose-200">
@@ -191,129 +212,170 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      {project.kind === "2d" && project.sourceMangaProjectId && (
-        <div className="rounded-2xl border border-pink-400/25 bg-pink-500/[0.06] p-4 flex flex-wrap items-center gap-3">
-          <div className="flex-1 min-w-[220px]">
-            <div className="text-sm font-medium">Nạp từ Manga Studio</div>
-            <p className="text-[12px] text-white/45 leading-relaxed">
-              Mỗi khung tranh đã vẽ thành một cảnh (camera phóng thu mặc
-              định), chữ trong khung thành dòng thoại với thời lượng ước lượng.
-            </p>
-            {importNote && (
-              <p className="text-[12px] text-pink-200/80 mt-1">{importNote}</p>
-            )}
+      {/* Khung làm việc R1: cột trái Cảnh/Tài sản + editor — mọi thao tác
+          dựng phim nằm gọn trong một màn hình, không cuộn trang */}
+      {(() => {
+        const sc =
+          project.scenes.find((x) => x.id === selectedSceneId) ??
+          project.scenes[0] ??
+          null;
+        return (
+          <div className="rounded-2xl border border-white/10 bg-[#0a0614] overflow-hidden flex h-[calc(100dvh-130px)] min-h-[620px]">
+            <aside className="w-[248px] flex-none border-r border-white/10 flex flex-col min-h-0">
+              <div className="flex gap-1 p-2 pb-0">
+                {(
+                  [
+                    { id: "scenes", label: `Cảnh (${project.scenes.length})` },
+                    { id: "assets", label: "Tài sản" },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setRailTab(t.id)}
+                    className={`flex-1 h-8 rounded-lg text-[12px] transition ${
+                      railTab === t.id
+                        ? "bg-white/10 text-white font-medium"
+                        : "text-white/50 hover:text-white hover:bg-white/5"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0 p-2.5 space-y-2">
+                {railTab === "assets" ? (
+                  sc ? (
+                    <AssetLibrary
+                      project={project}
+                      scene={sc}
+                      onUpdateScene={(patch) =>
+                        void apply(updateScene(project, sc.id, patch))
+                      }
+                    />
+                  ) : (
+                    <p className="text-[12px] text-white/40 leading-relaxed">
+                      Thêm một cảnh trước — thư viện tài sản gắn với cảnh đang
+                      chọn.
+                    </p>
+                  )
+                ) : (
+                  <>
+                    {project.scenes.map((scene, idx) => (
+                      <button
+                        key={scene.id}
+                        onClick={() => setSelectedSceneId(scene.id)}
+                        className={`w-full flex items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition ${
+                          sc?.id === scene.id
+                            ? "border-pink-400/50 bg-pink-500/10"
+                            : "border-white/10 bg-black/30 hover:bg-white/5"
+                        }`}
+                      >
+                        <span className="w-7 h-7 flex-none rounded-lg bg-pink-500/15 text-pink-300 grid place-items-center text-[12px] font-bold">
+                          {idx + 1}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[13px] truncate">
+                            {scene.name}
+                          </span>
+                          <span className="block text-[11px] text-white/40">
+                            {scene.durationSec.toFixed(1)}s
+                            {project.kind === "2d"
+                              ? ` · ${(scene.timeline?.layers ?? []).length} layer`
+                              : ` · ${(scene.previz?.objects ?? []).length} vật thể`}
+                            {` · ${(scene.dialogue ?? []).length} thoại`}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                    {project.scenes.length === 0 && (
+                      <p className="text-[12px] text-white/40 leading-relaxed">
+                        Chưa có cảnh nào.
+                      </p>
+                    )}
+                    <button
+                      onClick={() => void apply(addScene(project))}
+                      className="w-full h-9 rounded-xl bg-white/5 border border-white/10 text-[13px] hover:bg-white/10 transition flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Thêm cảnh
+                    </button>
+                    <button
+                      onClick={() => setShowNovelSuggest(true)}
+                      className="w-full h-9 rounded-xl bg-violet-500/15 border border-violet-400/30 text-[13px] hover:bg-violet-500/25 transition"
+                    >
+                      Gợi ý phân cảnh từ novel
+                    </button>
+                    {project.kind === "2d" && project.sourceMangaProjectId && (
+                      <button
+                        onClick={() => void importFromManga()}
+                        disabled={importing}
+                        className="w-full h-9 rounded-xl bg-pink-500/15 border border-pink-400/30 text-[13px] hover:bg-pink-500/25 transition disabled:opacity-50"
+                      >
+                        {importing
+                          ? "Đang nạp…"
+                          : "Nạp panel + thoại từ manga"}
+                      </button>
+                    )}
+                    {importNote && (
+                      <p className="text-[11px] text-pink-200/80 leading-relaxed">
+                        {importNote}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-white/30 leading-relaxed pt-1">
+                      Đổi tên, thời lượng, ghi chú và thứ tự cảnh ở Bảng phân
+                      cảnh đầy đủ phía dưới.
+                    </p>
+                  </>
+                )}
+              </div>
+            </aside>
+            <div className="flex-1 min-w-0 min-h-0">
+              {sc ? (
+                project.kind === "2d" ? (
+                  <TimelineEditor
+                    key={sc.id}
+                    scene={sc}
+                    onChange={(timeline) =>
+                      void apply(updateScene(project, sc.id, { timeline }))
+                    }
+                    onDialogueChange={(dialogue) =>
+                      void apply(updateScene(project, sc.id, { dialogue }))
+                    }
+                    onWeatherChange={(weather) =>
+                      void apply(updateScene(project, sc.id, { weather }))
+                    }
+                  />
+                ) : (
+                  <PrevizEditor
+                    key={sc.id}
+                    scene={sc}
+                    onChange={(previz) =>
+                      void apply(updateScene(project, sc.id, { previz }))
+                    }
+                    onDialogueChange={(dialogue) =>
+                      void apply(updateScene(project, sc.id, { dialogue }))
+                    }
+                    onWeatherChange={(weather) =>
+                      void apply(updateScene(project, sc.id, { weather }))
+                    }
+                  />
+                )
+              ) : (
+                <div className="h-full grid place-items-center p-8">
+                  <p className="text-sm text-white/40 text-center leading-relaxed">
+                    Chưa có cảnh nào — bấm "Thêm cảnh" ở cột trái để bắt đầu
+                    dựng phim.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-          <button
-            onClick={() => void importFromManga()}
-            disabled={importing}
-            className="px-4 h-10 rounded-xl bg-gradient-to-r from-pink-500 to-rose-400 text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
-          >
-            {importing ? "Đang nạp…" : "Nạp panel + thoại"}
-          </button>
-        </div>
-      )}
+        );
+      })()}
 
-      <AnimaticPlayer project={project} />
-
-      {project.kind === "2d" && project.scenes.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[12px] text-white/45">Chỉnh timeline cảnh:</span>
-            {project.scenes.map((sc) => (
-              <button
-                key={sc.id}
-                onClick={() => setSelectedSceneId(sc.id)}
-                className={`px-3 h-8 rounded-lg text-[12px] border transition ${
-                  (selectedSceneId ?? project.scenes[0].id) === sc.id
-                    ? "bg-pink-500/25 border-pink-400/50 text-white"
-                    : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
-                }`}
-              >
-                {sc.name}
-              </button>
-            ))}
-          </div>
-          {(() => {
-            const sc =
-              project.scenes.find((x) => x.id === selectedSceneId) ??
-              project.scenes[0];
-            return (
-              <>
-                <AssetLibrary
-                  project={project}
-                  scene={sc}
-                  onUpdateScene={(patch) =>
-                    void apply(updateScene(project, sc.id, patch))
-                  }
-                />
-                <TimelineEditor
-                key={sc.id}
-                scene={sc}
-                onChange={(timeline) =>
-                  void apply(updateScene(project, sc.id, { timeline }))
-                }
-                onDialogueChange={(dialogue) =>
-                  void apply(updateScene(project, sc.id, { dialogue }))
-                }
-                onWeatherChange={(weather) =>
-                  void apply(updateScene(project, sc.id, { weather }))
-                }
-                />
-              </>
-            );
-          })()}
-        </div>
-      )}
-
-      {project.kind === "3d" && project.scenes.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[12px] text-white/45">Dựng cảnh 3D:</span>
-            {project.scenes.map((sc) => (
-              <button
-                key={sc.id}
-                onClick={() => setSelectedSceneId(sc.id)}
-                className={`px-3 h-8 rounded-lg text-[12px] border transition ${
-                  (selectedSceneId ?? project.scenes[0].id) === sc.id
-                    ? "bg-sky-500/25 border-sky-400/50 text-white"
-                    : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
-                }`}
-              >
-                {sc.name}
-              </button>
-            ))}
-          </div>
-          {(() => {
-            const sc =
-              project.scenes.find((x) => x.id === selectedSceneId) ??
-              project.scenes[0];
-            return (
-              <>
-                <AssetLibrary
-                  project={project}
-                  scene={sc}
-                  onUpdateScene={(patch) =>
-                    void apply(updateScene(project, sc.id, patch))
-                  }
-                />
-                <PrevizEditor
-                key={sc.id}
-                scene={sc}
-                onChange={(previz) =>
-                  void apply(updateScene(project, sc.id, { previz }))
-                }
-                onDialogueChange={(dialogue) =>
-                  void apply(updateScene(project, sc.id, { dialogue }))
-                }
-                onWeatherChange={(weather) =>
-                  void apply(updateScene(project, sc.id, { weather }))
-                }
-                />
-              </>
-            );
-          })()}
-        </div>
-      )}
+      {/* Phát thử toàn phim — xem lại nhịp + tiếng + phụ đề đồng bộ */}
+      <div ref={previewRef} className="scroll-mt-4">
+        <AnimaticPlayer project={project} />
+      </div>
 
       <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-4">
         <div className="flex items-center justify-between mb-3">
@@ -517,10 +579,12 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      <ExportPanel
-        project={project}
-        onProjectChange={(p) => void apply(p)}
-      />
+      <div ref={exportRef} className="scroll-mt-4">
+        <ExportPanel
+          project={project}
+          onProjectChange={(p) => void apply(p)}
+        />
+      </div>
     </div>
   );
 }
