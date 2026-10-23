@@ -8,8 +8,8 @@ import {
 import { createPrevizObject } from "../lib/previz";
 
 describe("animAssets (Đợt C)", () => {
-  it("4 phong cảnh có sẵn đều dựng được vật thể hợp lệ", () => {
-    expect(BUILTIN_SCENERY).toHaveLength(4);
+  it("6 phong cảnh có sẵn đều dựng được vật thể hợp lệ", () => {
+    expect(BUILTIN_SCENERY).toHaveLength(6);
     for (const s of BUILTIN_SCENERY) {
       const objects = s.build();
       expect(objects.length).toBeGreaterThanOrEqual(4);

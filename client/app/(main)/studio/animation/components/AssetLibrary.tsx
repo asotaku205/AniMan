@@ -31,6 +31,7 @@ import {
   saveAnimAsset,
 } from "../lib/animStorage";
 import { createPrevizObject, createPrevizScene } from "../lib/previz";
+import { BUILTIN_IMAGE_PACK } from "../lib/builtinAssets";
 import { createSceneLayer, createSceneTimeline } from "../lib/timeline";
 
 export function AssetLibrary({
@@ -50,6 +51,13 @@ export function AssetLibrary({
   const [sceneryName, setSceneryName] = useState("");
   const [imageCategory, setImageCategory] =
     useState<ImageAssetCategory>("background");
+  const [packUrls, setPackUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (project.kind !== "2d") return;
+    const urls: Record<string, string> = {};
+    for (const item of BUILTIN_IMAGE_PACK) urls[item.id] = item.paint();
+    setPackUrls(urls);
+  }, [project.kind]);
 
   const refresh = useCallback(async () => {
     setAssets(await listAnimAssets().catch(() => []));
@@ -443,6 +451,66 @@ export function AssetLibrary({
               Tải một lần — chèn vào mọi cảnh, không phải tải lại.
             </span>
           </div>
+          <div className="space-y-2">
+            <h4 className="text-[11px] font-semibold text-white/50">
+              GÓI HÌNH CÓ SẴN — NHÂN VẬT CÓ BIỂU CẢM & NỀN CHI TIẾT
+            </h4>
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+              {BUILTIN_IMAGE_PACK.map((item) => (
+                <div
+                  key={item.id}
+                  className="relative rounded-lg overflow-hidden border border-white/10"
+                >
+                  {packUrls[item.id] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={packUrls[item.id]}
+                      alt={item.name}
+                      className="w-full aspect-video object-cover"
+                    />
+                  ) : (
+                    <div className="w-full aspect-video bg-white/5" />
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-1 flex items-center gap-1">
+                    <span className="flex-1 text-[10px] truncate">{item.name}</span>
+                    <button
+                      onClick={() =>
+                        addImageToScene({
+                          kind: "image",
+                          id: item.id,
+                          name: item.name,
+                          category: item.category,
+                          dataUrl: packUrls[item.id],
+                          createdAt: 0,
+                        })
+                      }
+                      title="Thêm thẳng vào cảnh đang chọn"
+                      className="text-pink-300 hover:text-pink-100 text-[10px] font-medium"
+                    >
+                      + Cảnh
+                    </button>
+                    <button
+                      onClick={() => {
+                        void saveAnimAsset({
+                          kind: "image",
+                          id: newAssetId("img"),
+                          name: item.name,
+                          category: item.category,
+                          dataUrl: packUrls[item.id],
+                          createdAt: Date.now(),
+                        }).then(() => refresh());
+                      }}
+                      title="Lưu vào thư viện của tôi"
+                      className="text-white/50 hover:text-white text-[10px]"
+                    >
+                      + Thư viện
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {images.length === 0 ? (
             <p className="text-[12px] text-white/35">
               Thư viện chưa có hình nào. Vẽ nền/nhân vật ở Manga Studio rồi

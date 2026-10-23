@@ -155,6 +155,31 @@ export const BUILTIN_SCENERY: BuiltinScenery[] = [
     ],
   },
   {
+    id: "builtin-park",
+    name: "Công viên",
+    backdrop: "#14301c",
+    build: () => [
+      objAt("cylinder", "Cây to", "#3f7a3a", 3.4, -3, 0, -2),
+      objAt("cylinder", "Cây vừa", "#35703f", 2.6, 3.1, 0, -2.4),
+      objAt("cylinder", "Cây nhỏ", "#4c8a44", 1.9, 0.6, 0, -3.2),
+      objAt("box", "Ghế dài", "#7a5230", 0.55, -0.9, 0, 0.4),
+      objAt("cylinder", "Cột đèn", "#5b7a99", 2.7, 2.2, 0, 0.6),
+      objAt("box", "Bồn hoa", "#8a4a5e", 0.5, 1.4, 0, -0.8),
+    ],
+  },
+  {
+    id: "builtin-schoolyard",
+    name: "Sân trường",
+    backdrop: "#1a2a45",
+    build: () => [
+      objAt("wall", "Dãy lớp học", "#5e6d8c", 2.4, 0, 0, -4),
+      objAt("box", "Cột cờ", "#8c8c96", 3, -3.4, 0, -1.5),
+      objAt("cylinder", "Cây phượng", "#3f7a3a", 3, 3.6, 0, -1.8),
+      objAt("box", "Ghế đá 1", "#6e6e78", 0.5, -1.8, 0, 0.8),
+      objAt("box", "Ghế đá 2", "#6e6e78", 0.5, 2, 0, 0.8),
+    ],
+  },
+  {
     id: "builtin-bedroom",
     name: "Phòng ngủ",
     backdrop: "#241a2e",
