@@ -10,7 +10,9 @@ import {
   Play,
   Mic,
   Plus,
+  Redo2,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import type { AnimScene } from "../lib/animProject";
 import {
@@ -137,10 +139,81 @@ export function TimelineEditor({
   const selectedLayer =
     timeline.layers.find((l) => l.id === selectedLayerId) ?? null;
 
+  // ── Hoàn tác / làm lại (Slice B7): mọi thay đổi qua `update` đều ghi
+  // một mốc lịch sử (tối đa 60); các thay đổi dồn dập trong 800ms (kéo
+  // thanh trượt) gộp chung một mốc để hoàn tác không nhảy từng nấc nhỏ.
+  const HISTORY_LIMIT = 60;
+  const pastRef = useRef<SceneTimeline[]>([]);
+  const futureRef = useRef<SceneTimeline[]>([]);
+  const lastPushAtRef = useRef(0);
+  const [, setHistoryTick] = useState(0);
+  const timelineRef = useRef(timeline);
+  timelineRef.current = timeline;
+
   const update = useCallback(
-    (next: SceneTimeline) => onChange(next),
+    (next: SceneTimeline) => {
+      const now = performance.now();
+      if (now - lastPushAtRef.current > 800) {
+        pastRef.current = [
+          ...pastRef.current.slice(-(HISTORY_LIMIT - 1)),
+          timelineRef.current,
+        ];
+        lastPushAtRef.current = now;
+      }
+      futureRef.current = [];
+      setHistoryTick((t) => t + 1);
+      onChange(next);
+    },
     [onChange],
   );
+
+  const undo = useCallback(() => {
+    const past = pastRef.current;
+    if (past.length === 0) return;
+    const prev = past[past.length - 1];
+    pastRef.current = past.slice(0, -1);
+    futureRef.current = [...futureRef.current, timelineRef.current];
+    lastPushAtRef.current = 0;
+    setHistoryTick((t) => t + 1);
+    onChange(prev);
+  }, [onChange]);
+
+  const redo = useCallback(() => {
+    const future = futureRef.current;
+    if (future.length === 0) return;
+    const next = future[future.length - 1];
+    futureRef.current = future.slice(0, -1);
+    pastRef.current = [...pastRef.current, timelineRef.current];
+    lastPushAtRef.current = 0;
+    setHistoryTick((t) => t + 1);
+    onChange(next);
+  }, [onChange]);
+
+  const canUndo = pastRef.current.length > 0;
+  const canRedo = futureRef.current.length > 0;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        target.closest("input, textarea, select, [contenteditable='true']")
+      ) {
+        return; // đang gõ chữ — để trình duyệt xử lý hoàn tác văn bản
+      }
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === "z" && e.shiftKey) || key === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
   const updateLayer = useCallback(
     (layerId: string, patch: Partial<SceneLayer>) => {
       update({
@@ -404,6 +477,24 @@ export function TimelineEditor({
               className="p-2.5 rounded-lg bg-gradient-to-r from-pink-500 to-rose-400 hover:opacity-90 transition"
             >
               {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              title="Hoàn tác (Ctrl+Z)"
+              aria-label="Hoàn tác"
+              className="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-35"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              title="Làm lại (Ctrl+Y)"
+              aria-label="Làm lại"
+              className="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-35"
+            >
+              <Redo2 className="w-4 h-4" />
             </button>
             <span className="text-[12px] tabular-nums text-white/60 w-24">
               {timeSec.toFixed(2)}s / {duration.toFixed(1)}s
