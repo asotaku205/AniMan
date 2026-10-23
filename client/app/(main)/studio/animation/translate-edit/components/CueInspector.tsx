@@ -85,7 +85,7 @@ export function CueInspector({
         </select>
         {(!series || series.characters.length === 0) && (
           <span className="block mt-1 text-white/30">
-            Chưa có nhân vật — thêm ở Thư viện › Glossary & nhân vật của series.
+            Chưa có nhân vật — thêm ở Thư viện › Thuật ngữ & nhân vật của series.
           </span>
         )}
       </label>

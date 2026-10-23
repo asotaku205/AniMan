@@ -453,9 +453,9 @@ export function PrevizEditor({
             />
           </div>
           <p className="mt-2 text-[11px] text-white/35">
-            Kéo chuột trong khung 3D để xoay góc nhìn tự do (chế độ Góc tự do).
-            Nhân vật là mannequin khớp nối phục vụ dựng cảnh (blocking/pose) —
-            không phải mô hình hoàn thiện.
+            Kéo chuột trong khung 3D để xoay góc nhìn tự do. Nhân vật là
+            hình nhân khớp nối dùng để dựng cảnh và tạo dáng — không phải
+            mô hình hoàn thiện.
           </p>
           <div
             className={`mt-2 rounded-xl border p-3 text-[12px] leading-relaxed ${

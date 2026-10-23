@@ -171,8 +171,9 @@ export function ExportPanel({ project }: { project: AnimProject }) {
         </div>
       ) : (
         <p className="text-[12px] text-white/45 leading-relaxed">
-          Dự án 3D: xuất WebM theo từng cảnh ngay trong PrevizEditor (nút "Xuất
-          WebM cảnh này"). Ghép các đoạn lại bằng trình dựng video bất kỳ.
+          Dự án 3D: xuất WebM theo từng cảnh ngay trong trình dựng cảnh 3D
+          (nút "Xuất WebM cảnh này"). Ghép các đoạn lại bằng trình dựng
+          video bất kỳ.
         </p>
       )}
       <p className="text-[11px] text-white/30">

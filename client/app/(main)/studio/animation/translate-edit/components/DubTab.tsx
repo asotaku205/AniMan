@@ -198,18 +198,19 @@ export function DubTab({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-[12px] text-white/50 leading-relaxed flex-1 min-w-[180px]">
-          Thu nhiều takes cho mỗi câu, ★ là bản sẽ dùng khi xuất. "Thu theo
-          loop" phát đoạn phim + 3 tiếng beep dẫn nhịp như phòng thu ADR.
+          Thu nhiều bản cho mỗi câu — bản ★ sẽ được dùng khi xuất. "Thu
+          theo vòng lặp" phát đoạn phim kèm 3 tiếng bíp dẫn nhịp như trong
+          phòng thu.
         </p>
         <select
           value={ttsLang}
           onChange={(e) => setTtsLang(e.currentTarget.value)}
-          aria-label="Ngôn ngữ nghe thử TTS"
+          aria-label="Ngôn ngữ giọng đọc thử"
           className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none"
         >
           {TTS_LANGS.map((l) => (
             <option key={l.id} value={l.id}>
-              TTS: {l.label}
+              Giọng đọc: {l.label}
             </option>
           ))}
         </select>
@@ -242,7 +243,7 @@ export function DubTab({
                   onClick={() => speak(cue.text)}
                   className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
                 >
-                  <Volume2 className="w-3.5 h-3.5" /> Nghe thử TTS
+                  <Volume2 className="w-3.5 h-3.5" /> Nghe giọng đọc thử
                 </button>
                 {recording ? (
                   <button
@@ -275,7 +276,7 @@ export function DubTab({
                     onClick={() => previewDub(cue)}
                     className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-[11px] hover:bg-emerald-500/25"
                   >
-                    <Play className="w-3.5 h-3.5" /> Nghe kèm video (ducking)
+                    <Play className="w-3.5 h-3.5" /> Nghe kèm video (tiếng gốc nhỏ lại)
                   </button>
                 )}
               </div>

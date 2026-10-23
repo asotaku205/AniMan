@@ -372,7 +372,7 @@ export function AiTab({
           <div className="flex items-center justify-between">
             <label className="text-white/80 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles size={12} className="text-pink-400" />
-              Ý Tưởng Muốn Vẽ (User Prompt)
+              Ý Tưởng Muốn Vẽ
             </label>
             {userDrawingPrompt && (
               <button

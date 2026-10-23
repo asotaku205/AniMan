@@ -16,7 +16,7 @@ export function VoiceSfxStep() {
     <div className="p-6 space-y-6">
       <div>
         <div className="text-lg font-semibold">Gán giọng AI cho nhân vật</div>
-        <div className="text-xs text-white/50 mt-1">Mỗi nhân vật một timbre riêng — AI nhận diện bubble thoại và đọc tự động.</div>
+        <div className="text-xs text-white/50 mt-1">Mỗi nhân vật một chất giọng riêng — AI nhận diện bóng thoại và đọc tự động.</div>
       </div>
       <div className="grid grid-cols-3 gap-3">
         {characters.map((c) => (

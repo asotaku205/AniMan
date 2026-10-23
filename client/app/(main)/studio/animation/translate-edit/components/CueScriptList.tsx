@@ -39,7 +39,7 @@ export function CueScriptList({
   if (cues.length === 0) {
     return (
       <p className="text-[12.5px] text-white/35 leading-relaxed">
-        Chưa có cue nào. Thêm cue tại vị trí playhead bằng nút phía trên,
+        Chưa có cue nào. Thêm cue tại vị trí đang phát bằng nút phía trên,
         nhập file .srt, hoặc đánh dấu In/Out (phím I/O) trên thanh thời gian.
       </p>
     );

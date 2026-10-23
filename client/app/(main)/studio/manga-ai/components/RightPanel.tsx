@@ -359,7 +359,7 @@ export function RightPanel({ s }: Props) {
                             {group.isAi ? (
                               <div
                                 className="w-10 h-10 rounded-lg bg-purple-500/15 border border-purple-500/30 flex items-center justify-center flex-shrink-0"
-                                title="Layer AI (vector/ảo — không có pixel)"
+                                title="Lớp AI tham chiếu (không chứa nét vẽ thật)"
                               >
                                 <Bot size={16} className="text-purple-300" />
                               </div>

@@ -148,7 +148,7 @@ export function MultiTrackTimeline({
               <canvas ref={canvasRef} style={{ width: widthPx, height: 44 }} />
             ) : (
               <span className="absolute inset-0 grid place-items-center text-[10px] text-white/25">
-                Chọn file video để hiện sóng âm phục vụ spotting
+                Chọn file video để hiện sóng âm, phục vụ căn mốc phụ đề
               </span>
             )}
           </div>

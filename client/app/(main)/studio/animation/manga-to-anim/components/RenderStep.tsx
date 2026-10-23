@@ -15,7 +15,7 @@ export function RenderStep({ manga, totalSec }: RenderStepProps) {
     <div className="p-6 space-y-6">
       <div>
         <div className="text-lg font-semibold">Render & xuất bản</div>
-        <div className="text-xs text-white/50 mt-1">Xem trước thành phẩm và chia sẻ lên SakuraStream hoặc tải xuống.</div>
+        <div className="text-xs text-white/50 mt-1">Xem trước thành phẩm và chia sẻ lên AniMan hoặc tải xuống.</div>
       </div>
       <div className="relative aspect-video rounded-xl overflow-hidden bg-black border border-white/10">
         <ImageWithFallback src="https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=1400" alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -33,7 +33,7 @@ export function RenderStep({ manga, totalSec }: RenderStepProps) {
       </div>
       <div className="grid grid-cols-3 gap-3">
         <button className="h-12 rounded-xl bg-gradient-to-r from-pink-500 to-rose-400 flex items-center justify-center gap-2 font-medium text-sm hover:opacity-90 transition"><Download className="w-4 h-4" /> Tải MP4</button>
-        <button className="h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm hover:bg-white/10 transition"><Share2 className="w-4 h-4" /> Đăng SakuraStream</button>
+        <button className="h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm hover:bg-white/10 transition"><Share2 className="w-4 h-4" /> Đăng lên AniMan</button>
         <button className="h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm hover:bg-white/10 transition"><Film className="w-4 h-4" /> Lưu nháp</button>
       </div>
     </div>

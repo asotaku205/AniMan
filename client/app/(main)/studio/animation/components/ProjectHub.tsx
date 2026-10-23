@@ -320,7 +320,7 @@ function CreateProjectDialog({
             }
             className="flex-1 h-11 rounded-xl bg-gradient-to-r from-pink-500 to-rose-400 text-sm font-medium hover:opacity-90 transition"
           >
-            Tạo và mở workspace
+            Tạo và mở dự án
           </button>
         </div>
       </div>

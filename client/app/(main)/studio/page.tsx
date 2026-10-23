@@ -4,7 +4,7 @@ import { Wand2, Layers, Feather, Globe } from "lucide-react";
 
 const studios = [
   { to: "/studio/manga-ai", icon: <Wand2 />, t: "AI Manga Converter", d: "Phác thảo tay → trang manga đạt chuẩn, screentone & bố cục tự động.", color: "from-pink-500 to-fuchsia-500" },
-  { to: "/studio/animation", icon: <Layers />, t: "Animation Lab", d: "Editor đa lớp + AI Auto-Sub & Dub đa ngôn ngữ.", color: "from-violet-500 to-pink-500" },
+  { to: "/studio/animation", icon: <Layers />, t: "Animation Studio", d: "Editor đa lớp + AI Auto-Sub & Dub đa ngôn ngữ.", color: "from-violet-500 to-pink-500" },
   { to: "/studio/novel", icon: <Feather />, t: "Novel Studio", d: "Quyển sổ da cũ trên giấy washi, font viết tay & tiếng ngòi bút.", color: "from-amber-500 to-rose-400" },
 ];
 
@@ -72,7 +72,7 @@ export default function StudioHubPage() {
               </div>
               <h3 style={{ fontFamily: "Shippori Mincho, serif" }} className="text-white text-2xl mb-2">World Builder 3D</h3>
               <p className="text-white/55 max-w-xl">
-                Xây dựng thế giới cho manga & phim: <span className="text-white/80">mô tả bằng văn bản → AI tạo bản đồ địa hình</span>. Thêm nhân vật có tiểu sử, điều chỉnh góc camera, xuất cảnh sang Manga Studio hoặc Animation Lab.
+                Xây dựng thế giới cho manga & phim: <span className="text-white/80">mô tả bằng văn bản → AI tạo bản đồ địa hình</span>. Thêm nhân vật có tiểu sử, điều chỉnh góc camera, xuất cảnh sang Manga Studio hoặc Animation Studio.
               </p>
               <div className="mt-5 flex items-center gap-4 text-sm">
                 <span className="flex items-center gap-1.5 text-emerald-400">Bản đồ hex 3D →</span>

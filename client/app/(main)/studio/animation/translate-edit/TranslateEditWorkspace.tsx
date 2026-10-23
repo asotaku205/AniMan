@@ -831,9 +831,9 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
                     commitCues(splitCue(cuesRef.current, selectedCue.id, videoRef.current?.currentTime ?? currentTime))
                   }
                   className="px-2.5 h-7 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
-                  title="Tách cue đang chọn tại playhead"
+                  title="Tách cue đang chọn tại vị trí đang phát"
                 >
-                  Tách tại playhead
+                  Tách tại điểm phát
                 </button>
                 <button
                   onClick={() => commitCues(mergeCueWithNext(cuesRef.current, selectedCue.id))}

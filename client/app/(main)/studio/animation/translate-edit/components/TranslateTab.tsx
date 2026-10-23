@@ -226,8 +226,8 @@ export function TranslateTab({
       </div>
 
       <label className="block text-[11px] text-white/45">
-        Ngữ cảnh dịch — tự nạp từ glossary + dàn nhân vật của series (sửa
-        được cho lượt này)
+        Ngữ cảnh dịch — tự nạp từ bảng thuật ngữ + dàn nhân vật của series
+        (sửa được cho lượt này)
         <textarea
           value={glossary}
           onChange={(e) => setGlossary(e.currentTarget.value)}

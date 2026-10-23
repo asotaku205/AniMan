@@ -114,7 +114,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       updatedAt: Date.now(),
     });
     setImportNote(
-      `Đã nạp ${newScenes.length} cảnh từ manga (mỗi panel một cảnh, camera Ken Burns mặc định, thoại trích từ chữ trong panel).`,
+      `Đã nạp ${newScenes.length} cảnh từ manga (mỗi khung tranh một cảnh, camera phóng thu mặc định, thoại trích từ chữ trong khung).`,
     );
   };
 
@@ -182,8 +182,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           <div className="flex-1 min-w-[220px]">
             <div className="text-sm font-medium">Nạp từ Manga Studio</div>
             <p className="text-[12px] text-white/45 leading-relaxed">
-              Mỗi panel đã vẽ thành một cảnh (camera Ken Burns mặc định), chữ
-              trong panel thành track thoại với thời lượng ước lượng.
+              Mỗi khung tranh đã vẽ thành một cảnh (camera phóng thu mặc
+              định), chữ trong khung thành dòng thoại với thời lượng ước lượng.
             </p>
             {importNote && (
               <p className="text-[12px] text-pink-200/80 mt-1">{importNote}</p>

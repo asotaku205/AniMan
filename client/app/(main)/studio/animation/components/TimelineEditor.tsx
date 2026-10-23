@@ -521,7 +521,7 @@ export function TimelineEditor({
             ))}
             {selectedLayer && (
               <label className="block text-[11px] text-white/45">
-                Hình cho layer đang chọn (panel manga sẽ nạp ở bước sau, hoặc tải ảnh lên)
+                Hình cho layer đang chọn (lấy từ khung tranh manga, hoặc tải ảnh lên)
                 <input
                   type="file"
                   accept="image/*"
