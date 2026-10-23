@@ -21,6 +21,8 @@ import {
 } from "../lib/library";
 import {
   getEpisode,
+  loadEpisodeVideo,
+  saveEpisodeVideo,
   loadTakeBlob,
   getSeriesOfEpisode,
   listCues,
@@ -126,6 +128,23 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
         setCues(loaded);
         loadedRef.current = true;
       }
+      // Khôi phục file video đã lưu trong IndexedDB (nếu có) — F5 hay
+      // rời tab quay lại không phải chọn lại file nữa.
+      const savedVideo = await loadEpisodeVideo(episodeId).catch(() => null);
+      if (savedVideo && !cancelled) {
+        const restored = new File([savedVideo], ep.videoName || "video", {
+          type: savedVideo.type,
+        });
+        setVideoFile(restored);
+        setVideoUrl(URL.createObjectURL(restored));
+        setWaveBusy(true);
+        void extractWaveformPeaks(restored).then((result) => {
+          if (!cancelled) {
+            setPeaks(result);
+            setWaveBusy(false);
+          }
+        });
+      }
     })();
     return () => {
       cancelled = true;
@@ -207,6 +226,17 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
     setVideoFile(file);
     setVideoUrl(URL.createObjectURL(file));
     void patchEpisode({ videoName: file.name });
+    // Lưu file vào IndexedDB để các lần mở sau tự khôi phục. Lỗi (hết
+    // quota…) thì báo rõ — video vẫn xem được trong phiên hiện tại.
+    void saveEpisodeVideo(episodeId, file).catch((err) => {
+      setSaveState({
+        kind: "error",
+        message:
+          err instanceof Error
+            ? `Không lưu được file video: ${err.message}`
+            : "Không lưu được file video vào bộ nhớ trình duyệt — video vẫn xem được trong phiên này.",
+      });
+    });
     setWaveBusy(true);
     void extractWaveformPeaks(file).then((result) => {
       setPeaks(result);
@@ -657,7 +687,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
           <p className="text-[12px] text-white/40 mt-1 leading-relaxed">
             Video chạy ngay trên máy của bạn — không tải lên server.
             {episode.videoName
-              ? ` Lần trước đã dùng file: ${episode.videoName} — chọn lại đúng file đó để xem tiếp.`
+              ? ` Đang dùng file: ${episode.videoName} — file được lưu trong trình duyệt, quay lại sau vẫn còn.`
               : ""}
           </p>
         </div>
@@ -834,7 +864,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             <Upload className="w-10 h-10" />
             <span className="text-sm">Chọn file video của tập này (mp4/webm/mkv…)</span>
             <span className="text-[12px] text-white/30">
-              Phụ đề và bản thu của tập đã được lưu — chọn lại đúng file video là làm tiếp được.
+              Chọn file một lần — phụ đề, bản thu và cả file video đều được lưu trong trình duyệt.
             </span>
           </button>
         )}

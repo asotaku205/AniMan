@@ -66,4 +66,19 @@ describe("libraryStorage — ghi/đọc bền vững qua IndexedDB", () => {
     await storage.deleteTakeBlob("take-x");
     expect(await storage.loadTakeBlob("take-x")).toBeNull();
   });
+
+  it("video của tập ghi/đọc lại đúng bytes (F5 không mất video)", async () => {
+    const storage = await import("../lib/libraryStorage");
+    const bytes = new Uint8Array([0, 1, 2, 3, 250, 251, 252]);
+    const blob = new Blob([bytes], { type: "video/mp4" });
+    await storage.saveEpisodeVideo("ep-video-1", blob);
+    const back = await storage.loadEpisodeVideo("ep-video-1");
+    expect(back).not.toBeNull();
+    expect(back!.size).toBe(blob.size);
+    expect(back!.type).toBe("video/mp4");
+    const backBytes = new Uint8Array(await back!.arrayBuffer());
+    expect(Array.from(backBytes)).toEqual(Array.from(bytes));
+    await storage.deleteEpisodeVideo("ep-video-1");
+    expect(await storage.loadEpisodeVideo("ep-video-1")).toBeNull();
+  });
 });

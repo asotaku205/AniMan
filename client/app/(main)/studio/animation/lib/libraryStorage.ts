@@ -16,7 +16,7 @@ import {
 } from "./library";
 
 const DB_NAME = "animan_video_editor_db";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -58,6 +58,11 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains("takeBlobs")) {
         db.createObjectStore("takeBlobs");
+      }
+      // v3: file video của từng tập — lưu Blob ngay trong IndexedDB để
+      // F5 / chuyển tab / quay lại sau không phải chọn lại file.
+      if (!db.objectStoreNames.contains("episodeVideos")) {
+        db.createObjectStore("episodeVideos");
       }
     };
     req.onsuccess = () => {
@@ -238,6 +243,35 @@ export async function loadTakeBlob(takeId: string): Promise<Blob | null> {
       s.get(takeId),
     )) ?? null
   );
+}
+
+export async function saveEpisodeVideo(
+  episodeId: string,
+  blob: Blob,
+): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, "episodeVideos", "readwrite", (s) =>
+    s.put(blob, episodeId),
+  );
+}
+
+export async function loadEpisodeVideo(
+  episodeId: string,
+): Promise<Blob | null> {
+  if (!isBrowser) return null;
+  const db = await openDb();
+  return (
+    (await request<Blob | undefined>(db, "episodeVideos", "readonly", (s) =>
+      s.get(episodeId),
+    )) ?? null
+  );
+}
+
+export async function deleteEpisodeVideo(episodeId: string): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, "episodeVideos", "readwrite", (s) => s.delete(episodeId));
 }
 
 export async function deleteTakeBlob(takeId: string): Promise<void> {
