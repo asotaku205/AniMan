@@ -30,6 +30,17 @@ export interface AnimScene {
   previz?: import("./previz").PrevizScene;
 }
 
+/** Nhạc nền của toàn phim — file tiếng nằm ở kho Blob, key = `blobKey`. */
+export interface ProjectBgm {
+  blobKey: string;
+  /** Tên file gốc để hiển thị. */
+  name: string;
+  /** Âm lượng 0–1 (mặc định 0.35 để không lấn thoại). */
+  volume: number;
+  /** Lặp lại khi nhạc ngắn hơn phim. */
+  loop: boolean;
+}
+
 export interface AnimProject {
   id: string;
   name: string;
@@ -44,6 +55,8 @@ export interface AnimProject {
   /** Dự án manga nguồn nếu tạo từ pipeline; null = dự án độc lập. */
   sourceMangaProjectId: string | null;
   scenes: AnimScene[];
+  /** Nhạc nền toàn phim (Slice B1); null = không có nhạc nền. */
+  bgm?: ProjectBgm | null;
 }
 
 export const ANIM_KIND_LABEL: Record<AnimProjectKind, string> = {
@@ -87,6 +100,7 @@ export function createAnimProject(
     fps: opts.fps ?? 24,
     sourceMangaProjectId: opts.sourceMangaProjectId ?? null,
     scenes: [createAnimScene("Cảnh 1", 3)],
+    bgm: null,
   };
 }
 

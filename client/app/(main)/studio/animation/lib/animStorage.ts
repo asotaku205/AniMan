@@ -1,70 +1,146 @@
 /**
  * Lưu trữ dự án phim (Animation Studio) trong IndexedDB của trình duyệt —
- * cùng chuẩn với Manga Studio (`animan_manga_studio_db`) nhưng DB riêng
- * `animan_animation_db` để hai studio không giẫm chân nhau.
+ * DB riêng `animan_animation_db` để các studio không giẫm chân nhau.
  *
- * Mọi hàm đều an toàn khi gọi phía server (trả về rỗng/no-op) vì trang Next
- * có thể render trước ở server; dữ liệu thật chỉ có ở client.
+ * Chuẩn lưu trữ (khớp libraryStorage sau vụ F5 mất dữ liệu 23/10/2026):
+ * - MỘT kết nối IndexedDB dùng chung, có xử lý blocked/versionchange.
+ * - Hàm ĐỌC không có dữ liệu thì trả rỗng/null; hàm GHI lỗi thì REJECT kèm
+ *   thông điệp tiếng Việt — lỗi lưu không bao giờ bị nuốt âm thầm nữa.
+ * - v2 (Slice B1): thêm store `voiceBlobs` chứa file tiếng (bản thu giọng
+ *   theo takeId, nhạc nền theo `bgm-<projectId>`).
  */
 
 import type { AnimProject } from "./animProject";
 
 const DB_NAME = "animan_animation_db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_PROJECTS = "projects";
+const STORE_VOICE_BLOBS = "voiceBlobs";
 
-function openDb(): Promise<IDBDatabase | null> {
-  if (typeof window === "undefined" || !window.indexedDB) {
-    return Promise.resolve(null);
-  }
-  return new Promise((resolve) => {
-    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
+const isBrowser =
+  typeof window !== "undefined" && "indexedDB" in window;
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+function openDb(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
       if (!db.objectStoreNames.contains(STORE_PROJECTS)) {
         db.createObjectStore(STORE_PROJECTS, { keyPath: "id" });
       }
+      if (!db.objectStoreNames.contains(STORE_VOICE_BLOBS)) {
+        db.createObjectStore(STORE_VOICE_BLOBS);
+      }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => resolve(null);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    req.onblocked = () => {
+      dbPromise = null;
+      reject(
+        new Error(
+          "Không truy cập được dữ liệu đã lưu — hãy đóng các tab AniMan khác rồi tải lại trang.",
+        ),
+      );
+    };
+    req.onerror = () => {
+      dbPromise = null;
+      reject(
+        req.error ??
+          new Error("Không mở được kho dữ liệu của Animation Studio."),
+      );
+    };
+  });
+  return dbPromise;
+}
+
+function request<T>(
+  db: IDBDatabase,
+  storeName: string,
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const tx = db.transaction(storeName, mode);
+    const req = run(tx.objectStore(storeName));
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () =>
+      reject(req.error ?? new Error("Thao tác dữ liệu thất bại."));
   });
 }
 
-function tx<T>(
-  mode: IDBTransactionMode,
-  run: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T | null> {
-  return openDb().then(
-    (db) =>
-      new Promise<T | null>((resolve) => {
-        if (!db) return resolve(null);
-        try {
-          const store = db.transaction(STORE_PROJECTS, mode).objectStore(STORE_PROJECTS);
-          const request = run(store);
-          request.onsuccess = () => resolve(request.result ?? null);
-          request.onerror = () => resolve(null);
-        } catch {
-          resolve(null);
-        }
-      }),
-  );
-}
+// ── Dự án phim ───────────────────────────────────────────────────────────────
 
 export async function listAnimProjects(): Promise<AnimProject[]> {
-  const all = await tx<AnimProject[]>("readonly", (store) => store.getAll());
-  return (all ?? []).sort((a, b) => b.updatedAt - a.updatedAt);
+  if (!isBrowser) return [];
+  const db = await openDb();
+  const all =
+    (await request<AnimProject[]>(db, STORE_PROJECTS, "readonly", (s) =>
+      s.getAll(),
+    )) ?? [];
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function getAnimProject(id: string): Promise<AnimProject | null> {
-  return tx<AnimProject>("readonly", (store) => store.get(id));
+  if (!isBrowser) return null;
+  const db = await openDb();
+  return (
+    (await request<AnimProject | undefined>(
+      db,
+      STORE_PROJECTS,
+      "readonly",
+      (s) => s.get(id),
+    )) ?? null
+  );
 }
 
 export async function saveAnimProject(project: AnimProject): Promise<void> {
-  await tx("readwrite", (store) => store.put(project));
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_PROJECTS, "readwrite", (s) => s.put(project));
 }
 
 export async function deleteAnimProject(id: string): Promise<void> {
-  await tx("readwrite", (store) => store.delete(id));
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_PROJECTS, "readwrite", (s) => s.delete(id));
+}
+
+// ── File tiếng: bản thu giọng + nhạc nền (Blob) ────────────────────────────
+
+/** Key của Blob nhạc nền theo dự án. */
+export function bgmBlobKey(projectId: string): string {
+  return `bgm-${projectId}`;
+}
+
+export async function saveVoiceBlob(key: string, blob: Blob): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_VOICE_BLOBS, "readwrite", (s) => s.put(blob, key));
+}
+
+export async function loadVoiceBlob(key: string): Promise<Blob | null> {
+  if (!isBrowser) return null;
+  const db = await openDb();
+  return (
+    (await request<Blob | undefined>(db, STORE_VOICE_BLOBS, "readonly", (s) =>
+      s.get(key),
+    )) ?? null
+  );
+}
+
+export async function deleteVoiceBlob(key: string): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_VOICE_BLOBS, "readwrite", (s) => s.delete(key));
 }
 
 /**

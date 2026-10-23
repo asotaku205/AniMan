@@ -7,6 +7,17 @@
  * TOOL (luật cứng, không AI); bản dịch có ngữ cảnh là slice AI sau cùng.
  */
 
+/** Metadata một bản thu giọng cho dòng thoại — file tiếng nằm ở kho Blob
+ * (`voiceBlobs` trong animStorage), key = chính `id` của take. */
+export interface DialogueTakeMeta {
+  id: string;
+  durationSec: number;
+  /** Âm lượng phát 0–1.5 (mặc định 1). */
+  volume: number;
+  createdAt: number;
+  note?: string;
+}
+
 export interface DialogueLine {
   id: string;
   text: string;
@@ -14,6 +25,10 @@ export interface DialogueLine {
   durationSec: number;
   /** Tên nhân vật nói (tuỳ chọn, điền tay hoặc từ World Builder sau này). */
   speaker?: string;
+  /** Các bản thu giọng của dòng này (Slice B1 — khép kín tiếng cho phim). */
+  takes?: DialogueTakeMeta[];
+  /** Take được chọn để đưa vào bản xuất phim. */
+  selectedTakeId?: string;
 }
 
 let lineCounter = 0;
@@ -63,4 +78,72 @@ export function dialogueLineAt(
     if (t >= line.startSec && t < line.startSec + line.durationSec) return line;
   }
   return null;
+}
+
+let takeCounter = 0;
+export function newTakeId(): string {
+  takeCounter += 1;
+  return `take-${Date.now().toString(36)}-${takeCounter.toString(36)}`;
+}
+
+/** Thêm một bản thu vào dòng thoại; bản thu đầu tiên tự được chọn để xuất. */
+export function addDialogueTake(
+  line: DialogueLine,
+  take: DialogueTakeMeta,
+): DialogueLine {
+  const takes = [...(line.takes ?? []), take];
+  return {
+    ...line,
+    takes,
+    selectedTakeId: line.selectedTakeId ?? take.id,
+  };
+}
+
+/** Xoá một bản thu; nếu xoá đúng bản đang chọn thì chọn bản còn lại đầu tiên. */
+export function removeDialogueTake(
+  line: DialogueLine,
+  takeId: string,
+): DialogueLine {
+  const takes = (line.takes ?? []).filter((t) => t.id !== takeId);
+  return {
+    ...line,
+    takes,
+    selectedTakeId:
+      line.selectedTakeId === takeId ? takes[0]?.id : line.selectedTakeId,
+  };
+}
+
+export function selectDialogueTake(
+  line: DialogueLine,
+  takeId: string,
+): DialogueLine {
+  if (!(line.takes ?? []).some((t) => t.id === takeId)) return line;
+  return { ...line, selectedTakeId: takeId };
+}
+
+export function setDialogueTakeVolume(
+  line: DialogueLine,
+  takeId: string,
+  volume: number,
+): DialogueLine {
+  return {
+    ...line,
+    takes: (line.takes ?? []).map((t) =>
+      t.id === takeId
+        ? { ...t, volume: Math.min(1.5, Math.max(0, volume)) }
+        : t,
+    ),
+  };
+}
+
+/** Bản thu đang được chọn của dòng (null = dòng chưa có tiếng để xuất). */
+export function selectedDialogueTake(
+  line: DialogueLine,
+): DialogueTakeMeta | null {
+  if (!line.selectedTakeId) return null;
+  return (line.takes ?? []).find((t) => t.id === line.selectedTakeId) ?? null;
+}
+
+export function lineHasSelectedVoice(line: DialogueLine): boolean {
+  return selectedDialogueTake(line) !== null;
 }

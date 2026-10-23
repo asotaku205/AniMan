@@ -59,13 +59,19 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
-  const apply = useCallback(
-    async (next: AnimProject) => {
-      setProject(next);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const apply = useCallback(async (next: AnimProject) => {
+    setProject(next);
+    try {
       await saveAnimProject(next);
-    },
-    [],
-  );
+      setSaveError(null);
+    } catch (err) {
+      // Lỗi lưu phải HIỂN THỊ — không nuốt âm thầm (bài học F5 mất dữ liệu).
+      setSaveError(
+        err instanceof Error ? err.message : "Không lưu được dự án.",
+      );
+    }
+  }, []);
 
   const [importing, setImporting] = useState(false);
   const [showNovelSuggest, setShowNovelSuggest] = useState(false);
@@ -176,6 +182,13 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         aria-label="Tên dự án"
         className="w-full bg-transparent text-2xl font-semibold outline-none border-b border-transparent focus:border-pink-400/50 pb-1"
       />
+
+      {saveError && (
+        <div className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-[13px] text-rose-200">
+          ⚠ Lỗi lưu dữ liệu: {saveError} Thay đổi mới nhất có thể chưa được
+          lưu — hãy tải lại trang và thử lại.
+        </div>
+      )}
 
       {project.kind === "2d" && project.sourceMangaProjectId && (
         <div className="rounded-2xl border border-pink-400/25 bg-pink-500/[0.06] p-4 flex flex-wrap items-center gap-3">
