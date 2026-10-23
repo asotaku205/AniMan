@@ -1,8 +1,10 @@
 /**
  * Dự án mẫu hoàn chỉnh (đưa quy trình làm phim mẫu vào sản phẩm): hai dự
  * án dựng sẵn bằng đúng thư viện tài sản + mô hình dữ liệu của AniMan —
- * có cảnh, phong cảnh, nhân vật, chuyển động, camera và lời thoại. Người
- * dùng mở ra học theo, thu giọng cho các dòng thoại rồi xuất phim.
+ * có cảnh, phong cảnh, nhân vật, chuyển động, camera và lời thoại. Dự án
+ * mẫu ĐÃ CÓ SẴN giọng đọc mẫu + nhạc nền (file tĩnh đóng gói kèm app,
+ * ProjectHub nạp vào kho khi tạo) — mở ra phát thử là có tiếng ngay;
+ * người dùng học theo rồi thu giọng của mình thay vào nếu muốn.
  *
  * Phần vẽ hình 2D dùng canvas tại trình duyệt (chạy khi người dùng bấm
  * tạo mẫu); dự án 3D thuần dữ liệu nên kiểm thử được.
@@ -20,6 +22,7 @@ import {
   type SceneLayer,
 } from "./timeline";
 import { BUILTIN_SCENERY, characterObjectFromAsset } from "./animAssets";
+import { bgmBlobKey } from "./animStorage";
 import { newPrevizId, vec3 } from "./previz";
 import type { DialogueLine } from "./dialogue";
 
@@ -47,6 +50,51 @@ export const SAMPLE_DIALOGUE_3D: Array<{
   { scene: "Trong lớp học", speaker: "Thầy giáo", text: "Các em mở sách ra, hôm nay chúng ta học bài mới.", startSec: 0.4, durationSec: 3.8 },
   { scene: "Trên đường về", speaker: "Linh", text: "Tan học rồi! Mình ghé hiệu sách một chút nhé.", startSec: 0.4, durationSec: 4.2 },
 ];
+
+/**
+ * Giọng mẫu đóng gói sẵn (file tĩnh trong public/sample-audio, sinh bằng
+ * giọng đọc tiếng Việt): mỗi cảnh mẫu có đúng 1 dòng thoại, gắn 1 bản thu
+ * với id cố định. ProjectHub nạp file âm thanh vào kho khi người dùng bấm
+ * tạo mẫu — nhờ vậy dự án mẫu mở ra là CÓ TIẾNG ngay như phim mẫu gửi
+ * kèm, thay vì bắt người dùng tự thu mới nghe được.
+ */
+export const SAMPLE_VOICE_FILES: Array<{
+  kind: "2d" | "3d";
+  sceneIndex: number;
+  file: string;
+  takeId: string;
+}> = [
+  { kind: "2d", sceneIndex: 0, file: "2d-1.mp3", takeId: "take-sample-2d-1" },
+  { kind: "2d", sceneIndex: 1, file: "2d-2.mp3", takeId: "take-sample-2d-2" },
+  { kind: "2d", sceneIndex: 2, file: "2d-3.mp3", takeId: "take-sample-2d-3" },
+  { kind: "3d", sceneIndex: 0, file: "3d-1.mp3", takeId: "take-sample-3d-1" },
+  { kind: "3d", sceneIndex: 1, file: "3d-2.mp3", takeId: "take-sample-3d-2" },
+];
+
+/** Gắn bản thu mẫu + nhạc nền mẫu vào dự án vừa dựng (chỉ dữ liệu — file
+ * âm thanh thật do ProjectHub nạp vào kho theo SAMPLE_VOICE_FILES). */
+function attachSampleAudio(project: AnimProject, kind: "2d" | "3d"): void {
+  for (const entry of SAMPLE_VOICE_FILES.filter((e) => e.kind === kind)) {
+    const line = project.scenes[entry.sceneIndex]?.dialogue?.[0];
+    if (!line) continue;
+    line.takes = [
+      {
+        id: entry.takeId,
+        durationSec: line.durationSec,
+        volume: 1,
+        createdAt: 0,
+        note: "Giọng mẫu có sẵn",
+      },
+    ];
+    line.selectedTakeId = entry.takeId;
+  }
+  project.bgm = {
+    blobKey: bgmBlobKey(project.id),
+    name: "Nhạc nền mẫu — đệm nhẹ",
+    volume: 0.35,
+    loop: true,
+  };
+}
 
 let sampleLineCounter = 0;
 function sampleLine(
@@ -287,6 +335,7 @@ export function buildSampleProject2D(): AnimProject {
   s3.dialogue = [sampleLine(SAMPLE_DIALOGUE_2D[2])];
 
   project.scenes = [s1, s2, s3];
+  attachSampleAudio(project, "2d");
   return project;
 }
 
@@ -346,5 +395,6 @@ export function buildSampleProject3D(): AnimProject {
   s2.dialogue = [sampleLine(SAMPLE_DIALOGUE_3D[1])];
 
   project.scenes = [s1, s2];
+  attachSampleAudio(project, "3d");
   return project;
 }

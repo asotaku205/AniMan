@@ -28,3 +28,20 @@ describe("dự án mẫu 3D (quy trình làm phim mẫu)", () => {
     expect(hasExportErrors(issues)).toBe(false);
   });
 });
+
+describe("dự án mẫu có sẵn tiếng", () => {
+  it("mọi dòng thoại mẫu đều có bản thu được chọn + dự án có nhạc nền mẫu", async () => {
+    const { buildSampleProject3D, SAMPLE_VOICE_FILES } = await import(
+      "../lib/sampleProjects"
+    );
+    const { selectedDialogueTake } = await import("../lib/dialogue");
+    const p = buildSampleProject3D();
+    for (const scene of p.scenes) {
+      for (const line of scene.dialogue ?? []) {
+        expect(selectedDialogueTake(line)).not.toBeNull();
+      }
+    }
+    expect(p.bgm?.name).toContain("Nhạc nền mẫu");
+    expect(SAMPLE_VOICE_FILES.filter((e) => e.kind === "3d")).toHaveLength(2);
+  });
+});

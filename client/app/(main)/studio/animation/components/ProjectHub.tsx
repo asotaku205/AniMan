@@ -26,10 +26,12 @@ import {
   type AnimProjectKind,
 } from "../lib/animProject";
 import {
+  bgmBlobKey,
   deleteAnimProject,
   listAnimProjects,
   listMangaProjectOptions,
   saveAnimProject,
+  saveVoiceBlob,
 } from "../lib/animStorage";
 import {
   exportProjectPackage,
@@ -38,6 +40,7 @@ import {
 import {
   buildSampleProject2D,
   buildSampleProject3D,
+  SAMPLE_VOICE_FILES,
 } from "../lib/sampleProjects";
 
 /**
@@ -99,13 +102,33 @@ export function ProjectHub() {
     }
   };
 
+  /** Nạp file giọng mẫu + nhạc nền mẫu (file tĩnh kèm app) vào kho âm
+   * thanh để dự án mẫu có tiếng ngay. Thiếu file thì bỏ qua lặng lẽ —
+   * dự án vẫn dùng được, người dùng tự thu giọng như trước. */
+  const seedSampleAudio = async (sample: AnimProject) => {
+    for (const entry of SAMPLE_VOICE_FILES.filter((e) => e.kind === sample.kind)) {
+      try {
+        const res = await fetch(`/sample-audio/${entry.file}`);
+        if (res.ok) await saveVoiceBlob(entry.takeId, await res.blob());
+      } catch {
+        /* thiếu file mẫu — bỏ qua */
+      }
+    }
+    try {
+      const res = await fetch("/sample-audio/bgm.mp3");
+      if (res.ok) await saveVoiceBlob(bgmBlobKey(sample.id), await res.blob());
+    } catch {
+      /* thiếu file mẫu — bỏ qua */
+    }
+  };
   const handleCreateSample = async (kind: "2d" | "3d") => {
     const sample =
       kind === "2d" ? buildSampleProject2D() : buildSampleProject3D();
     await saveAnimProject(sample);
+    await seedSampleAudio(sample);
     await refresh();
     setTransferNote(
-      `Đã tạo "${sample.name}" — mở dự án, thu giọng cho các dòng thoại trong từng cảnh, rồi xuất phim ở panel Kiểm tra & xuất bản.`,
+      `Đã tạo "${sample.name}" — dự án đã có sẵn giọng mẫu và nhạc nền: mở dự án bấm Phát thử là nghe được ngay. Muốn dùng giọng của bạn thì vào từng cảnh thu đè trong mục Thoại.`,
     );
   };
 
