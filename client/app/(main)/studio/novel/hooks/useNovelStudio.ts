@@ -147,9 +147,10 @@ export function useNovelStudio() {
         chs = [c1, c2, c3];
         scs = [s1, s2, s3];
       }
-      setNovels(ns);
+      // Chuẩn hoá bản ghi cũ (trước N2 chưa có synopsis/status/summary/outline).
+      setNovels(ns.map((n) => ({ ...n, summary: n.summary ?? "", outline: n.outline ?? "" })));
       setChapters(chs);
-      setScenes(scs);
+      setScenes(scs.map((sc) => ({ ...sc, synopsis: sc.synopsis ?? "", status: sc.status ?? "draft" as const })));
       setPlotlines(await listPlotlines());
       setBeats(await listBeats());
       setArcs(await listArcs());
