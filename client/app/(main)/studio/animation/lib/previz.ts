@@ -104,6 +104,9 @@ export interface PrevizObject {
   name: string;
   /** Rãnh hành động (chỉ kind "model" dùng) — xem lib/actionTrack.ts. */
   actions?: ActionSegment[];
+  /** Rãnh dáng mốc tự dựng (chỉ kind "model" dùng) — xem lib/poseTrack.ts.
+   * Chỉ phát khi không có đoạn clip nào đang chạy tại thời điểm đó. */
+  poseKeys?: import("./poseTrack").PoseKey[];
   /** Mã tài sản mô hình (chỉ kind "model" dùng) — trỏ vào thư viện tài sản. */
   modelAssetId?: string;
   /** Phát sáng 0..1 (S2) — áp emissive cho vật thể 3D. */

@@ -22,6 +22,8 @@ export interface MixerState {
     THREE.Bone,
     { position: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3 }
   >;
+  /** Xương theo tên — dáng mốc dùng để chụp/áp (Phase 4). */
+  boneByName: Map<string, THREE.Bone>;
   lastTimeSec: number;
   started: boolean;
 }
@@ -49,12 +51,17 @@ export function createMixerState(
       scale: bone.scale.clone(),
     });
   }
+  const boneByName = new Map<string, THREE.Bone>();
+  for (const bone of bones.values()) {
+    if (!boneByName.has(bone.name)) boneByName.set(bone.name, bone);
+  }
   return {
     mixer: new THREE.AnimationMixer(root),
     clips,
     current: null,
     fading: null,
     bind,
+    boneByName,
     lastTimeSec: 0,
     started: false,
   };

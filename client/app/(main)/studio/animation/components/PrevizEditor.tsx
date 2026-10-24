@@ -36,6 +36,9 @@ import { newDialogueId, type DialogueLine } from "../lib/dialogue";
 import { loadModelForSceneWithClips } from "../lib/modelLoader";
 import { createActionSegment, sampleActionSegment } from "../lib/actionTrack";
 import { createMixerState, updateMixerState, type MixerState } from "../lib/clipPlayer";
+import { createPoseKey, eulerDegToQuat, expandPoseTemplate, quatToEulerDeg, samplePoseKeys, type BoneQuat } from "../lib/poseTrack";
+import { applyPoseToBones, capturePose } from "../lib/posePlayer";
+import { TEST_POSES } from "../lib/rig";
 import {
   createWeatherPoints,
   updateWeatherPoints,
@@ -374,6 +377,9 @@ export function PrevizEditor({
   const [draftActDur, setDraftActDur] = useState(2);
   const [draftActLoop, setDraftActLoop] = useState(true);
   const [draftActSpeed, setDraftActSpeed] = useState(1);
+  const [draftPoseKeyId, setDraftPoseKeyId] = useState<string | null>(null);
+  const [draftTemplatePose, setDraftTemplatePose] = useState("bind");
+  const [poseMsg, setPoseMsg] = useState<string | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
   const [easing, setEasing] = useState<EasingId>("ease-in-out");
   const [draftCamPos, setDraftCamPos] = useState<Vec3>(vec3(0, 1.6, 6));
@@ -675,7 +681,13 @@ export function PrevizEditor({
         if (obj.kind === "model") {
           const ms = ctx.mixers.get(obj.id);
           if (ms) {
-            updateMixerState(ms, st.timeSec, sampleActionSegment(obj.actions, st.timeSec));
+            const activeSeg = sampleActionSegment(obj.actions, st.timeSec);
+            updateMixerState(ms, st.timeSec, activeSeg);
+            // Dáng mốc chỉ phát khi không có clip nào đang chạy.
+            if (!activeSeg && !ms.current && !ms.fading && obj.poseKeys && obj.poseKeys.length > 0) {
+              const pose = samplePoseKeys(obj.poseKeys, st.timeSec);
+              if (pose) applyPoseToBones(ms.boneByName, pose);
+            }
           }
         }
         const parts = ctx.characters.get(obj.id);
@@ -1284,6 +1296,156 @@ export function PrevizEditor({
                   </>
                 );
               })()}
+            </section>
+          )}
+
+          {selected && selected.kind === "model" && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2.5">
+              <h3 className="text-[12px] font-semibold text-white/70">
+                DÁNG MỐC (tự dựng, không cần clip)
+              </h3>
+              {modelClipNames[selected.id] === undefined ? (
+                <p className="text-[11px] text-white/40">Đang nạp model…</p>
+              ) : (
+                <>
+                  {poseMsg && <p className="text-[11px] text-emerald-300 leading-relaxed">{poseMsg}</p>}
+                  <div className="flex flex-wrap gap-1.5">
+                    {[...(selected.poseKeys ?? [])]
+                      .sort((a, b) => a.timeSec - b.timeSec)
+                      .map((k) => (
+                        <span
+                          key={k.id}
+                          className="flex items-center gap-1 px-2 h-6 rounded-md bg-emerald-500/15 border border-emerald-400/30 text-[11px]"
+                        >
+                          {k.timeSec.toFixed(2)}s · {Object.keys(k.bones).length} xương
+                          <button
+                            onClick={() => setDraftPoseKeyId(draftPoseKeyId === k.id ? null : k.id)}
+                            className="text-white/60 hover:text-white underline underline-offset-2"
+                          >
+                            Sửa
+                          </button>
+                          <button
+                            onClick={() => {
+                              updateObject(selected.id, {
+                                poseKeys: (selected.poseKeys ?? []).filter((x) => x.id !== k.id),
+                              });
+                              if (draftPoseKeyId === k.id) setDraftPoseKeyId(null);
+                            }}
+                            aria-label="Xoá dáng mốc"
+                            className="text-white/40 hover:text-rose-400"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                  </div>
+                  {draftPoseKeyId &&
+                    (() => {
+                      const k = (selected.poseKeys ?? []).find((x) => x.id === draftPoseKeyId);
+                      if (!k) return null;
+                      return (
+                        <div className="space-y-1.5 max-h-[40vh] overflow-y-auto pr-1">
+                          {Object.keys(k.bones)
+                            .sort()
+                            .map((name) => {
+                              const e = quatToEulerDeg(k.bones[name]);
+                              return (
+                                <div key={name} className="grid grid-cols-[110px_1fr_1fr_1fr] gap-1.5 items-center">
+                                  <span className="text-[11px] text-white/60 truncate">{name}</span>
+                                  {e.map((v, axis) => (
+                                    <label key={axis} className="block text-[10px] text-white/40">
+                                      {["X", "Y", "Z"][axis]}
+                                      <input
+                                        type="number"
+                                        step={1}
+                                        value={Math.round(v * 100) / 100}
+                                        onChange={(ev) => {
+                                          const next = [...e] as [number, number, number];
+                                          next[axis] = Number(ev.currentTarget.value) || 0;
+                                          const q = eulerDegToQuat(next);
+                                          updateObject(selected.id, {
+                                            poseKeys: (selected.poseKeys ?? []).map((pk) =>
+                                              pk.id === k.id
+                                                ? { ...pk, bones: { ...pk.bones, [name]: q } }
+                                                : pk,
+                                            ),
+                                          });
+                                        }}
+                                        className="mt-0.5 w-full h-7 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] text-white outline-none"
+                                      />
+                                    </label>
+                                  ))}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      );
+                    })()}
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => {
+                        const ms = threeRef.current?.mixers.get(selected.id);
+                        if (!ms) {
+                          setPoseMsg("Model chưa nạp xong hoặc không có xương — chờ model hiện trong khung rồi thử lại.");
+                          return;
+                        }
+                        const bones = capturePose(ms.boneByName);
+                        updateObject(selected.id, {
+                          poseKeys: [
+                            ...(selected.poseKeys ?? []),
+                            createPoseKey(Math.round(timeSec * 100) / 100, bones),
+                          ],
+                        });
+                        setPoseMsg(`Đã chụp dáng tại ${timeSec.toFixed(2)}s (${Object.keys(bones).length} xương).`);
+                      }}
+                      className="flex-1 h-8 rounded-lg bg-emerald-500/25 border border-emerald-400/40 text-[12px] font-medium hover:bg-emerald-500/35"
+                    >
+                      Chụp dáng hiện tại ({timeSec.toFixed(2)}s)
+                    </button>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={draftTemplatePose}
+                      onChange={(e) => setDraftTemplatePose(e.currentTarget.value)}
+                      className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                    >
+                      {Object.entries(TEST_POSES).map(([id, tp]) => (
+                        <option key={id} value={id}>{tp.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        const ms = threeRef.current?.mixers.get(selected.id);
+                        if (!ms) {
+                          setPoseMsg("Model chưa nạp xong hoặc không có xương — chờ model hiện trong khung rồi thử lại.");
+                          return;
+                        }
+                        const bind: Record<string, BoneQuat> = {};
+                        for (const [name, bone] of ms.boneByName) {
+                          const b = ms.bind.get(bone);
+                          if (b) bind[name] = [b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w];
+                        }
+                        const bones = expandPoseTemplate(TEST_POSES[draftTemplatePose].pose, bind);
+                        updateObject(selected.id, {
+                          poseKeys: [
+                            ...(selected.poseKeys ?? []),
+                            createPoseKey(Math.round(timeSec * 100) / 100, bones),
+                          ],
+                        });
+                        setPoseMsg(`Đã thêm dáng mẫu tại ${timeSec.toFixed(2)}s.`);
+                      }}
+                      className="flex-1 h-8 rounded-lg bg-white/5 border border-white/10 text-[12px]"
+                    >
+                      Thêm dáng mẫu tại mốc đang xem
+                    </button>
+                  </div>
+                  <p className="text-[10.5px] text-white/30 leading-relaxed">
+                    Dáng mốc chỉ phát khi không có đoạn clip nào đang chạy tại
+                    thời điểm đó; giữa 2 mốc xương nội suy mượt. Chụp dáng
+                    trong lúc clip đang phát để giữ lại khoảnh khắc ưng ý.
+                  </p>
+                </>
+              )}
             </section>
           )}
 
