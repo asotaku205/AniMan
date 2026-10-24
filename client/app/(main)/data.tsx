@@ -1,4 +1,4 @@
-import { BookOpen, Feather, Film, MessageSquare, Search, Tv, Users, Wand2 } from "lucide-react";
+import { BookOpen, Feather, Film, MessageSquare, PenLine, Search, Tv, Users, Wand2 } from "lucide-react";
 import { animeFeatured, animeList, liveFeatured, liveList } from "../components/data/catalog";
 import { mangaList } from "../components/data/mangas";
 import { novelList } from "../components/data/novels";
@@ -46,6 +46,7 @@ export const QUICK_CATS: QuickCat[] = [
   { to: "/manga",           icon: <BookOpen className="w-4 h-4" />,       label: "Manga",        color: "from-violet-500 to-purple-400",glow: "hover:shadow-[0_0_20px_rgba(139,92,246,0.5)]"  },
   { to: "/novel",     icon: <Feather className="w-4 h-4" />,        label: "Tiểu thuyết", color: "from-amber-500 to-yellow-400", glow: "hover:shadow-[0_0_20px_rgba(245,158,11,0.5)]"  },
   { to: "/studio/manga-ai", icon: <Wand2 className="w-4 h-4" />,          label: "Manga AI",    color: "from-fuchsia-500 to-pink-400", glow: "hover:shadow-[0_0_20px_rgba(217,70,239,0.5)]"  },
+  { to: "/my-works",       icon: <PenLine className="w-4 h-4" />,         label: "Sáng tác của tôi", color: "from-sky-500 to-indigo-400", glow: "hover:shadow-[0_0_20px_rgba(56,189,248,0.5)]"  },
   { to: "/watch-party",     icon: <Users className="w-4 h-4" />,          label: "Watch Party",  color: "from-cyan-500 to-blue-400",    glow: "hover:shadow-[0_0_20px_rgba(6,182,212,0.5)]"   },
   { to: "/forum",           icon: <MessageSquare className="w-4 h-4" />,  label: "Diễn đàn",    color: "from-emerald-500 to-teal-400", glow: "hover:shadow-[0_0_20px_rgba(16,185,129,0.5)]"  },
   { to: "/search",          icon: <Search className="w-4 h-4" />,         label: "Tìm kiếm",    color: "from-slate-500 to-gray-400",   glow: "hover:shadow-[0_0_20px_rgba(100,116,139,0.4)]" },
