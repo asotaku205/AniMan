@@ -26,6 +26,7 @@ import {
   type ImageAssetCategory,
   type SceneryAsset,
 } from "../lib/animAssets";
+import { RigStudioModal } from "./RigStudioModal";
 import {
   deleteAnimAsset,
   listAnimAssets,
@@ -107,6 +108,7 @@ export function AssetLibrary({
   const [assetQuery, setAssetQuery] = useState("");
   const [assetKindFilter, setAssetKindFilter] = useState<string>("all");
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [rigAsset, setRigAsset] = useState<Model3DAsset | null>(null);
   const [editName, setEditName] = useState("");
   const [packUrls, setPackUrls] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -663,12 +665,26 @@ export function AssetLibrary({
                         Kiểm tra cấu trúc (xương · clip · tam giác)
                       </button>
                     )}
+                    <button
+                      onClick={() => setRigAsset(m)}
+                      className="mt-1 block text-violet-300 underline underline-offset-2"
+                    >
+                      Gắn xương (Phòng Rig)
+                    </button>
                   </li>
                 ))}
               </ul>
             )}
           </LibSection>
         </>
+      )}
+
+      {rigAsset && (
+        <RigStudioModal
+          asset={rigAsset}
+          onClose={() => setRigAsset(null)}
+          onSaved={() => void refresh()}
+        />
       )}
 
       {project.kind === "2d" && (
