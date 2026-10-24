@@ -273,6 +273,21 @@ describe("W8: thế giới mở rộng theo chunk", () => {
     expect(anyRaised(wt.chunks["1,0"])).toBe(true);
   });
 
+  it("removeChunk: xoá được chunk trống, giữ chunk cuối cùng", async () => {
+    const t = await import("../lib/terrain");
+    let wt = t.createFlatWorld();
+    wt = t.addChunk(wt, 1, 0);
+    wt = t.addChunk(wt, 0, 1);
+    wt = t.removeChunk(wt, 1, 0);
+    expect(Object.keys(wt.chunks).sort()).toEqual(["0,0", "0,1"]);
+    expect(t.worldBounds(wt).maxX).toBe(20);
+    // Xoá chunk không có thì giữ nguyên; xoá tới chunk cuối thì chặn.
+    expect(t.removeChunk(wt, 5, 5)).toBe(wt);
+    wt = t.removeChunk(wt, 0, 1);
+    expect(Object.keys(wt.chunks)).toEqual(["0,0"]);
+    expect(t.removeChunk(wt, 0, 0)).toBe(wt);
+  });
+
   it("worldBounds + clampToWorld theo số chunk thực tế", async () => {
     const t = await import("../lib/terrain");
     let wt = t.createFlatWorld();

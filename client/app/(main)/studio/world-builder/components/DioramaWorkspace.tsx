@@ -72,6 +72,7 @@ import {
   BIOMES,
   addChunk,
   brushTerrain,
+  removeChunk,
   createFlatWorld,
   migrateTerrainToWorld,
   paintBiome,
@@ -161,6 +162,10 @@ export function DioramaWorkspace() {
   const [eraFilter, setEraFilter] = useState<string | null>(null);
   const [newEventEra, setNewEventEra] = useState("");
   const [flyTo, setFlyTo] = useState<{ position: [number, number, number]; target: [number, number, number]; nonce: number } | null>(null);
+  // Chế độ xoá chunk (W8.1): bật lên rồi bấm vào chunk cần xoá, bấm
+  // lần 2 để xác nhận. Chunk còn vật thì chặn (tránh xoá mất vật).
+  const [chunkDeleteMode, setChunkDeleteMode] = useState(false);
+  const [chunkDeleteArm, setChunkDeleteArm] = useState<string | null>(null);
   const [newViewName, setNewViewName] = useState("");
   const canvasApiRef = useRef<{
     capture: () => string | null;
@@ -672,11 +677,49 @@ export function DioramaWorkspace() {
           for (let cz = b.minCz - 1; cz <= b.maxCz + 1; cz += 1) {
             for (let cx = b.minCx - 1; cx <= b.maxCx + 1; cx += 1) {
               const has = !!state.terrain.chunks[`${cx},${cz}`];
+              const armed = chunkDeleteArm === `${cx},${cz}`;
               cells.push(
                 <button
                   key={`${cx},${cz}`}
-                  title={has ? `Chunk (${cx}, ${cz}) — bấm để bay tới` : `Mở rộng thêm chunk (${cx}, ${cz})`}
+                  title={
+                    chunkDeleteMode
+                      ? has
+                        ? (armed ? `Bấm lần nữa để xác nhận xoá chunk (${cx}, ${cz})` : `Xoá chunk (${cx}, ${cz}) — bấm 2 lần để xác nhận`)
+                        : "Ô trống"
+                      : has
+                        ? `Chunk (${cx}, ${cz}) — bấm để bay tới`
+                        : `Mở rộng thêm chunk (${cx}, ${cz})`
+                  }
                   onClick={() => {
+                    if (chunkDeleteMode) {
+                      if (!has) return;
+                      if (!armed) {
+                        setChunkDeleteArm(`${cx},${cz}`);
+                        return;
+                      }
+                      setChunkDeleteArm(null);
+                      const minX = cx * 40 - 20;
+                      const maxX = cx * 40 + 20;
+                      const minZ = cz * 40 - 20;
+                      const maxZ = cz * 40 + 20;
+                      const onChunk = (state?.placements ?? []).filter(
+                        (pl) => pl.x >= minX && pl.x < maxX && pl.z >= minZ && pl.z < maxZ,
+                      );
+                      if (onChunk.length > 0) {
+                        setNote(`Chunk (${cx}, ${cz}) còn ${onChunk.length} vật — dời vật sang chunk khác trước khi xoá.`);
+                        return;
+                      }
+                      if (Object.keys(state.terrain.chunks).length <= 1) {
+                        setNote("Thế giới phải giữ ít nhất 1 chunk.");
+                        return;
+                      }
+                      setState((prev) => {
+                        if (!prev) return prev;
+                        return { ...prev, terrain: removeChunk(prev.terrain, cx, cz) };
+                      });
+                      setNote(`Đã xoá chunk (${cx}, ${cz}).`);
+                      return;
+                    }
                     if (has) {
                       setFlyTo({
                         position: [cx * 40, 30, cz * 40 + 30],
@@ -691,12 +734,16 @@ export function DioramaWorkspace() {
                     }
                   }}
                   className={`aspect-square rounded-[4px] text-[11px] flex items-center justify-center ${
-                    has
-                      ? "bg-violet-500/40 border border-violet-300/50 text-violet-50 hover:bg-violet-500/60"
-                      : "bg-white/5 border border-dashed border-white/20 text-white/50 hover:bg-white/10 hover:text-white"
+                    chunkDeleteMode && has
+                      ? armed
+                        ? "bg-rose-500/60 border border-rose-300 text-white"
+                        : "bg-rose-500/20 border border-rose-400/40 text-rose-100 hover:bg-rose-500/40"
+                      : has
+                        ? "bg-violet-500/40 border border-violet-300/50 text-violet-50 hover:bg-violet-500/60"
+                        : "bg-white/5 border border-dashed border-white/20 text-white/50 hover:bg-white/10 hover:text-white"
                   }`}
                 >
-                  {has ? "" : "+"}
+                  {chunkDeleteMode && has ? "×" : has ? "" : "+"}
                 </button>,
               );
             }
@@ -706,10 +753,31 @@ export function DioramaWorkspace() {
             <div className="mt-2.5">
               <div className="flex justify-between items-baseline mb-1">
                 <span className="text-[11px] text-white/40">Bản đồ thế giới</span>
-                <span className="text-[11px] text-white/40">
-                  {Object.keys(state.terrain.chunks).length} chunk · Bắc ↑ · Tây ←
+                <span className="flex items-center gap-2">
+                  <span className="text-[11px] text-white/40">
+                    {Object.keys(state.terrain.chunks).length} chunk · Bắc ↑ · Tây ←
+                  </span>
+                  <button
+                    onClick={() => {
+                      setChunkDeleteMode((v) => !v);
+                      setChunkDeleteArm(null);
+                    }}
+                    className={`h-6 px-2 rounded-md border text-[11px] ${
+                      chunkDeleteMode
+                        ? "bg-rose-500/30 border-rose-400/60 text-rose-100"
+                        : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {chunkDeleteMode ? "Đang xoá…" : "Xoá chunk"}
+                  </button>
                 </span>
               </div>
+              {chunkDeleteMode && (
+                <p className="text-[11px] text-rose-200/70 mb-1.5">
+                  Bấm vào chunk cần xoá, bấm lần nữa để xác nhận. Chunk còn
+                  vật thì phải dời vật đi trước.
+                </p>
+              )}
               <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                 {cells}
               </div>

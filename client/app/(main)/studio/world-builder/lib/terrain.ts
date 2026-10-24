@@ -285,6 +285,18 @@ export function createChunkFromNeighbors(
   return chunk;
 }
 
+/** Xoá 1 chunk khỏi thế giới — world phải còn ít nhất 1 chunk nên
+ * xoá chunk cuối cùng thì giữ nguyên (UI chặn trước + báo rõ). */
+export function removeChunk(wt: WorldTerrain, cx: number, cz: number): WorldTerrain {
+  const keys = Object.keys(wt.chunks);
+  if (keys.length <= 1) return wt;
+  const key = chunkKey(cx, cz);
+  if (!wt.chunks[key]) return wt;
+  const chunks = { ...wt.chunks };
+  delete chunks[key];
+  return { ...wt, chunks };
+}
+
 /** Thêm 1 chunk vào thế giới (đã có thì giữ nguyên). */
 export function addChunk(wt: WorldTerrain, cx: number, cz: number): WorldTerrain {
   const key = chunkKey(cx, cz);
