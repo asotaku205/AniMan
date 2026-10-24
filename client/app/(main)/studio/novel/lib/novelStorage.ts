@@ -8,6 +8,8 @@ import type {
   Beat,
   BibleEntity,
   CharacterArc,
+  NovelExportData,
+  NovelSnapshot,
   Chapter,
   Novel,
   OpenQuestion,
@@ -16,7 +18,7 @@ import type {
 } from "./novel";
 
 const DB_NAME = "animan_novel_db";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_NOVELS = "novels";
 const STORE_CHAPTERS = "chapters";
 const STORE_SCENES = "scenes";
@@ -25,6 +27,7 @@ const STORE_BEATS = "beats";
 const STORE_ARCS = "arcs";
 const STORE_QUESTIONS = "questions";
 const STORE_ENTITIES = "entities";
+const STORE_SNAPSHOTS = "snapshots";
 
 const isBrowser = typeof indexedDB !== "undefined";
 
@@ -56,6 +59,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_ENTITIES)) {
         db.createObjectStore(STORE_ENTITIES, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(STORE_SNAPSHOTS)) {
+        db.createObjectStore(STORE_SNAPSHOTS, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -231,6 +237,75 @@ export async function deleteEntity(id: string): Promise<void> {
   });
 }
 
+export async function listSnapshots(): Promise<NovelSnapshot[]> {
+  return getAll<NovelSnapshot>(STORE_SNAPSHOTS);
+}
+
+export async function saveSnapshot(snapshot: NovelSnapshot): Promise<void> {
+  await put(STORE_SNAPSHOTS, snapshot);
+}
+
+export async function deleteSnapshot(id: string): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_SNAPSHOTS, "readwrite", ([s]) => s.delete(id));
+}
+
+/**
+ * Thay toàn bộ cây dữ liệu của một tiểu thuyết bằng dữ liệu snapshot
+ * (dùng khi khôi phục): xoá con cũ rồi ghi con mới trong 1 transaction.
+ * Bản thân novel được lưu riêng (để giữ dailyWords + mục tiêu).
+ */
+export async function replaceNovelData(novelId: string, data: NovelExportData): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  const chapters = await request<Chapter[]>(db, STORE_CHAPTERS, "readonly", ([s]) => s.getAll());
+  const chapterIds = new Set((chapters ?? []).filter((c) => c.novelId === novelId).map((c) => c.id));
+  const scenes = await request<Scene[]>(db, STORE_SCENES, "readonly", ([s]) => s.getAll());
+  const plotlines = await request<Plotline[]>(db, STORE_PLOTLINES, "readonly", ([s]) => s.getAll());
+  const plotlineIds = new Set((plotlines ?? []).filter((p) => p.novelId === novelId).map((p) => p.id));
+  const beats = await request<Beat[]>(db, STORE_BEATS, "readonly", ([s]) => s.getAll());
+  const arcs = await request<CharacterArc[]>(db, STORE_ARCS, "readonly", ([s]) => s.getAll());
+  const questions = await request<OpenQuestion[]>(db, STORE_QUESTIONS, "readonly", ([s]) => s.getAll());
+  const entities = await request<BibleEntity[]>(db, STORE_ENTITIES, "readonly", ([s]) => s.getAll());
+  await request(
+    db,
+    [STORE_CHAPTERS, STORE_SCENES, STORE_PLOTLINES, STORE_BEATS, STORE_ARCS, STORE_QUESTIONS, STORE_ENTITIES],
+    "readwrite",
+    ([chaptersStore, scenesStore, plotlinesStore, beatsStore, arcsStore, questionsStore, entitiesStore]) => {
+      for (const c of chapters ?? []) {
+        if (c.novelId === novelId) chaptersStore.delete(c.id);
+      }
+      for (const sc of scenes ?? []) {
+        if (chapterIds.has(sc.chapterId)) scenesStore.delete(sc.id);
+      }
+      for (const p of plotlines ?? []) {
+        if (p.novelId === novelId) plotlinesStore.delete(p.id);
+      }
+      for (const b of beats ?? []) {
+        if (plotlineIds.has(b.plotlineId)) beatsStore.delete(b.id);
+      }
+      for (const a of arcs ?? []) {
+        if (a.novelId === novelId) arcsStore.delete(a.id);
+      }
+      for (const q of questions ?? []) {
+        if (q.novelId === novelId) questionsStore.delete(q.id);
+      }
+      for (const e of entities ?? []) {
+        if (e.novelId === novelId) entitiesStore.delete(e.id);
+      }
+      for (const c of data.chapters) chaptersStore.put(c);
+      for (const sc of data.scenes) scenesStore.put(sc);
+      for (const p of data.plotlines) plotlinesStore.put(p);
+      for (const b of data.beats) beatsStore.put(b);
+      for (const a of data.arcs) arcsStore.put(a);
+      for (const q of data.questions) questionsStore.put(q);
+      for (const e of data.entities) entitiesStore.put(e);
+      return entitiesStore.count();
+    },
+  );
+}
+
 export async function deleteScene(id: string): Promise<void> {
   if (!isBrowser) return;
   const db = await openDb();
@@ -265,11 +340,12 @@ export async function deleteNovelCascade(id: string): Promise<void> {
   const arcs = await request<CharacterArc[]>(db, STORE_ARCS, "readonly", ([s]) => s.getAll());
   const questions = await request<OpenQuestion[]>(db, STORE_QUESTIONS, "readonly", ([s]) => s.getAll());
   const entities = await request<BibleEntity[]>(db, STORE_ENTITIES, "readonly", ([s]) => s.getAll());
+  const snapshots = await request<NovelSnapshot[]>(db, STORE_SNAPSHOTS, "readonly", ([s]) => s.getAll());
   await request(
     db,
-    [STORE_NOVELS, STORE_CHAPTERS, STORE_SCENES, STORE_PLOTLINES, STORE_BEATS, STORE_ARCS, STORE_QUESTIONS, STORE_ENTITIES],
+    [STORE_NOVELS, STORE_CHAPTERS, STORE_SCENES, STORE_PLOTLINES, STORE_BEATS, STORE_ARCS, STORE_QUESTIONS, STORE_ENTITIES, STORE_SNAPSHOTS],
     "readwrite",
-    ([novels, chaptersStore, scenesStore, plotlinesStore, beatsStore, arcsStore, questionsStore, entitiesStore]) => {
+    ([novels, chaptersStore, scenesStore, plotlinesStore, beatsStore, arcsStore, questionsStore, entitiesStore, snapshotsStore]) => {
       novels.delete(id);
       for (const c of chapters ?? []) {
         if (c.novelId === id) chaptersStore.delete(c.id);
@@ -292,7 +368,10 @@ export async function deleteNovelCascade(id: string): Promise<void> {
       for (const e of entities ?? []) {
         if (e.novelId === id) entitiesStore.delete(e.id);
       }
-      return entitiesStore.count();
+      for (const snap of snapshots ?? []) {
+        if (snap.novelId === id) snapshotsStore.delete(snap.id);
+      }
+      return snapshotsStore.count();
     },
   );
 }

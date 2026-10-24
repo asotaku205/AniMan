@@ -439,6 +439,48 @@ export function unknownMentions(
   return [...byToken.values()].map((e) => ({ token: e.token, sceneIds: [...e.sceneIds] }));
 }
 
+// ── N4: snapshot (phiên bản) + dữ liệu xuất bản ───────────────────────────
+
+/** Toàn bộ cây tiểu thuyết ở một thời điểm (dùng cho snapshot + xuất). */
+export interface NovelExportData {
+  novel: Novel;
+  chapters: Chapter[];
+  scenes: Scene[];
+  plotlines: Plotline[];
+  beats: Beat[];
+  arcs: CharacterArc[];
+  questions: OpenQuestion[];
+  entities: BibleEntity[];
+}
+
+export interface NovelSnapshot {
+  id: string;
+  novelId: string;
+  name: string;
+  note: string;
+  createdAt: number;
+  wordCount: number;
+  data: NovelExportData;
+}
+
+export function createSnapshot(
+  novelId: string,
+  name: string,
+  note: string,
+  data: NovelExportData,
+  wordCount: number,
+): NovelSnapshot {
+  return {
+    id: newNovelId("snap"),
+    novelId,
+    name,
+    note,
+    createdAt: Date.now(),
+    wordCount,
+    data,
+  };
+}
+
 /** Nội dung demo cũ (đang hardcode trong WashiBookPage) → seed lần đầu. */
 export const SEED_LEFT =
   "Tôi nhớ buổi chiều ấy, mưa rơi rất khẽ trên mái ngói cong của ngôi đền cũ. Em đứng đó, ô giấy nghiêng nghiêng, ánh mắt lạc giữa những cánh hoa anh đào cuối cùng còn sót lại của mùa xuân.";

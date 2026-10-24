@@ -13,6 +13,7 @@ import {
   createPlotline,
   createQuestion,
   createScene,
+  createSnapshot,
   moveOrdered,
   novelWords,
   orderScenes,
@@ -30,6 +31,8 @@ import {
   type Chapter,
   type CharacterArc,
   type Novel,
+  type NovelExportData,
+  type NovelSnapshot,
   type OpenQuestion,
   type Plotline,
   type Scene,
@@ -46,6 +49,10 @@ import {
   deletePlotlineCascade,
   deleteQuestion,
   deleteScene,
+  deleteSnapshot,
+  listSnapshots,
+  replaceNovelData,
+  saveSnapshot,
   listArcs,
   listBeats,
   listChapters,
@@ -125,6 +132,7 @@ export function useNovelStudio() {
   const [arcs, setArcs] = useState<CharacterArc[]>([]);
   const [questions, setQuestions] = useState<OpenQuestion[]>([]);
   const [entities, setEntities] = useState<BibleEntity[]>([]);
+  const [snapshots, setSnapshots] = useState<NovelSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -169,6 +177,7 @@ export function useNovelStudio() {
       setArcs((await listArcs()).map((a) => ({ ...a, entityId: a.entityId ?? null })));
       setQuestions(await listQuestions());
       setEntities(await listEntities());
+      setSnapshots(await listSnapshots());
       const m = new Map<string, number>();
       for (const sc of scs) m.set(sc.id, sceneWords(sc));
       lastSavedWordsRef.current = m;
@@ -486,6 +495,7 @@ export function useNovelStudio() {
       setArcs(await listArcs());
       setQuestions(await listQuestions());
       setEntities(await listEntities());
+      setSnapshots(await listSnapshots());
     } catch {
       setSaveError("Không tải được dữ liệu dàn ý.");
     }
@@ -746,6 +756,99 @@ export function useNovelStudio() {
     }
   };
 
+  const takeSnapshot = async (name: string, note: string): Promise<NovelSnapshot | null> => {
+    const novel = novels.find((n) => n.id === selectedNovelId);
+    if (!novel) return null;
+    const chs = sortByOrder(chapters.filter((c) => c.novelId === novel.id));
+    const chapterIds = new Set(chs.map((c) => c.id));
+    const scs = scenes.filter((sc) => chapterIds.has(sc.chapterId));
+    const pls = plotlines.filter((pl) => pl.novelId === novel.id);
+    const plIds = new Set(pls.map((pl) => pl.id));
+    const data: NovelExportData = {
+      novel,
+      chapters: chs,
+      scenes: scs,
+      plotlines: pls,
+      beats: beats.filter((b) => plIds.has(b.plotlineId)),
+      arcs: arcs.filter((a) => a.novelId === novel.id),
+      questions: questions.filter((q) => q.novelId === novel.id),
+      entities: entities.filter((e) => e.novelId === novel.id),
+    };
+    const snap = createSnapshot(
+      novel.id,
+      name.trim() || `Bản ${new Date().toLocaleString("vi-VN")}`,
+      note.trim(),
+      data,
+      novelWords(scs),
+    );
+    try {
+      await saveSnapshot(snap);
+      setSnapshots((prev) => [...prev, snap]);
+      return snap;
+    } catch {
+      setSaveError("Không chụp được phiên bản.");
+      return null;
+    }
+  };
+
+  const deleteSnapshotById = async (id: string) => {
+    try {
+      await deleteSnapshot(id);
+      setSnapshots((prev) => prev.filter((x) => x.id !== id));
+    } catch {
+      setSaveError("Không xoá được phiên bản.");
+    }
+  };
+
+  const restoreSnapshot = async (id: string) => {
+    const snap = snapshots.find((x) => x.id === id);
+    const novel = novels.find((n) => n.id === selectedNovelId);
+    if (!snap || !novel) return;
+    try {
+      await flushPendingSave();
+      // Tự chụp bản hiện tại trước khi thay, để luôn có đường lui.
+      await takeSnapshot(
+        "Trước khi khôi phục…",
+        `Tự động lưu trước khi khôi phục "${snap.name}"`,
+      );
+      const restoredNovel: Novel = {
+        ...snap.data.novel,
+        dailyWords: novel.dailyWords,
+        goalWordsPerDay: novel.goalWordsPerDay,
+        updatedAt: Date.now(),
+      };
+      await saveNovel(restoredNovel);
+      await replaceNovelData(novel.id, snap.data);
+      const oldChapterIds = new Set(chapters.filter((c) => c.novelId === novel.id).map((c) => c.id));
+      const oldPlotlineIds = new Set(plotlines.filter((p) => p.novelId === novel.id).map((p) => p.id));
+      setNovels((prev) => prev.map((n) => (n.id === novel.id ? restoredNovel : n)));
+      setChapters((prev) => [...prev.filter((c) => c.novelId !== novel.id), ...snap.data.chapters]);
+      setScenes((prev) => [...prev.filter((sc) => !oldChapterIds.has(sc.chapterId)), ...snap.data.scenes]);
+      setPlotlines((prev) => [...prev.filter((pl) => pl.novelId !== novel.id), ...snap.data.plotlines]);
+      setBeats((prev) => [...prev.filter((b) => !oldPlotlineIds.has(b.plotlineId)), ...snap.data.beats]);
+      setArcs((prev) => [...prev.filter((a) => a.novelId !== novel.id), ...snap.data.arcs]);
+      setQuestions((prev) => [...prev.filter((q) => q.novelId !== novel.id), ...snap.data.questions]);
+      setEntities((prev) => [...prev.filter((e) => e.novelId !== novel.id), ...snap.data.entities]);
+      const m = new Map<string, number>();
+      for (const sc of snap.data.scenes) m.set(sc.id, sceneWords(sc));
+      lastSavedWordsRef.current = m;
+      const firstChapter = sortByOrder(snap.data.chapters)[0];
+      const firstScene = firstChapter
+        ? sortByOrder(snap.data.scenes.filter((sc) => sc.chapterId === firstChapter.id))[0]
+        : undefined;
+      setSelectedChapterId(firstChapter?.id ?? null);
+      setSelectedSceneId(firstScene?.id ?? null);
+      // Đồng bộ khung viết ngay (khi id cảnh không đổi thì effect đổi cảnh không chạy).
+      if (firstScene) {
+        if (leftRef.current) leftRef.current.innerText = firstScene.contentLeft;
+        if (rightRef.current) rightRef.current.innerText = firstScene.contentRight;
+        setWordCount(sceneWords(firstScene));
+      }
+    } catch {
+      setSaveError("Không khôi phục được phiên bản.");
+    }
+  };
+
   const addQuestion = async (question: string) => {
     if (!selectedNovelId || !question.trim()) return;
     const q = createQuestion(selectedNovelId, question.trim());
@@ -830,6 +933,11 @@ export function useNovelStudio() {
     // N3
     entities: selectedNovelId ? sortByOrder(entities.filter((e) => e.novelId === selectedNovelId)) : [],
     addEntity, updateEntity, deleteEntity: deleteEntityById,
+    // N4
+    snapshots: selectedNovelId
+      ? snapshots.filter((x) => x.novelId === selectedNovelId).sort((a, b) => b.createdAt - a.createdAt)
+      : [],
+    takeSnapshot, deleteSnapshot: deleteSnapshotById, restoreSnapshot,
   };
 }
 

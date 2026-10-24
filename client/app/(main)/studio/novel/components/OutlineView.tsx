@@ -16,10 +16,19 @@ import {
 } from "../lib/novel";
 import type { NovelStudioState } from "../hooks/useNovelStudio";
 import { listWorlds, type WorldRecord } from "../../world-builder/lib/dioramaStorage";
+import {
+  buildHtml,
+  buildMarkdown,
+  EXPORT_FORMAT_LABEL,
+  exportFileName,
+  type ExportFormat,
+} from "../lib/novelExport";
+import { buildDocxBlob } from "../lib/novelDocx";
+import type { NovelExportData } from "../lib/novel";
 import { checkSceneConsistency, summarizeScene } from "../../../../../lib/novel-ai";
 import type { AuthenticatedFetch } from "../../../../../lib/auth-api";
 
-type OutlineTab = "cards" | "plotlines" | "arcs" | "bible";
+type OutlineTab = "cards" | "plotlines" | "arcs" | "bible" | "versions";
 
 const KIND_BG: Record<BeatKind, string> = {
   goal: "bg-sky-100 text-sky-800",
@@ -93,6 +102,15 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
   const [pickWorldId, setPickWorldId] = useState("");
   const [pickEntityId, setPickEntityId] = useState("");
   const [aiBusy, setAiBusy] = useState<Record<string, "summary" | "check" | null>>({});
+  // N4: xuất bản + snapshot
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("md");
+  const [includeOutline, setIncludeOutline] = useState(true);
+  const [includeBible, setIncludeBible] = useState(false);
+  const [snapName, setSnapName] = useState("");
+  const [snapNote, setSnapNote] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [restoringId, setRestoringId] = useState<string | null>(null);
   const [aiError, setAiError] = useState<Record<string, string>>({});
   const [aiIssues, setAiIssues] = useState<Record<string, string[]>>({});
   const [newPlotTitle, setNewPlotTitle] = useState("");
@@ -121,6 +139,50 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
     const chapterTitle = new Map(s.chapters.map((c) => [c.id, c.title]));
     return new Map(s.novelScenes.map((sc) => [sc.id, `${chapterTitle.get(sc.chapterId) ?? "?"} · ${sc.title}`]));
   }, [s.chapters, s.novelScenes]);
+
+  const currentData: NovelExportData | null = useMemo(() => {
+    if (!s.selectedNovel) return null;
+    const plIds = new Set(s.plotlines.map((pl) => pl.id));
+    return {
+      novel: s.selectedNovel,
+      chapters: s.chapters,
+      scenes: s.novelScenes,
+      plotlines: s.plotlines,
+      beats: s.beats.filter((b) => plIds.has(b.plotlineId)),
+      arcs: s.arcs,
+      questions: s.questions,
+      entities: s.entities,
+    };
+  }, [s.selectedNovel, s.chapters, s.novelScenes, s.plotlines, s.beats, s.arcs, s.questions, s.entities]);
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const runExport = async (data: NovelExportData | null, format: ExportFormat) => {
+    if (!data) return;
+    const options = { includeOutline, includeBible };
+    setExporting(true);
+    setExportError("");
+    try {
+      if (format === "md") {
+        downloadBlob(new Blob([buildMarkdown(data, options)], { type: "text/markdown;charset=utf-8" }), exportFileName(data.novel.title, "md"));
+      } else if (format === "html") {
+        downloadBlob(new Blob([buildHtml(data, options)], { type: "text/html;charset=utf-8" }), exportFileName(data.novel.title, "html"));
+      } else {
+        downloadBlob(await buildDocxBlob(data, options), exportFileName(data.novel.title, "docx"));
+      }
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Xuất thất bại.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const selectedEntity = s.entities.find((e) => e.id === selectedEntityId) ?? null;
 
@@ -203,6 +265,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
         {tabBtn("plotlines", "Tuyến truyện")}
         {tabBtn("arcs", "Cung & Câu hỏi")}
         {tabBtn("bible", "Sổ tay")}
+        {tabBtn("versions", "Phiên bản")}
       </div>
 
       {tab === "cards" && (
@@ -725,6 +788,75 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
                 </div>
               </div>
             )}
+          </section>
+        </div>
+      )}
+
+      {tab === "versions" && (
+        <div className="space-y-6">
+          <section className="rounded-xl border border-amber-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-stone-800">Xuất bản</h3>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <select className="rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm" value={exportFormat} onChange={(e) => setExportFormat(e.target.value as ExportFormat)}>
+                {(Object.keys(EXPORT_FORMAT_LABEL) as ExportFormat[]).map((f) => (
+                  <option key={f} value={f}>
+                    {EXPORT_FORMAT_LABEL[f]}
+                  </option>
+                ))}
+              </select>
+              <label className="flex items-center gap-1.5 text-sm text-stone-700">
+                <input type="checkbox" checked={includeOutline} onChange={(e) => setIncludeOutline(e.target.checked)} />
+                Kèm dàn ý
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-stone-700">
+                <input type="checkbox" checked={includeBible} onChange={(e) => setIncludeBible(e.target.checked)} />
+                Kèm phụ lục sổ tay
+              </label>
+              <button type="button" disabled={exporting || !currentData} className="rounded-lg bg-amber-700 px-3 py-1.5 text-sm text-white disabled:opacity-50" onClick={() => void runExport(currentData, exportFormat)}>
+                {exporting ? "Đang tạo file…" : "Tải xuống bản hiện tại"}
+              </button>
+            </div>
+            {exportError && <p className="mt-2 text-xs text-rose-600">{exportError}</p>}
+            <p className="mt-2 text-xs text-stone-400">File được tạo trực tiếp trên máy của bạn, không qua server.</p>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-amber-100">Phiên bản đã chụp</h3>
+            <form
+              className="flex flex-wrap gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                await s.takeSnapshot(snapName, snapNote);
+                setSnapName("");
+                setSnapNote("");
+              }}
+            >
+              <input className="min-w-40 flex-1 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-amber-50 placeholder:text-amber-100/50" value={snapName} onChange={(e) => setSnapName(e.target.value)} placeholder="Tên phiên bản (để trống = tự đặt theo ngày giờ)" />
+              <input className="min-w-40 flex-1 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-amber-50 placeholder:text-amber-100/50" value={snapNote} onChange={(e) => setSnapNote(e.target.value)} placeholder="Ghi chú (tuỳ chọn)" />
+              <button type="submit" className="rounded-lg bg-amber-700 px-3 py-1.5 text-sm text-white">Chụp phiên bản</button>
+            </form>
+            <ul className="space-y-3">
+              {s.snapshots.map((snap) => (
+                <li key={snap.id} className="rounded-xl border border-stone-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-stone-800">{snap.name}</p>
+                    <span className="text-xs text-stone-400">
+                      {new Date(snap.createdAt).toLocaleString("vi-VN")} · {snap.wordCount} từ
+                    </span>
+                  </div>
+                  {snap.note && <p className="mt-1 text-xs text-stone-500">{snap.note}</p>}
+                  <div className="mt-2 flex flex-wrap gap-3">
+                    <button type="button" disabled={exporting} className="text-xs text-amber-700 hover:underline disabled:opacity-50" onClick={() => void runExport(snap.data, exportFormat)}>
+                      Xuất bản này
+                    </button>
+                    <DeleteButton label="Khôi phục" onDelete={async () => { setRestoringId(snap.id); await s.restoreSnapshot(snap.id); setRestoringId(null); }} />
+                    {restoringId === snap.id && <span className="text-xs text-stone-400">Đang khôi phục…</span>}
+                    <DeleteButton onDelete={() => void s.deleteSnapshot(snap.id)} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {s.snapshots.length === 0 && <p className="text-sm text-amber-100/70">Chưa có phiên bản nào. Chụp một bản trước khi sửa lớn để luôn có đường lui.</p>}
           </section>
         </div>
       )}
