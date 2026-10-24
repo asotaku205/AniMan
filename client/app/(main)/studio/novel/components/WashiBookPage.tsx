@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { Plus } from "lucide-react";
 import { StickyNotesMargin } from "./StickyNotesMargin";
 import { BIBLE_KIND_LABEL } from "../lib/novel";
@@ -132,6 +132,38 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
       ? sceneOrder[currentIdx + 1]
       : null;
   const pageTheme = PAGE_THEME[s.displayTheme];
+  // Lật giấy thật: khi đổi cảnh ở chế độ quyển, trang cũ (nội dung thật
+  // của cảnh vừa rời) xoay quanh gáy để lộ trải mới bên dưới — trải mới
+  // đã được nạp đủ nội dung trước khi lật, nên không còn đường mất nội
+  // dung như kiểu AnimatePresence mode="wait" trước đây (trang mới mount
+  // trễ, effect nạp nhầm vào trang cũ đang thoát).
+  const flipDirRef = useRef<1 | -1>(1);
+  const prevSceneIdRef = useRef<string | null>(null);
+  const scenesRef = useRef(s.novelScenes);
+  scenesRef.current = s.novelScenes;
+  const [flip, setFlip] = useState<{
+    content: string;
+    dir: 1 | -1;
+    key: number;
+  } | null>(null);
+  useEffect(() => {
+    const prevId = prevSceneIdRef.current;
+    prevSceneIdRef.current = s.selectedScene?.id ?? null;
+    if (!prevId || prevId === s.selectedScene?.id || s.writeMode !== "book") {
+      return;
+    }
+    const outgoing = scenesRef.current.find((sc) => sc.id === prevId);
+    if (!outgoing) return;
+    const dir = flipDirRef.current;
+    setFlip({
+      content: dir === 1 ? outgoing.contentRight : outgoing.contentLeft,
+      dir,
+      key: Date.now(),
+    });
+    const t = setTimeout(() => setFlip(null), 750);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.selectedScene?.id, s.writeMode]);
   // Khi đổi chế độ hiển thị, khung soạn thảo mount lại nên nạp lại nội
   // dung từ state (effect theo [selectedSceneId] của hook không chạy
   // khi chỉ đổi chế độ mà không đổi cảnh).
@@ -147,7 +179,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
 
   if (s.loading) {
     return (
-      <div className="relative mx-auto w-full max-w-6xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 text-amber-100/70 text-sm">
+      <div className="relative mx-auto w-full max-w-7xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 text-amber-100/70 text-sm">
         Đang tải tiểu thuyết…
       </div>
     );
@@ -238,15 +270,6 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
         transition={{ duration: 1 }}
         className="relative [perspective:1500px]"
       >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={s.selectedScene.id}
-            initial={{ opacity: 0, rotateY: -45 }}
-            animate={{ opacity: 1, rotateY: 0 }}
-            exit={{ opacity: 0, rotateY: 45 }}
-            transition={{ duration: 0.4 }}
-            className="[transform-style:preserve-3d]"
-          >
         <div
           className="relative grid grid-cols-2 rounded-[8px] shadow-[0_60px_120px_-30px_rgba(0,0,0,0.8)] [transform-style:preserve-3d]"
           style={{ transform: "rotateX(6deg)" }}
@@ -285,9 +308,56 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               <span className="text-xs opacity-60">— SakuraStream · trang 128</span>
             </div>
           </Page>
+          {flip && (
+            <motion.div
+              key={flip.key}
+              className="absolute inset-y-0 z-20 w-1/2 pointer-events-none [transform-style:preserve-3d]"
+              style={{
+                ...(flip.dir === 1 ? { right: 0 } : { left: 0 }),
+                transformOrigin:
+                  flip.dir === 1 ? "left center" : "right center",
+              }}
+              initial={{ rotateY: 0, opacity: 1 }}
+              animate={{
+                rotateY: flip.dir === 1 ? -180 : 180,
+                opacity: 0,
+              }}
+              transition={{
+                rotateY: { duration: 0.7, ease: "easeInOut" },
+                opacity: { duration: 0.15, delay: 0.55 },
+              }}
+              onAnimationComplete={() => setFlip(null)}
+            >
+              <div
+                className="absolute inset-0 overflow-hidden p-10"
+                style={{
+                  backfaceVisibility: "hidden",
+                  backgroundColor: pageTheme.bg,
+                  color: pageTheme.text,
+                }}
+              >
+                <p
+                  style={{
+                    fontFamily: s.font,
+                    lineHeight: LINE_HEIGHT[s.displayLineHeight],
+                  }}
+                  className={`${EDITOR_SIZE[s.displayFontSize]} whitespace-pre-wrap`}
+                >
+                  {flip.content}
+                </p>
+              </div>
+              <div
+                className="absolute inset-0"
+                style={{
+                  backfaceVisibility: "hidden",
+                  transform: "rotateY(180deg)",
+                  backgroundColor: pageTheme.bg,
+                  filter: "brightness(0.92)",
+                }}
+              />
+            </motion.div>
+          )}
         </div>
-          </motion.div>
-        </AnimatePresence>
 
         {/* Sticky notes margin */}
         <StickyNotesMargin notes={s.notes} setNotes={s.setNotes} />
@@ -301,6 +371,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
       </motion.div>
       ) : (
       <div className="relative">
+        <div className="relative mx-auto max-w-[720px]">
         <div
           className="relative rounded-[8px] p-8 shadow-[0_60px_120px_-30px_rgba(0,0,0,0.8)] sm:p-10"
           style={{
@@ -345,6 +416,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
         <div className="absolute -bottom-4 right-4 px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 text-xs font-semibold shadow-lg">
           {s.wordCount} từ
         </div>
+        </div>
       </div>
       )}
 
@@ -353,7 +425,10 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
         <button
           type="button"
           disabled={!prevScene}
-          onClick={() => prevScene && s.selectScene(prevScene.id)}
+          onClick={() => {
+            flipDirRef.current = -1;
+            if (prevScene) s.selectScene(prevScene.id);
+          }}
           className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
         >
           ← Cảnh trước
@@ -361,7 +436,10 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
         <button
           type="button"
           disabled={!nextScene}
-          onClick={() => nextScene && s.selectScene(nextScene.id)}
+          onClick={() => {
+            flipDirRef.current = 1;
+            if (nextScene) s.selectScene(nextScene.id);
+          }}
           className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
         >
           Cảnh sau →
