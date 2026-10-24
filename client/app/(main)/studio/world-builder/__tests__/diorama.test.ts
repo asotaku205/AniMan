@@ -183,3 +183,51 @@ describe("gói bàn giao ZIP (STORE, không nén)", () => {
     expect(prompt).toContain("#ef4444");
   });
 });
+
+describe("W3: địa hình", () => {
+  it("heightAt: phẳng = 0, nội suy đúng giữa 2 đỉnh", async () => {
+    const t = await import("../lib/terrain");
+    const flat = t.createFlatTerrain();
+    expect(t.heightAt(flat, 40, 0, 0)).toBe(0);
+    const raised = t.brushTerrain(flat, 40, 0, 0, "raise", 1, 1);
+    // Tâm cọ (0,0) là đỉnh lưới (i=40,j=40) nên cao đúng 1 * falloff(0)=1
+    expect(t.heightAt(raised, 40, 0, 0)).toBeCloseTo(1, 5);
+    // Xa hơn bán kính thì không đổi
+    expect(t.heightAt(raised, 40, 10, 10)).toBe(0);
+  });
+
+  it("cọ hạ/san phẳng: hạ xuống âm, san phẳng kéo về cao độ tâm", async () => {
+    const t = await import("../lib/terrain");
+    const flat = t.createFlatTerrain();
+    const pit = t.brushTerrain(flat, 40, 0, 0, "lower", 2, 0.8);
+    expect(t.heightAt(pit, 40, 0, 0)).toBeLessThan(0);
+    const levelled = t.brushTerrain(pit, 40, 0, 0, "flatten", 2, 1);
+    expect(Math.abs(t.heightAt(levelled, 40, 0, 0) - t.heightAt(pit, 40, 0, 0))).toBeLessThan(0.01);
+  });
+
+  it("tô biome: trong bán kính đổi, ngoài bán kính giữ nguyên", async () => {
+    const t = await import("../lib/terrain");
+    const flat = t.createFlatTerrain();
+    const painted = t.paintBiome(flat, 40, 0, 0, 1, "sand");
+    expect(painted.biomes[40][40]).toBe("sand");
+    expect(painted.biomes[0][0]).toBe("grass");
+  });
+
+  it("màu đỉnh: cao thì ngả đá/tuyết, thấp gần nước thì ngả cát", async () => {
+    const t = await import("../lib/terrain");
+    const wet = { ...t.createFlatTerrain(), waterLevel: 0 };
+    const low = t.terrainVertexColor(wet, 40, 40);
+    const high = t.terrainVertexColor(
+      { ...wet, heights: wet.heights.map((row, j) => row.map((_, i) => (i === 40 && j === 40 ? 8 : 0))) },
+      40, 40,
+    );
+    // Đỉnh cao 8m phải sáng hơn (tuyết) so với đỉnh thấp gần nước
+    expect(high[0] + high[1] + high[2]).toBeGreaterThan(low[0] + low[1] + low[2]);
+  });
+
+  it("clampGround theo cỡ sa bàn mới", async () => {
+    const mod = await import("../lib/diorama");
+    expect(mod.clampGround(30, 0, 20)).toBeLessThan(10);
+    expect(mod.clampGround(30, 0, 60)).toBe(29.5);
+  });
+});

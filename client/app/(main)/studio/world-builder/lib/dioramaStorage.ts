@@ -72,6 +72,13 @@ export async function loadDiorama(): Promise<DioramaState | null> {
     return {
       ...rec.state,
       events: rec.state.events ?? [],
+      groundSize: rec.state.groundSize ?? 40,
+      terrain: rec.state.terrain ?? {
+        heights: Array.from({ length: 81 }, () => new Array(81).fill(0)),
+        biomes: Array.from({ length: 80 }, () => new Array(80).fill("grass")),
+        waterLevel: -1,
+      },
+      paths: rec.state.paths ?? [],
       entities: (rec.state.entities ?? []).map((e) => ({
         ...e,
         relations: e.relations ?? [],

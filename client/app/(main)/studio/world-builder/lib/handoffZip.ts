@@ -98,10 +98,12 @@ export function handoffPromptText(entity: {
       ? `Color palette (hex): ${(entity.palette ?? []).join(", ")}`
       : "",
     "",
-    "Generate a game-ready low-poly 3D model (GLB, Y-up, meters, PBR",
-    "metallic-roughness materials, under 50k triangles) matching the",
-    "reference views in this package. Keep the silhouette readable and",
-    "the palette consistent with the reference images.",
+    "Generate a realistic 3D model with correct anatomy and proportions",
+    "(GLB, Y-up, meters, PBR metallic-roughness materials) matching the",
+    "reference views in this package. For human characters: anatomically",
+    "correct body, natural proportions, realistic skin and clothing",
+    "materials — NOT a blocky or toy-like low-poly figure. Keep the",
+    "silhouette and proportions faithful to the references.",
   ];
   return lines.filter((l) => l !== "").join("\n");
 }

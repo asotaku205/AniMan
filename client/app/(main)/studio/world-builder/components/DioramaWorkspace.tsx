@@ -57,6 +57,13 @@ import {
   type WorldEvent,
 } from "../lib/diorama";
 import { listAnimAssets } from "../../animation/lib/animStorage";
+import {
+  BIOMES,
+  brushTerrain,
+  createFlatTerrain,
+  paintBiome,
+  type TerrainBrushMode,
+} from "../lib/terrain";
 import type { Model3DAsset } from "../../animation/lib/animAssets";
 import { inspectionSummary } from "../../animation/lib/modelInspect";
 import {
@@ -103,7 +110,17 @@ export function DioramaWorkspace() {
   const [expanded, setExpanded] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [leftTab, setLeftTab] = useState<"models" | "story" | "events">("models");
+  const [leftTab, setLeftTab] = useState<"models" | "story" | "events" | "terrain">("models");
+  const [terrainTool, setTerrainTool] = useState<
+    | { kind: "brush"; mode: TerrainBrushMode; radius: number; strength: number }
+    | { kind: "biome"; biomeId: string; radius: number }
+    | null
+  >(null);
+  const [terrainRadius, setTerrainRadius] = useState(2.5);
+  const [terrainStrength, setTerrainStrength] = useState(0.5);
+  const [terrainBiome, setTerrainBiome] = useState("grass");
+  const [pathMode, setPathMode] = useState(false);
+  const [draftPath, setDraftPath] = useState<Array<{ x: number; z: number }>>([]);
   const [newEntityName, setNewEntityName] = useState("");
   const [newEntityKind, setNewEntityKind] = useState("character");
   const [glbAssets, setGlbAssets] = useState<Model3DAsset[]>([]);
@@ -145,6 +162,9 @@ export function DioramaWorkspace() {
         entities: migrated.entities,
         placements: [...starterPlacements(), ...migrated.placements],
         events: [],
+        groundSize: 40,
+        terrain: createFlatTerrain(),
+        paths: [],
       };
       setState(next);
       await saveDiorama(next).catch(() => undefined);
@@ -191,7 +211,11 @@ export function DioramaWorkspace() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (expanded) setExpanded(false);
-      else if (placingModel || placingGlb) {
+      else if (terrainTool || pathMode) {
+        setTerrainTool(null);
+        setPathMode(false);
+        setDraftPath([]);
+      } else if (placingModel || placingGlb) {
         setPlacingModel(null);
         setPlacingGlb(null);
         setPendingEntityId(null);
@@ -199,7 +223,7 @@ export function DioramaWorkspace() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [expanded, placingModel, placingGlb]);
+  }, [expanded, placingModel, placingGlb, terrainTool, pathMode]);
 
   const updatePlacement = useCallback(
     (id: string, patch: Partial<DioramaPlacement>) => {
@@ -231,6 +255,38 @@ export function DioramaWorkspace() {
     },
     [],
   );
+
+  const handleTerrainBrush = useCallback(
+    (x: number, z: number) => {
+      setState((prev) => {
+        if (!prev || !terrainTool) return prev;
+        const size = prev.groundSize ?? 40;
+        if (terrainTool.kind === "brush") {
+          return {
+            ...prev,
+            terrain: brushTerrain(
+              prev.terrain,
+              size,
+              x,
+              z,
+              terrainTool.mode,
+              terrainTool.radius,
+              terrainTool.strength,
+            ),
+          };
+        }
+        return {
+          ...prev,
+          terrain: paintBiome(prev.terrain, size, x, z, terrainTool.radius, terrainTool.biomeId),
+        };
+      });
+    },
+    [terrainTool],
+  );
+
+  const handlePathPoint = useCallback((x: number, z: number) => {
+    setDraftPath((cur) => [...cur, { x: snapToGrid(x), z: snapToGrid(z) }]);
+  }, []);
 
   const handlePlace = useCallback(
     (x: number, z: number) => {
@@ -365,6 +421,14 @@ export function DioramaWorkspace() {
           selectedId={selectedId}
           placing={placingModel !== null || placingGlb !== null}
           glbDataUrls={Object.fromEntries(glbAssets.map((a) => [a.id, a.dataUrl]))}
+          terrain={state.terrain}
+          groundSize={state.groundSize ?? 40}
+          paths={state.paths ?? []}
+          draftPath={draftPath}
+          terrainTool={terrainTool}
+          pathMode={pathMode}
+          onTerrainBrush={handleTerrainBrush}
+          onPathPoint={handlePathPoint}
           onSelect={setSelectedId}
           onPlace={handlePlace}
           onMove={(id, x, z) => updatePlacement(id, { x, z })}
@@ -384,6 +448,7 @@ export function DioramaWorkspace() {
             ["models", "Mẫu 3D"],
             ["story", "Câu chuyện"],
             ["events", "Sự kiện"],
+            ["terrain", "Địa hình"],
           ] as const
         ).map(([tab, label]) => (
           <button
@@ -575,7 +640,7 @@ export function DioramaWorkspace() {
             </div>
           )}
         </>
-      ) : (
+      ) : leftTab === "events" ? (
         <>
           <div className="flex gap-1.5 mb-2">
             <input
@@ -693,6 +758,191 @@ export function DioramaWorkspace() {
               <p className="text-[12px] text-white/40">Chưa có sự kiện nào.</p>
             )}
           </div>
+        </>
+      ) : (
+        <>
+          <p className="text-[11px] text-white/40 leading-relaxed mb-3">
+            Bấm/kéo trực tiếp trên sa bàn để nặn địa hình. Vật đặt trên
+            đất tự bám theo cao độ — đào hố rồi đặt nhà xuống hố là nhà
+            chìm theo, không lơ lửng.
+          </p>
+          <p className="text-[11px] font-medium text-white/60 mb-1.5">Cọ địa hình</p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {(
+              [
+                ["raise", "Nâng đất"],
+                ["lower", "Hạ đất"],
+                ["flatten", "San phẳng"],
+              ] as const
+            ).map(([mode, label]) => {
+              const active = terrainTool?.kind === "brush" && terrainTool.mode === mode;
+              return (
+                <button
+                  key={mode}
+                  onClick={() => {
+                    setPathMode(false);
+                    setTerrainTool((cur) =>
+                      active
+                        ? null
+                        : { kind: "brush", mode, radius: terrainRadius, strength: terrainStrength },
+                    );
+                  }}
+                  className={`h-8 px-3 rounded-lg border text-[12px] ${active ? "bg-violet-500/25 border-violet-400/40 text-violet-100" : "bg-white/5 border-white/10 text-white/70"}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <label className="block text-[11px] text-white/40 mb-2">
+            Bán kính cọ: {terrainRadius.toFixed(1)}m
+            <input
+              type="range" min={1} max={5} step={0.5} value={terrainRadius}
+              onChange={(e) => {
+                const r = Number(e.target.value);
+                setTerrainRadius(r);
+                setTerrainTool((cur) => (cur ? { ...cur, radius: r } : cur));
+              }}
+              className="mt-1 w-full accent-violet-400"
+            />
+          </label>
+          <label className="block text-[11px] text-white/40 mb-3">
+            Độ mạnh: {terrainStrength.toFixed(1)}
+            <input
+              type="range" min={0.1} max={1} step={0.1} value={terrainStrength}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setTerrainStrength(v);
+                setTerrainTool((cur) =>
+                  cur?.kind === "brush" ? { ...cur, strength: v } : cur,
+                );
+              }}
+              className="mt-1 w-full accent-violet-400"
+            />
+          </label>
+          <p className="text-[11px] font-medium text-white/60 mb-1.5">Cọ biome (tô vùng đất)</p>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {BIOMES.map((b) => {
+              const active = terrainTool?.kind === "biome" && terrainTool.biomeId === b.id;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => {
+                    setPathMode(false);
+                    setTerrainBiome(b.id);
+                    setTerrainTool((cur) =>
+                      active ? null : { kind: "biome", biomeId: b.id, radius: terrainRadius },
+                    );
+                  }}
+                  title={b.name}
+                  className={`flex items-center gap-1.5 h-8 px-2.5 rounded-lg border text-[12px] ${active ? "border-violet-400/60 bg-violet-500/20 text-violet-100" : "bg-white/5 border-white/10 text-white/70"}`}
+                >
+                  <span className="w-3 h-3 rounded-full" style={{ background: b.color }} />
+                  {b.name}
+                </button>
+              );
+            })}
+          </div>
+          <label className="block text-[11px] text-white/40 mb-3">
+            Mực nước: {state.terrain.waterLevel <= -1 ? "Tắt" : `${state.terrain.waterLevel.toFixed(2)}m`}
+            <input
+              type="range" min={-1} max={3} step={0.25} value={state.terrain.waterLevel}
+              onChange={(e) =>
+                setState((prev) =>
+                  prev ? { ...prev, terrain: { ...prev.terrain, waterLevel: Number(e.target.value) } } : prev,
+                )
+              }
+              className="mt-1 w-full accent-violet-400"
+            />
+          </label>
+          <p className="text-[11px] font-medium text-white/60 mb-1.5">Đường đi</p>
+          <div className="flex gap-1.5 mb-2">
+            <button
+              onClick={() => {
+                setTerrainTool(null);
+                setPathMode((v) => !v);
+              }}
+              className={`h-8 px-3 rounded-lg border text-[12px] ${pathMode ? "bg-violet-500/25 border-violet-400/40 text-violet-100" : "bg-white/5 border-white/10 text-white/70"}`}
+            >
+              {pathMode ? "Đang vẽ đường…" : "Vẽ đường"}
+            </button>
+            {draftPath.length > 0 && (
+              <>
+                <button
+                  onClick={() => {
+                    setState((prev) =>
+                      prev
+                        ? { ...prev, paths: [...(prev.paths ?? []), { id: `path-${Date.now().toString(36)}`, points: draftPath }] }
+                        : prev,
+                    );
+                    setDraftPath([]);
+                    setPathMode(false);
+                  }}
+                  className="h-8 px-3 rounded-lg bg-violet-500/25 border border-violet-400/40 text-violet-100 text-[12px]"
+                >
+                  Xong đường
+                </button>
+                <button
+                  onClick={() => {
+                    setDraftPath([]);
+                    setPathMode(false);
+                  }}
+                  className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-white/70 text-[12px]"
+                >
+                  Huỷ
+                </button>
+              </>
+            )}
+          </div>
+          <p className="text-[11px] text-white/40 mb-2">
+            {pathMode
+              ? `Bấm lên sa bàn để thêm điểm (${draftPath.length} điểm) — bấm "Xong đường" để lưu.`
+              : "Bấm Vẽ đường rồi bấm từng điểm trên sa bàn để nối thành đường đất."}
+          </p>
+          <div className="space-y-1.5 mb-4">
+            {(state.paths ?? []).map((path) => (
+              <div key={path.id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-2.5 py-2">
+                <span className="flex-1 text-[12px] text-white/70">Đường · {path.points.length} điểm</span>
+                <button
+                  onClick={() =>
+                    setState((prev) =>
+                      prev ? { ...prev, paths: (prev.paths ?? []).filter((pp) => pp.id !== path.id) } : prev,
+                    )
+                  }
+                  aria-label="Xoá đường"
+                  className="text-white/35 hover:text-rose-300"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <label className="block text-[11px] text-white/40">
+            Cỡ sa bàn
+            <select
+              value={state.groundSize ?? 40}
+              onChange={(e) => {
+                const size = Number(e.target.value);
+                setState((prev) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    groundSize: size,
+                    placements: prev.placements.map((pl) => ({
+                      ...pl,
+                      x: clampGround(pl.x, placementFootprint(pl), size),
+                      z: clampGround(pl.z, placementFootprint(pl), size),
+                    })),
+                  };
+                });
+              }}
+              className="mt-1 w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
+            >
+              <option value={20}>20 × 20m (nhỏ, chi tiết)</option>
+              <option value={40}>40 × 40m (mặc định)</option>
+              <option value={60}>60 × 60m (rộng, toàn cảnh)</option>
+            </select>
+          </label>
         </>
       )}
     </aside>

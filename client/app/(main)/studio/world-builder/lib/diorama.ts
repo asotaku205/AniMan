@@ -11,6 +11,8 @@
  *   chữ riêng.
  */
 
+import { createFlatTerrain } from "./terrain";
+
 export const GROUND_SIZE = 40;
 export const SNAP_STEP = 0.5;
 
@@ -246,6 +248,10 @@ export interface DioramaState {
   placements: DioramaPlacement[];
   entities: StoryEntity[];
   events: WorldEvent[];
+  /** Cỡ sa bàn (mét) — đổi size chỉ co giãn lưới địa hình. */
+  groundSize: number;
+  terrain: import("./terrain").Terrain;
+  paths: import("./terrain").TerrainPath[];
 }
 
 /** Nhãn hiển thị cho loại thực thể: loại chuẩn dịch sang tiếng Việt,
@@ -274,9 +280,9 @@ export function snapToGrid(v: number): number {
   return Math.round(v / SNAP_STEP) * SNAP_STEP;
 }
 
-/** Kẹp trong mặt đất 40×40 (chừa lề theo footprint). */
-export function clampGround(v: number, footprint = 0): number {
-  const limit = GROUND_SIZE / 2 - 0.5 - footprint;
+/** Kẹp trong mặt đất (chừa lề theo footprint). */
+export function clampGround(v: number, footprint = 0, size = GROUND_SIZE): number {
+  const limit = size / 2 - 0.5 - footprint;
   return Math.min(limit, Math.max(-limit, v));
 }
 
@@ -358,7 +364,14 @@ export function migrateLegacyWorld(
       id: `pl-${c.id}`,
     };
   });
-  return { entities, placements, events: [] };
+  return {
+    entities,
+    placements,
+    events: [],
+    groundSize: GROUND_SIZE,
+    terrain: createFlatTerrain(),
+    paths: [],
+  };
 }
 
 /** Bộ vật khởi điểm cho sa bàn trống (trường + đền + cầu + cây). */
