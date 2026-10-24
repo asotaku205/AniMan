@@ -3,9 +3,17 @@ import {
   applyWordDelta,
   chapterWords,
   countWords,
+  arcGapWarnings,
+  createArc,
+  createBeat,
   createChapter,
   createNovel,
+  createPlotline,
+  createQuestion,
   createScene,
+  orderScenes,
+  reorderScenesForMove,
+  sortBeatsByScene,
   moveOrdered,
   novelWords,
   sceneWords,
@@ -66,5 +74,63 @@ describe("Từ theo ngày", () => {
     d = applyWordDelta(d, "2026-10-25", 10);
     expect(d["2026-10-24"]).toBe(0);
     expect(d["2026-10-25"]).toBe(10);
+  });
+});
+
+describe("N2: dàn ý", () => {
+  it("tạo mới có tóm tắt/trạng thái cảnh và trường Snowflake trống", () => {
+    const n = createNovel("X");
+    expect(n.summary).toBe("");
+    expect(n.outline).toBe("");
+    const sc = createScene("c1", 0, "Cảnh 1", "", "");
+    expect(sc.synopsis).toBe("");
+    expect(sc.status).toBe("draft");
+    expect(createPlotline(n.id, 0, "Tuyến A").color).toBe("#f59e0b");
+    expect(createBeat("p1", 0, "B1", "turn").sceneId).toBeNull();
+    expect(createArc(n.id, 0, "Aoi").milestones).toEqual([]);
+    expect(createQuestion(n.id, "Ai mở cửa?").answeredSceneId).toBeNull();
+  });
+
+  it("xếp cảnh theo thứ tự kể (chương rồi cảnh)", () => {
+    const c1 = { ...createChapter("n1", 1, "C2"), id: "ch2" };
+    const c0 = { ...createChapter("n1", 0, "C1"), id: "ch1" };
+    const mk = (chapterId: string, order: number, title: string) => ({ ...createScene(chapterId, order, title, "", ""), id: `s-${title}` });
+    const ordered = orderScenes([c1, c0], [mk("ch2", 0, "B"), mk("ch1", 1, "A2"), mk("ch1", 0, "A1")]);
+    expect(ordered.map((x) => x.title)).toEqual(["A1", "A2", "B"]);
+  });
+
+  it("beat đã gắn cảnh xếp theo vị trí cảnh, beat chưa gắn xếp cuối", () => {
+    const pos = new Map([["s1", 0], ["s2", 1], ["s3", 2]]);
+    const b1 = createBeat("p", 0, "Cuối", "result", "s3");
+    const b2 = createBeat("p", 1, "Đầu", "goal", "s1");
+    const b3 = createBeat("p", 2, "Chưa gắn", "turn", null);
+    expect(sortBeatsByScene([b1, b2, b3], pos).map((b) => b.title)).toEqual(["Đầu", "Cuối", "Chưa gắn"]);
+  });
+
+  it("cảnh báo cung khi vắng mặt quá 5 cảnh, đúng 5 thì không", () => {
+    const pos = new Map([["s1", 0], ["s2", 7], ["s3", 12]]);
+    const arc = { ...createArc("n1", 0, "Aoi"), milestones: [
+      { id: "m1", sceneId: "s1", note: "" },
+      { id: "m2", sceneId: "s2", note: "" },
+      { id: "m3", sceneId: "s3", note: "" },
+    ] };
+    const warnings = arcGapWarnings(arc, pos);
+    expect(warnings).toEqual([{ fromSceneId: "s1", toSceneId: "s2", gap: 6 }]);
+  });
+
+  it("kéo-thả cảnh đổi chương và đánh lại order", () => {
+    const mk = (id: string, chapterId: string, order: number) => ({ ...createScene(chapterId, order, id, "", ""), id });
+    const all = [mk("a", "ch1", 0), mk("b", "ch1", 1), mk("c", "ch2", 0)];
+    const moved = reorderScenesForMove(all, "b", "ch2", "c");
+    const byId = new Map(moved.map((x) => [x.id, x]));
+    expect(byId.get("b")!.chapterId).toBe("ch2");
+    expect(byId.get("b")!.order).toBe(0);
+    expect(byId.get("c")!.order).toBe(1);
+    expect(byId.get("a")!.order).toBe(0);
+    // Cảnh không tồn tại → giữ nguyên.
+    expect(reorderScenesForMove(all, "zzz", "ch2", null)).toEqual(all);
+    // Kéo trong cùng chương về cuối.
+    const same = reorderScenesForMove(all, "a", "ch1", null);
+    expect(new Map(same.map((x) => [x.id, x.order])).get("a")).toBe(1);
   });
 });

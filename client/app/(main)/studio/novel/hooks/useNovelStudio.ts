@@ -5,29 +5,53 @@ import { FONTS, INITIAL_NOTES, INITIAL_TRACKS, type Note, type Track } from "../
 import {
   applyWordDelta,
   chapterWords,
+  createArc,
+  createBeat,
   createChapter,
   createNovel,
+  createPlotline,
+  createQuestion,
   createScene,
   moveOrdered,
   novelWords,
+  orderScenes,
+  reorderScenesForMove,
   sceneWords,
   SEED_LEFT,
   SEED_RIGHT,
   sortByOrder,
   todayKey,
+  type Beat,
+  type BeatKind,
   type Chapter,
+  type CharacterArc,
   type Novel,
+  type OpenQuestion,
+  type Plotline,
   type Scene,
+  type SceneStatus,
 } from "../lib/novel";
 import {
+  deleteArc,
+  deleteBeat,
   deleteChapterCascade,
   deleteNovelCascade,
+  deletePlotlineCascade,
+  deleteQuestion,
   deleteScene,
+  listArcs,
+  listBeats,
   listChapters,
   listNovels,
+  listPlotlines,
+  listQuestions,
   listScenes,
+  saveArc,
+  saveBeat,
   saveChapter,
   saveNovel,
+  savePlotline,
+  saveQuestion,
   saveScene,
 } from "../lib/novelStorage";
 
@@ -85,6 +109,10 @@ export function useNovelStudio() {
   const [selectedNovelId, setSelectedNovelId] = useState<string | null>(null);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  const [plotlines, setPlotlines] = useState<Plotline[]>([]);
+  const [beats, setBeats] = useState<Beat[]>([]);
+  const [arcs, setArcs] = useState<CharacterArc[]>([]);
+  const [questions, setQuestions] = useState<OpenQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -122,6 +150,10 @@ export function useNovelStudio() {
       setNovels(ns);
       setChapters(chs);
       setScenes(scs);
+      setPlotlines(await listPlotlines());
+      setBeats(await listBeats());
+      setArcs(await listArcs());
+      setQuestions(await listQuestions());
       const m = new Map<string, number>();
       for (const sc of scs) m.set(sc.id, sceneWords(sc));
       lastSavedWordsRef.current = m;
@@ -239,6 +271,8 @@ export function useNovelStudio() {
 
   const selectScene = (id: string) => {
     void flushPendingSave();
+    const scene = scenes.find((s) => s.id === id);
+    if (scene) setSelectedChapterId(scene.chapterId);
     setSelectedSceneId(id);
   };
 
@@ -270,6 +304,7 @@ export function useNovelStudio() {
   const deleteNovel = async (id: string) => {
     try {
       await deleteNovelCascade(id);
+      void reloadOutline();
       const restNovels = novels.filter((n) => n.id !== id);
       const restChapters = chapters.filter((c) => c.novelId !== id);
       const chapterIds = new Set(chapters.filter((c) => c.novelId === id).map((c) => c.id));
@@ -322,6 +357,7 @@ export function useNovelStudio() {
   const deleteChapter = async (id: string) => {
     try {
       await deleteChapterCascade(id);
+      void reloadOutline();
       const rest = chapters.filter((c) => c.id !== id);
       setChapters(rest);
       setScenes((prev) => prev.filter((s) => s.chapterId !== id));
@@ -387,6 +423,7 @@ export function useNovelStudio() {
   const deleteSceneById = async (id: string) => {
     try {
       await deleteScene(id);
+      void reloadOutline();
       const rest = scenes.filter((s) => s.id !== id);
       setScenes(rest);
       lastSavedWordsRef.current.delete(id);
@@ -426,6 +463,264 @@ export function useNovelStudio() {
     }
   };
 
+  // ── N2: dàn ý ───────────────────────────────────────────────────────────
+  const reloadOutline = useCallback(async () => {
+    try {
+      setPlotlines(await listPlotlines());
+      setBeats(await listBeats());
+      setArcs(await listArcs());
+      setQuestions(await listQuestions());
+    } catch {
+      setSaveError("Không tải được dữ liệu dàn ý.");
+    }
+  }, []);
+
+  const updateSceneMeta = async (id: string, patch: { synopsis?: string; status?: SceneStatus }) => {
+    const scene = scenes.find((s) => s.id === id);
+    if (!scene) return;
+    const updated = { ...scene, ...patch };
+    setScenes((prev) => prev.map((x) => (x.id === id ? updated : x)));
+    try {
+      await saveScene(updated);
+    } catch {
+      setSaveError("Không lưu được thẻ cảnh.");
+    }
+  };
+
+  const updateNovelText = async (field: "premise" | "summary" | "outline", value: string) => {
+    const novel = novels.find((n) => n.id === selectedNovelId);
+    if (!novel) return;
+    const updated = { ...novel, [field]: value, updatedAt: Date.now() };
+    setNovels((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+    try {
+      await saveNovel(updated);
+    } catch {
+      setSaveError("Không lưu được dàn ý.");
+    }
+  };
+
+  const moveSceneTo = async (sceneId: string, targetChapterId: string, beforeSceneId: string | null) => {
+    const updated = reorderScenesForMove(scenes, sceneId, targetChapterId, beforeSceneId);
+    const changed = updated.filter((u) => {
+      const old = scenes.find((x) => x.id === u.id);
+      return old && (old.chapterId !== u.chapterId || old.order !== u.order);
+    });
+    if (changed.length === 0) return;
+    setScenes(updated);
+    if (sceneId === selectedSceneId) setSelectedChapterId(targetChapterId);
+    try {
+      for (const sc of changed) await saveScene(sc);
+    } catch {
+      setSaveError("Không lưu được vị trí cảnh.");
+    }
+  };
+
+  const addPlotline = async (title: string) => {
+    if (!selectedNovelId) return;
+    const siblings = plotlines.filter((p) => p.novelId === selectedNovelId);
+    const plot = createPlotline(
+      selectedNovelId,
+      siblings.length === 0 ? 0 : Math.max(...siblings.map((p) => p.order)) + 1,
+      title.trim() || "Tuyến mới",
+    );
+    try {
+      await savePlotline(plot);
+      setPlotlines((prev) => [...prev, plot]);
+    } catch {
+      setSaveError("Không tạo được tuyến truyện.");
+    }
+  };
+
+  const renamePlotline = async (id: string, patch: { title?: string; color?: string }) => {
+    const plot = plotlines.find((p) => p.id === id);
+    if (!plot) return;
+    const updated = { ...plot, ...patch };
+    if (patch.title !== undefined && !patch.title.trim()) return;
+    setPlotlines((prev) => prev.map((p) => (p.id === id ? updated : p)));
+    try {
+      await savePlotline(updated);
+    } catch {
+      setSaveError("Không lưu được tuyến truyện.");
+    }
+  };
+
+  const deletePlotline = async (id: string) => {
+    try {
+      await deletePlotlineCascade(id);
+      setPlotlines((prev) => prev.filter((p) => p.id !== id));
+      setBeats((prev) => prev.filter((b) => b.plotlineId !== id));
+    } catch {
+      setSaveError("Không xoá được tuyến truyện.");
+    }
+  };
+
+  const movePlotline = async (id: string, dir: -1 | 1) => {
+    if (!selectedNovelId) return;
+    const siblings = plotlines.filter((p) => p.novelId === selectedNovelId);
+    const before = sortByOrder(siblings).map((p) => `${p.id}:${p.order}`).join(",");
+    const reordered = moveOrdered(siblings, id, dir);
+    if (reordered.map((p) => `${p.id}:${p.order}`).join(",") === before) return;
+    const moved = new Map(reordered.map((p) => [p.id, p]));
+    setPlotlines((prev) => prev.map((p) => moved.get(p.id) ?? p));
+    try {
+      for (const p of reordered) await savePlotline(p);
+    } catch {
+      setSaveError("Không lưu được thứ tự tuyến.");
+    }
+  };
+
+  const addBeat = async (plotlineId: string, title: string, kind: BeatKind, sceneId: string | null) => {
+    const siblings = beats.filter((b) => b.plotlineId === plotlineId);
+    const beat = createBeat(
+      plotlineId,
+      siblings.length === 0 ? 0 : Math.max(...siblings.map((b) => b.order)) + 1,
+      title.trim() || "Beat mới",
+      kind,
+      sceneId,
+    );
+    try {
+      await saveBeat(beat);
+      setBeats((prev) => [...prev, beat]);
+    } catch {
+      setSaveError("Không tạo được beat.");
+    }
+  };
+
+  const updateBeat = async (id: string, patch: { title?: string; kind?: BeatKind; sceneId?: string | null }) => {
+    const beat = beats.find((b) => b.id === id);
+    if (!beat) return;
+    if (patch.title !== undefined && !patch.title.trim()) return;
+    const updated = { ...beat, ...patch };
+    setBeats((prev) => prev.map((b) => (b.id === id ? updated : b)));
+    try {
+      await saveBeat(updated);
+    } catch {
+      setSaveError("Không lưu được beat.");
+    }
+  };
+
+  const deleteBeatById = async (id: string) => {
+    try {
+      await deleteBeat(id);
+      setBeats((prev) => prev.filter((b) => b.id !== id));
+    } catch {
+      setSaveError("Không xoá được beat.");
+    }
+  };
+
+  const addArc = async (characterName: string) => {
+    if (!selectedNovelId) return;
+    const siblings = arcs.filter((a) => a.novelId === selectedNovelId);
+    const arc = createArc(
+      selectedNovelId,
+      siblings.length === 0 ? 0 : Math.max(...siblings.map((a) => a.order)) + 1,
+      characterName.trim() || "Nhân vật mới",
+    );
+    try {
+      await saveArc(arc);
+      setArcs((prev) => [...prev, arc]);
+    } catch {
+      setSaveError("Không tạo được cung nhân vật.");
+    }
+  };
+
+  const updateArc = async (id: string, patch: { characterName?: string; startState?: string; endState?: string }) => {
+    const arc = arcs.find((a) => a.id === id);
+    if (!arc) return;
+    if (patch.characterName !== undefined && !patch.characterName.trim()) return;
+    const updated = { ...arc, ...patch };
+    setArcs((prev) => prev.map((a) => (a.id === id ? updated : a)));
+    try {
+      await saveArc(updated);
+    } catch {
+      setSaveError("Không lưu được cung nhân vật.");
+    }
+  };
+
+  const deleteArcById = async (id: string) => {
+    try {
+      await deleteArc(id);
+      setArcs((prev) => prev.filter((a) => a.id !== id));
+    } catch {
+      setSaveError("Không xoá được cung nhân vật.");
+    }
+  };
+
+  const addMilestone = async (arcId: string, sceneId: string, note: string) => {
+    const arc = arcs.find((a) => a.id === arcId);
+    if (!arc || !sceneId) return;
+    const updated: CharacterArc = {
+      ...arc,
+      milestones: [...arc.milestones, { id: `ms-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`, sceneId, note }],
+    };
+    setArcs((prev) => prev.map((a) => (a.id === arcId ? updated : a)));
+    try {
+      await saveArc(updated);
+    } catch {
+      setSaveError("Không lưu được mốc cung.");
+    }
+  };
+
+  const updateMilestoneNote = async (arcId: string, milestoneId: string, note: string) => {
+    const arc = arcs.find((a) => a.id === arcId);
+    if (!arc) return;
+    const updated: CharacterArc = {
+      ...arc,
+      milestones: arc.milestones.map((m) => (m.id === milestoneId ? { ...m, note } : m)),
+    };
+    setArcs((prev) => prev.map((a) => (a.id === arcId ? updated : a)));
+    try {
+      await saveArc(updated);
+    } catch {
+      setSaveError("Không lưu được mốc cung.");
+    }
+  };
+
+  const deleteMilestone = async (arcId: string, milestoneId: string) => {
+    const arc = arcs.find((a) => a.id === arcId);
+    if (!arc) return;
+    const updated: CharacterArc = { ...arc, milestones: arc.milestones.filter((m) => m.id !== milestoneId) };
+    setArcs((prev) => prev.map((a) => (a.id === arcId ? updated : a)));
+    try {
+      await saveArc(updated);
+    } catch {
+      setSaveError("Không xoá được mốc cung.");
+    }
+  };
+
+  const addQuestion = async (question: string) => {
+    if (!selectedNovelId || !question.trim()) return;
+    const q = createQuestion(selectedNovelId, question.trim());
+    try {
+      await saveQuestion(q);
+      setQuestions((prev) => [...prev, q]);
+    } catch {
+      setSaveError("Không tạo được câu hỏi.");
+    }
+  };
+
+  const updateQuestion = async (id: string, patch: { question?: string; plantedSceneId?: string | null; answeredSceneId?: string | null }) => {
+    const q = questions.find((x) => x.id === id);
+    if (!q) return;
+    if (patch.question !== undefined && !patch.question.trim()) return;
+    const updated = { ...q, ...patch };
+    setQuestions((prev) => prev.map((x) => (x.id === id ? updated : x)));
+    try {
+      await saveQuestion(updated);
+    } catch {
+      setSaveError("Không lưu được câu hỏi.");
+    }
+  };
+
+  const deleteQuestionById = async (id: string) => {
+    try {
+      await deleteQuestion(id);
+      setQuestions((prev) => prev.filter((q) => q.id !== id));
+    } catch {
+      setSaveError("Không xoá được câu hỏi.");
+    }
+  };
+
   // ── Thống kê ─────────────────────────────────────────────────────────────
   const selectedNovel = novels.find((n) => n.id === selectedNovelId) ?? null;
   const selectedChapter = chapters.find((c) => c.id === selectedChapterId) ?? null;
@@ -460,6 +755,17 @@ export function useNovelStudio() {
     chapterWordCount: chapterWords(chapterScenes),
     novelWordCount: novelWords(novelScenes),
     todayWords,
+    // N2
+    novelScenes: orderScenes(novelChapters, novelScenes),
+    plotlines: selectedNovelId ? sortByOrder(plotlines.filter((x) => x.novelId === selectedNovelId)) : [],
+    beats,
+    arcs: selectedNovelId ? sortByOrder(arcs.filter((x) => x.novelId === selectedNovelId)) : [],
+    questions: selectedNovelId ? questions.filter((x) => x.novelId === selectedNovelId) : [],
+    updateSceneMeta, updateNovelText, moveSceneTo,
+    addPlotline, renamePlotline, deletePlotline, movePlotline,
+    addBeat, updateBeat, deleteBeat: deleteBeatById,
+    addArc, updateArc, deleteArc: deleteArcById, addMilestone, updateMilestoneNote, deleteMilestone,
+    addQuestion, updateQuestion, deleteQuestion: deleteQuestionById,
   };
 }
 

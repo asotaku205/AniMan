@@ -1,13 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { SectionEyebrow }  from "./components/SectionEyebrow";
 import { WashiBookPage }   from "./components/WashiBookPage";
 import { TabbedSidePanel } from "./components/TabbedSidePanel";
 import { NovelBinder }     from "./components/NovelBinder";
+import OutlineView         from "./components/OutlineView";
 import { useNovelStudio }  from "./hooks/useNovelStudio";
 
 export function NovelStudio() {
   const s = useNovelStudio();
+  const [view, setView] = useState<"write" | "outline">("write");
 
   return (
     <section className="relative py-24 overflow-hidden bg-[#1a0f06]">
@@ -21,6 +24,23 @@ export function NovelStudio() {
           desc="Click trực tiếp vào trang để viết. Tuỳ chỉnh font, mixer 5 lớp âm thanh, hẹn giờ Pomodoro và dán ghi chú lên lề trang."
         />
 
+        <div className="mt-8 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setView("write")}
+            className={`rounded-full px-4 py-2 text-sm font-medium ${view === "write" ? "bg-amber-600 text-white" : "bg-white/10 text-amber-100 border border-white/20"}`}
+          >
+            Viết
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("outline")}
+            className={`rounded-full px-4 py-2 text-sm font-medium ${view === "outline" ? "bg-amber-600 text-white" : "bg-white/10 text-amber-100 border border-white/20"}`}
+          >
+            Dàn ý
+          </button>
+        </div>
+
         {s.saveError && (
           <div className="mt-8 rounded-xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-rose-100 text-sm flex flex-wrap items-center gap-3">
             <span className="flex-1">{s.saveError}</span>
@@ -33,6 +53,11 @@ export function NovelStudio() {
           </div>
         )}
 
+        {view === "outline" ? (
+          <div className="mt-12">
+            <OutlineView s={s} onOpenScene={(id) => { s.selectScene(id); setView("write"); }} />
+          </div>
+        ) : (
         <div className="mt-12 grid gap-8 items-start xl:grid-cols-[260px_minmax(0,1fr)_320px]">
           {/* Cây sách */}
           <NovelBinder s={s} />
@@ -61,6 +86,7 @@ export function NovelStudio() {
             setGoal={(n) => void s.setGoal(n)}
           />
         </div>
+        )}
       </div>
     </section>
   );
