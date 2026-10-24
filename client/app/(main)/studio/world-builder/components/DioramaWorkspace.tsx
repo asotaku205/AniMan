@@ -172,6 +172,8 @@ export function DioramaWorkspace() {
   const [riverDepth, setRiverDepth] = useState(1.2);
   // Sinh cảnh quan (W9.2/W9.4): chọn loại rồi bấm điểm trên sa bàn.
   const [generating, setGenerating] = useState<GenKind | null>(null);
+  // Mẫu gợi ý thu gọn mặc định (W9.7).
+  const [showPresetModels, setShowPresetModels] = useState(false);
   const [genKind, setGenKind] = useState<GenKind>("mountain");
   const [genRadius, setGenRadius] = useState(10);
   const [genPeak, setGenPeak] = useState(6);
@@ -198,7 +200,6 @@ export function DioramaWorkspace() {
   const [placingGlb, setPlacingGlb] = useState<Model3DAsset | null>(null);
   const [placingCustom, setPlacingCustom] = useState<CustomModel | null>(null);
   const [editingModel, setEditingModel] = useState<CustomModel | null>(null);
-  const [newCustomName, setNewCustomName] = useState("");
   const [newEventTitle, setNewEventTitle] = useState("");
   const [newEventDate, setNewEventDate] = useState("");
   const [newEventDesc, setNewEventDesc] = useState("");
@@ -994,7 +995,7 @@ export function DioramaWorkspace() {
       <div className="grid grid-cols-3 gap-1.5 mb-3">
         {(
           [
-            ["models", "Mẫu 3D"],
+            ["models", "Mô hình"],
             ["story", "Câu chuyện"],
             ["events", "Sự kiện"],
             ["terrain", "Địa hình"],
@@ -1017,47 +1018,27 @@ export function DioramaWorkspace() {
             Bấm một mẫu để cầm lên, rồi bấm vào mặt đất để đặt. Bấm lại mẫu
             để dừng đặt.
           </p>
-          <div className="grid grid-cols-2 gap-2">
-            {MODEL_DEFS.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => {
-                  setPlacingModel((cur) => (cur === m.id ? null : m.id));
-                  setPlacingGlb(null);
-                  setPendingEntityId(null);
-                }}
-                className={`rounded-xl border p-2.5 text-left ${placingModel === m.id ? "bg-violet-500/20 border-violet-400/50" : "bg-black/30 border-white/10 hover:border-white/25"}`}
-              >
-                <span
-                  className="block w-full h-8 rounded-md mb-2"
-                  style={{ background: m.parts[0].color === "__entity__" ? "#8b5cf6" : m.parts[0].color }}
-                />
-                <span className="block text-[12px] font-medium text-white/85">{m.name}</span>
-                <span className="text-[10px] text-emerald-300/80">{m.license}</span>
-              </button>
-            ))}
-          </div>
-          <p className="text-[11px] font-medium text-white/60 mt-4 mb-2">
-            Vật tự ghép (ghép từ chi tiết, đặt tên rồi dùng lại)
+          {/* Thư viện chính là đồ người dùng tạo/nạp (W9.7): mẫu gợi ý
+              chỉ là điểm khởi đầu, thu gọn ở cuối tab. */}
+          <p className="text-[11px] font-medium text-white/60 mb-2">
+            Mô hình của tôi
           </p>
-          <div className="flex gap-1.5 mb-2">
-            <input
-              value={newCustomName}
-              onChange={(e) => setNewCustomName(e.target.value)}
-              placeholder="Tên vật mới (VD: Nhà sàn…)"
-              className="flex-1 min-w-0 h-9 rounded-lg bg-black/40 border border-white/10 px-2.5 text-[12px] outline-none"
-            />
-            <button
-              onClick={() => {
-                const m = createCustomModel(newCustomName);
-                setNewCustomName("");
-                setEditingModel(m);
-              }}
-              className="h-9 px-3 rounded-lg bg-violet-500/25 border border-violet-400/40 text-violet-100 text-[12px]"
-            >
-              Tạo + sửa
-            </button>
-          </div>
+          <button
+            onClick={() => setEditingModel(createCustomModel("Vật mới"))}
+            className="w-full h-9 rounded-lg bg-violet-500/25 border border-violet-400/40 text-violet-100 text-[12px] font-medium mb-2"
+          >
+            + Tạo mô hình mới
+          </button>
+          <p className="text-[11px] text-white/40 leading-relaxed mb-3">
+            Mọi mô hình ở đây đều do bạn tạo (ghép từ chi tiết khối) hoặc
+            nạp file .glb. Bấm vào mô hình để đặt lên sa bàn, bấm Sửa để
+            sửa lại. Mẫu gợi ý ở cuối tab chỉ để tham khảo.
+          </p>
+          <p className="text-[11px] font-medium text-white/60 mb-2">
+            Ghép từ chi tiết
+          </p>
+
+
           <div className="space-y-1.5">
             {(state.customModels ?? []).map((m) => (
               <div
@@ -1105,14 +1086,15 @@ export function DioramaWorkspace() {
             ))}
             {(state.customModels ?? []).length === 0 && (
               <p className="text-[11px] text-white/40 leading-relaxed">
-                Chưa có vật tự ghép nào. Gõ tên rồi bấm "Tạo + sửa" để ghép
-                nhà, cổng, giếng… từ chi tiết khối.
+                Chưa có mô hình nào. Bấm "+ Tạo mô hình mới" ở trên để
+                ghép nhà, cổng, giếng… từ chi tiết khối.
               </p>
             )}
           </div>
           <p className="text-[11px] font-medium text-white/60 mt-4 mb-2">
-            Mô hình 3D thật (từ thư viện Animation Studio)
+            File .glb đã nạp
           </p>
+
           <label className="block mb-2">
             <span className="block h-9 rounded-lg bg-violet-500/25 border border-violet-400/40 text-violet-100 text-[12px] font-medium grid place-items-center cursor-pointer">
               Nạp file .glb từ máy (người, nhà, đạo cụ realistic…)
@@ -1155,6 +1137,22 @@ export function DioramaWorkspace() {
             giao (tab hồ sơ), Mixamo (người rig sẵn), Ready Player Me,
             Poly Haven (đạo cụ CC0).
           </p>
+          <details className="rounded-xl border border-white/10 bg-black/30 px-2.5 py-2 mb-2">
+            <summary className="text-[12px] text-white/70 cursor-pointer">
+              Hướng dẫn xuất file từ Blender để nạp vào đây
+            </summary>
+            <ol className="list-decimal list-inside mt-2 space-y-1 text-[11px] text-white/50 leading-relaxed">
+              <li>Apply transform (Ctrl+A: vị trí, xoay, tỉ lệ) và apply hết modifier (Mirror, Subdivision…).</li>
+              <li>Rig xong thì bake chuyển động: chọn armature, Pose → Animation → Bake Action, bật Visual Keying để IK thành keyframe thường.</li>
+              <li>Đặt tên từng action rõ ràng (Walk, Run, Attack…) và bật khiên Fake User để Blender không tự xoá action.</li>
+              <li>Xuất File → Export → glTF 2.0 (.glb): bật Apply Modifiers, kèm animation + skinning + shape key; tắt nén Draco.</li>
+              <li>Nạp file .glb ở trên, kiểm tra số tam giác, số xương, tên clip khớp rồi mới đặt lên sa bàn.</li>
+            </ol>
+            <p className="text-[11px] text-white/40 leading-relaxed mt-1.5">
+              Lỗi hay gặp: nhân vật méo khi cử động là do quên bake IK hoặc
+              quên apply modifier; clip không hiện là do quên Fake User.
+            </p>
+          </details>
           {glbAssets.length === 0 ? (
             <p className="text-[11px] text-white/40 leading-relaxed">
               Chưa có file GLB nào. Nạp file ở trên, hoặc sang Animation
@@ -1179,6 +1177,40 @@ export function DioramaWorkspace() {
                 </button>
               ))}
             </div>
+          )}
+          <button
+            onClick={() => setShowPresetModels((v) => !v)}
+            className="w-full h-9 rounded-lg bg-white/5 border border-white/10 text-white/60 text-[12px] mt-4"
+          >
+            {showPresetModels ? "Thu gọn mẫu gợi ý" : "Mẫu gợi ý (dùng làm điểm khởi đầu) — bấm để mở"}
+          </button>
+          {showPresetModels && (
+            <>
+              <p className="text-[11px] text-white/40 leading-relaxed mt-2 mb-2">
+                Các mẫu này chỉ để bày nhanh hoặc tham khảo — world cũ vẫn
+                dùng được chúng, nhưng thư viện chính vẫn là mô hình của bạn.
+              </p>
+          <div className="grid grid-cols-2 gap-2">
+            {MODEL_DEFS.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => {
+                  setPlacingModel((cur) => (cur === m.id ? null : m.id));
+                  setPlacingGlb(null);
+                  setPendingEntityId(null);
+                }}
+                className={`rounded-xl border p-2.5 text-left ${placingModel === m.id ? "bg-violet-500/20 border-violet-400/50" : "bg-black/30 border-white/10 hover:border-white/25"}`}
+              >
+                <span
+                  className="block w-full h-8 rounded-md mb-2"
+                  style={{ background: m.parts[0].color === "__entity__" ? "#8b5cf6" : m.parts[0].color }}
+                />
+                <span className="block text-[12px] font-medium text-white/85">{m.name}</span>
+                <span className="text-[10px] text-emerald-300/80">{m.license}</span>
+              </button>
+            ))}
+          </div>
+            </>
           )}
         </>
       ) : leftTab === "story" ? (
