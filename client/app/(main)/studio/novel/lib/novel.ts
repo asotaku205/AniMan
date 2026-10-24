@@ -463,6 +463,46 @@ export interface NovelSnapshot {
   data: NovelExportData;
 }
 
+/** Ghi nhận cầu nối N5: một lần chuyển từ nguồn sang dự án đích. */
+export type BridgeKind = "novel-anim" | "novel-manga" | "anim-manga" | "anim-translate";
+
+export const BRIDGE_KIND_LABEL: Record<BridgeKind, string> = {
+  "novel-anim": "Tiểu thuyết → Animation",
+  "novel-manga": "Tiểu thuyết → Manga",
+  "anim-manga": "Animation → Manga",
+  "anim-translate": "Animation → Dịch/lồng tiếng",
+};
+
+export interface NovelBridge {
+  id: string;
+  /** Truyện nguồn; null = cầu nối xuất phát từ dự án Animation không gắn truyện. */
+  novelId: string | null;
+  kind: BridgeKind;
+  sourceLabel: string;
+  targetLabel: string;
+  /** Route mở dự án đích (vd /studio/animation/project/<id>). */
+  targetRoute: string;
+  createdAt: number;
+}
+
+export function createBridge(
+  novelId: string | null,
+  kind: BridgeKind,
+  sourceLabel: string,
+  targetLabel: string,
+  targetRoute: string,
+): NovelBridge {
+  return {
+    id: newNovelId("bridge"),
+    novelId,
+    kind,
+    sourceLabel,
+    targetLabel,
+    targetRoute,
+    createdAt: Date.now(),
+  };
+}
+
 export function createSnapshot(
   novelId: string,
   name: string,

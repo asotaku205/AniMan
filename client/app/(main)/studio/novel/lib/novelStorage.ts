@@ -10,6 +10,7 @@ import type {
   CharacterArc,
   NovelExportData,
   NovelSnapshot,
+  NovelBridge,
   Chapter,
   Novel,
   OpenQuestion,
@@ -18,7 +19,7 @@ import type {
 } from "./novel";
 
 const DB_NAME = "animan_novel_db";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE_NOVELS = "novels";
 const STORE_CHAPTERS = "chapters";
 const STORE_SCENES = "scenes";
@@ -28,6 +29,7 @@ const STORE_ARCS = "arcs";
 const STORE_QUESTIONS = "questions";
 const STORE_ENTITIES = "entities";
 const STORE_SNAPSHOTS = "snapshots";
+const STORE_BRIDGES = "bridges";
 
 const isBrowser = typeof indexedDB !== "undefined";
 
@@ -63,6 +65,9 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_SNAPSHOTS)) {
         db.createObjectStore(STORE_SNAPSHOTS, { keyPath: "id" });
       }
+      if (!db.objectStoreNames.contains(STORE_BRIDGES)) {
+        db.createObjectStore(STORE_BRIDGES, { keyPath: "id" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -97,6 +102,20 @@ async function put<T extends { id: string }>(store: string, value: T): Promise<v
   if (!isBrowser) return;
   const db = await openDb();
   await request(db, store, "readwrite", ([s]) => s.put(value));
+}
+
+export async function listBridges(): Promise<NovelBridge[]> {
+  return getAll<NovelBridge>(STORE_BRIDGES);
+}
+
+export async function saveBridge(bridge: NovelBridge): Promise<void> {
+  return put(STORE_BRIDGES, bridge);
+}
+
+export async function deleteBridge(id: string): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_BRIDGES, "readwrite", ([s]) => s.delete(id));
 }
 
 export async function listNovels(): Promise<Novel[]> {
@@ -341,11 +360,12 @@ export async function deleteNovelCascade(id: string): Promise<void> {
   const questions = await request<OpenQuestion[]>(db, STORE_QUESTIONS, "readonly", ([s]) => s.getAll());
   const entities = await request<BibleEntity[]>(db, STORE_ENTITIES, "readonly", ([s]) => s.getAll());
   const snapshots = await request<NovelSnapshot[]>(db, STORE_SNAPSHOTS, "readonly", ([s]) => s.getAll());
+  const bridges = await request<NovelBridge[]>(db, STORE_BRIDGES, "readonly", ([s]) => s.getAll());
   await request(
     db,
-    [STORE_NOVELS, STORE_CHAPTERS, STORE_SCENES, STORE_PLOTLINES, STORE_BEATS, STORE_ARCS, STORE_QUESTIONS, STORE_ENTITIES, STORE_SNAPSHOTS],
+    [STORE_NOVELS, STORE_CHAPTERS, STORE_SCENES, STORE_PLOTLINES, STORE_BEATS, STORE_ARCS, STORE_QUESTIONS, STORE_ENTITIES, STORE_SNAPSHOTS, STORE_BRIDGES],
     "readwrite",
-    ([novels, chaptersStore, scenesStore, plotlinesStore, beatsStore, arcsStore, questionsStore, entitiesStore, snapshotsStore]) => {
+    ([novels, chaptersStore, scenesStore, plotlinesStore, beatsStore, arcsStore, questionsStore, entitiesStore, snapshotsStore, bridgesStore]) => {
       novels.delete(id);
       for (const c of chapters ?? []) {
         if (c.novelId === id) chaptersStore.delete(c.id);
@@ -370,6 +390,9 @@ export async function deleteNovelCascade(id: string): Promise<void> {
       }
       for (const snap of snapshots ?? []) {
         if (snap.novelId === id) snapshotsStore.delete(snap.id);
+      }
+      for (const br of bridges ?? []) {
+        if (br.novelId === id) bridgesStore.delete(br.id);
       }
       return snapshotsStore.count();
     },

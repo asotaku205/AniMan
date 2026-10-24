@@ -27,8 +27,9 @@ import { buildDocxBlob } from "../lib/novelDocx";
 import type { NovelExportData } from "../lib/novel";
 import { checkSceneConsistency, summarizeScene } from "../../../../../lib/novel-ai";
 import type { AuthenticatedFetch } from "../../../../../lib/auth-api";
+import BridgeView from "./BridgeView";
 
-type OutlineTab = "cards" | "plotlines" | "arcs" | "bible" | "versions";
+type OutlineTab = "cards" | "plotlines" | "arcs" | "bible" | "versions" | "bridges";
 
 const KIND_BG: Record<BeatKind, string> = {
   goal: "bg-sky-100 text-sky-800",
@@ -266,6 +267,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
         {tabBtn("arcs", "Cung & Câu hỏi")}
         {tabBtn("bible", "Sổ tay")}
         {tabBtn("versions", "Phiên bản")}
+        {tabBtn("bridges", "Cầu nối")}
       </div>
 
       {tab === "cards" && (
@@ -860,6 +862,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
           </section>
         </div>
       )}
+      {tab === "bridges" && <BridgeView s={s} />}
     </div>
   );
 }

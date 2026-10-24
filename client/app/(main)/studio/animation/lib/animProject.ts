@@ -101,6 +101,8 @@ export interface AnimProject {
   fps: 12 | 24;
   /** Dự án manga nguồn nếu tạo từ pipeline; null = dự án độc lập. */
   sourceMangaProjectId: string | null;
+  /** Ghi chú nguồn khi tạo từ cầu nối (vd “Từ tiểu thuyết X — Chương 1”). */
+  sourceNote?: string;
   scenes: AnimScene[];
   /** Nhạc nền toàn phim (Slice B1); null = không có nhạc nền. */
   bgm?: ProjectBgm | null;

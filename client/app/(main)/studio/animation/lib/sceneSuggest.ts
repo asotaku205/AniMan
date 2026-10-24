@@ -37,13 +37,12 @@ export interface SceneDraft {
 }
 
 /**
- * Tách văn bản novel thành cảnh nháp:
- * - Mỗi đoạn văn (xuống dòng đôi) là hạt nhân một cảnh.
+ * Tách văn bản novel thành các đoạn (chunk) — dùng chung cho phân cảnh
+ * Animation và phân panel Manga (N5):
+ * - Mỗi đoạn văn (xuống dòng đôi) là một chunk.
  * - Đoạn quá dài (> ~700 ký tự) tách tiếp theo cụm 3-4 câu.
- * - Thời lượng gợi ý: đọc thầm ~14 ký tự/giây cho phần kể + tổng thoại,
- *   kẹp trong [3, 30] giây.
  */
-export function suggestScenesFromText(text: string): SceneDraft[] {
+export function splitNovelChunks(text: string): string[] {
   const paragraphs = text
     .split(/\n\s*\n/)
     .map((p) => p.replace(/\s+/g, " ").trim())
@@ -66,6 +65,24 @@ export function suggestScenesFromText(text: string): SceneDraft[] {
     }
     if (bucket.trim()) chunks.push(bucket.trim());
   }
+
+  return chunks;
+}
+
+/** Phần kể của một chunk (chunk trừ các câu thoại trong ngoặc kép). */
+export function stripDialogue(text: string): string {
+  return text.replace(DIALOGUE_RE, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Tách văn bản novel thành cảnh nháp:
+ * - Mỗi đoạn văn (xuống dòng đôi) là hạt nhân một cảnh.
+ * - Đoạn quá dài (> ~700 ký tự) tách tiếp theo cụm 3-4 câu.
+ * - Thời lượng gợi ý: đọc thầm ~14 ký tự/giây cho phần kể + tổng thoại,
+ *   kẹp trong [3, 30] giây.
+ */
+export function suggestScenesFromText(text: string): SceneDraft[] {
+  const chunks = splitNovelChunks(text);
 
   return chunks.map((chunk, i) => {
     const dialogueTexts = extractDialogue(chunk);

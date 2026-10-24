@@ -33,6 +33,7 @@ import {
   type Novel,
   type NovelExportData,
   type NovelSnapshot,
+  type NovelBridge,
   type OpenQuestion,
   type Plotline,
   type Scene,
@@ -51,6 +52,9 @@ import {
   deleteScene,
   deleteSnapshot,
   listSnapshots,
+  listBridges,
+  saveBridge,
+  deleteBridge,
   replaceNovelData,
   saveSnapshot,
   listArcs,
@@ -133,6 +137,7 @@ export function useNovelStudio() {
   const [questions, setQuestions] = useState<OpenQuestion[]>([]);
   const [entities, setEntities] = useState<BibleEntity[]>([]);
   const [snapshots, setSnapshots] = useState<NovelSnapshot[]>([]);
+  const [bridges, setBridges] = useState<NovelBridge[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -178,6 +183,7 @@ export function useNovelStudio() {
       setQuestions(await listQuestions());
       setEntities(await listEntities());
       setSnapshots(await listSnapshots());
+      setBridges(await listBridges());
       const m = new Map<string, number>();
       for (const sc of scs) m.set(sc.id, sceneWords(sc));
       lastSavedWordsRef.current = m;
@@ -756,6 +762,24 @@ export function useNovelStudio() {
     }
   };
 
+  const addBridge = async (bridge: NovelBridge) => {
+    try {
+      await saveBridge(bridge);
+      setBridges((prev) => [bridge, ...prev]);
+    } catch {
+      setSaveError("Không lưu được ghi nhận cầu nối.");
+    }
+  };
+
+  const deleteBridgeById = async (id: string) => {
+    try {
+      await deleteBridge(id);
+      setBridges((prev) => prev.filter((b) => b.id !== id));
+    } catch {
+      setSaveError("Không xoá được ghi nhận cầu nối.");
+    }
+  };
+
   const takeSnapshot = async (name: string, note: string): Promise<NovelSnapshot | null> => {
     const novel = novels.find((n) => n.id === selectedNovelId);
     if (!novel) return null;
@@ -938,6 +962,11 @@ export function useNovelStudio() {
       ? snapshots.filter((x) => x.novelId === selectedNovelId).sort((a, b) => b.createdAt - a.createdAt)
       : [],
     takeSnapshot, deleteSnapshot: deleteSnapshotById, restoreSnapshot,
+    // N5
+    bridges: selectedNovelId
+      ? bridges.filter((x) => x.novelId === selectedNovelId).sort((a, b) => b.createdAt - a.createdAt)
+      : [],
+    addBridge, deleteBridge: deleteBridgeById,
   };
 }
 
