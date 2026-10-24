@@ -305,7 +305,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
             />
             <div className="mt-10 text-right" style={{ fontFamily: "Shippori Mincho, serif" }}>
-              <span className="text-xs opacity-60">— SakuraStream · trang 128</span>
+              <span className="text-xs opacity-60">— SakuraStream · Cảnh {currentIdx + 1}/{sceneOrder.length}</span>
             </div>
           </Page>
           {flip && (
@@ -405,7 +405,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
             className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
           />
           <div className="mt-10 text-right" style={{ fontFamily: "Shippori Mincho, serif" }}>
-            <span className="text-xs opacity-60">— SakuraStream</span>
+            <span className="text-xs opacity-60">— SakuraStream · Cảnh {currentIdx + 1}/{sceneOrder.length}</span>
           </div>
         </div>
 
