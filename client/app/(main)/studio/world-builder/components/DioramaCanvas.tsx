@@ -284,6 +284,8 @@ export function DioramaCanvas({
     sun.shadow.camera.top = 30;
     sun.shadow.camera.bottom = -30;
     sun.shadow.camera.far = 100;
+    sun.shadow.bias = -0.0005;
+    sun.shadow.normalBias = 0.1;
     scene.add(sun);
     skyLightsRef.current = { sun, hemi };
     // Hạt thời tiết: 1200 điểm rơi trong hộp 60×30×60 quanh tâm.
@@ -779,7 +781,7 @@ export function DioramaCanvas({
     const k = size / GROUND_SIZE;
     t.base.scale.set(k, 1, k);
     t.water.scale.set(k, k, 1);
-    t.water.position.y = terrain.waterLevel;
+    t.water.position.y = terrain.waterLevel + 0.02;
     t.water.visible = terrain.waterLevel > -1;
     // Đường đi: dải ribbon bám cao độ + chấm tròn ở mỗi điểm.
     for (const child of [...t.pathsGroup.children]) {
