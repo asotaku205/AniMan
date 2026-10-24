@@ -151,9 +151,31 @@ export function modelDef(id: DioramaModelId): ModelDef {
   return MODEL_DEFS.find((m) => m.id === id) ?? MODEL_DEFS[0];
 }
 
+/** Trạng thái tài sản 5 mức (W2, theo nghiên cứu pipeline asset 3D):
+ * từ phác thảo 2D tới sẵn sàng dùng trong phim. */
+export type AssetStatus =
+  | "sketch"
+  | "rough"
+  | "textured"
+  | "rigged"
+  | "ready";
+
+export const ASSET_STATUSES: Array<{ id: AssetStatus; label: string }> = [
+  { id: "sketch", label: "Phác thảo 2D" },
+  { id: "rough", label: "Mẫu thô" },
+  { id: "textured", label: "Có chất liệu" },
+  { id: "rigged", label: "Đã gắn xương" },
+  { id: "ready", label: "Sẵn sàng" },
+];
+
 export interface DioramaPlacement {
   id: string;
+  /** Mẫu khối cơ bản — khi có glbAssetId thì GLB được ưu tiên dựng. */
   modelId: DioramaModelId;
+  /** Id asset GLB trong kho tài sản Animation Studio (null = dùng khối). */
+  glbAssetId?: string | null;
+  /** Trạng thái tài sản của vật (mặc định "rough" cho mẫu khối). */
+  assetStatus?: AssetStatus;
   /** Thực thể truyện gắn với vật — null là vật trang trí thuần túy. */
   storyEntityId: string | null;
   name: string;
@@ -171,9 +193,33 @@ export interface EntityRelation {
   label: string;
 }
 
+/** Trường tự do do người dùng tự thêm (W2: không khóa cứng trường). */
+export interface CustomField {
+  key: string;
+  value: string;
+}
+
+/** Một hình trong hồ sơ thiết kế 2D (bản vẽ góc / biểu cảm). */
+export interface DesignImage {
+  label: string;
+  dataUrl: string;
+}
+
+/** Hồ sơ thiết kế 2D của thực thể (W2): bản vẽ 3 góc + bảng màu +
+ * bảng biểu cảm — nguyên liệu cho nút "Gói bàn giao cho AI 3D". */
+export interface Design2D {
+  front?: string | null;
+  side?: string | null;
+  back?: string | null;
+  palette: string[];
+  expressions: DesignImage[];
+}
+
 export interface StoryEntity {
   id: string;
-  kind: "character" | "place" | "event";
+  /** Loại tự do (W2): "character"/"place"/"event" chỉ là gợi ý, người
+   * dùng tự đặt loại mới (VD: "Quốc gia", "Sinh vật"). */
+  kind: string;
   name: string;
   role: string;
   traits: string[];
@@ -181,11 +227,40 @@ export interface StoryEntity {
   color: string;
   /** Quan hệ với các thực thể khác (hồ sơ sống trong vật). */
   relations: EntityRelation[];
+  customFields: CustomField[];
+  design2d: Design2D;
+}
+
+/** Sự kiện trong dòng thời gian của world (W2). */
+export interface WorldEvent {
+  id: string;
+  title: string;
+  /** Nhãn thời gian tự do (VD: "Năm 1023", "Kỷ nguyên Thứ ba"). */
+  dateLabel: string;
+  order: number;
+  entityIds: string[];
+  description: string;
 }
 
 export interface DioramaState {
   placements: DioramaPlacement[];
   entities: StoryEntity[];
+  events: WorldEvent[];
+}
+
+/** Nhãn hiển thị cho loại thực thể: loại chuẩn dịch sang tiếng Việt,
+ * loại tự đặt giữ nguyên tên người dùng gõ. */
+export function entityKindLabel(kind: string): string {
+  if (kind === "character") return "Nhân vật";
+  if (kind === "place") return "Địa điểm";
+  if (kind === "event") return "Sự kiện";
+  return kind || "Thực thể";
+}
+
+/** Bán kính vòng chọn: vật GLB dùng mặc định 2 (kích thước thật chỉ
+ * biết sau khi nạp file, vòng chọn chỉ cần đủ để bấm trúng). */
+export function placementFootprint(p: DioramaPlacement): number {
+  return p.glbAssetId ? 2 : modelDef(p.modelId).footprint;
 }
 
 let placementCounter = 0;
@@ -211,15 +286,19 @@ export function createPlacement(
   z: number,
   storyEntityId: string | null = null,
   name?: string,
+  glbAssetId?: string | null,
 ): DioramaPlacement {
   const def = modelDef(modelId);
+  const footprint = glbAssetId ? 2 : def.footprint;
   return {
     id: newPlacementId(),
     modelId,
+    glbAssetId: glbAssetId ?? null,
+    assetStatus: glbAssetId ? "rough" : "rough",
     storyEntityId,
     name: name ?? def.name,
-    x: snapToGrid(clampGround(x, def.footprint)),
-    z: snapToGrid(clampGround(z, def.footprint)),
+    x: snapToGrid(clampGround(x, footprint)),
+    z: snapToGrid(clampGround(z, footprint)),
     rotationY: 0,
     scale: 1,
     visible: true,
@@ -269,6 +348,8 @@ export function migrateLegacyWorld(
     description: c.backstory,
     color: c.color,
     relations: [],
+    customFields: [],
+    design2d: { palette: [], expressions: [] },
   }));
   const placements: DioramaPlacement[] = chars.map((c) => {
     const { x, z } = hexToGround(c.hexCol, c.hexRow);
@@ -277,7 +358,7 @@ export function migrateLegacyWorld(
       id: `pl-${c.id}`,
     };
   });
-  return { entities, placements };
+  return { entities, placements, events: [] };
 }
 
 /** Bộ vật khởi điểm cho sa bàn trống (trường + đền + cầu + cây). */
@@ -334,4 +415,104 @@ export function removeRelation(
     ...entity,
     relations: entity.relations.filter((r) => r.entityId !== targetId),
   };
+}
+
+/** Thêm trường tự do (trùng key thì cập nhật giá trị). */
+export function addCustomField(
+  entity: StoryEntity,
+  key: string,
+  value: string,
+): StoryEntity {
+  const k = key.trim();
+  if (!k) return entity;
+  const fields = entity.customFields ?? [];
+  if (fields.some((f) => f.key === k)) {
+    return {
+      ...entity,
+      customFields: fields.map((f) => (f.key === k ? { ...f, value } : f)),
+    };
+  }
+  return { ...entity, customFields: [...fields, { key: k, value }] };
+}
+
+export function removeCustomField(
+  entity: StoryEntity,
+  key: string,
+): StoryEntity {
+  return {
+    ...entity,
+    customFields: (entity.customFields ?? []).filter((f) => f.key !== key),
+  };
+}
+
+/** Bảng màu thiết kế: trùng màu thì bỏ qua. */
+export function addPaletteColor(
+  entity: StoryEntity,
+  color: string,
+): StoryEntity {
+  const d = entity.design2d ?? { palette: [], expressions: [] };
+  if (d.palette.includes(color)) return entity;
+  return { ...entity, design2d: { ...d, palette: [...d.palette, color] } };
+}
+
+export function removePaletteColor(
+  entity: StoryEntity,
+  color: string,
+): StoryEntity {
+  const d = entity.design2d ?? { palette: [], expressions: [] };
+  return { ...entity, design2d: { ...d, palette: d.palette.filter((c) => c !== color) } };
+}
+
+/** Biểu cảm thiết kế: trùng nhãn thì vẽ đè. */
+export function addDesignExpression(
+  entity: StoryEntity,
+  label: string,
+  dataUrl: string,
+): StoryEntity {
+  const clean = label.trim() || "Không tên";
+  const d = entity.design2d ?? { palette: [], expressions: [] };
+  const rest = d.expressions.filter((e) => e.label !== clean);
+  return {
+    ...entity,
+    design2d: { ...d, expressions: [...rest, { label: clean, dataUrl }] },
+  };
+}
+
+export function removeDesignExpression(
+  entity: StoryEntity,
+  label: string,
+): StoryEntity {
+  const d = entity.design2d ?? { palette: [], expressions: [] };
+  return {
+    ...entity,
+    design2d: { ...d, expressions: d.expressions.filter((e) => e.label !== label) },
+  };
+}
+
+let eventCounter = 0;
+
+/** Thêm sự kiện vào timeline (order tự tăng sau sự kiện cuối). */
+export function addWorldEvent(
+  events: WorldEvent[],
+  input: Omit<WorldEvent, "id" | "order"> & { order?: number },
+): WorldEvent[] {
+  const order =
+    input.order ?? (events.length ? Math.max(...events.map((e) => e.order)) + 1 : 0);
+  eventCounter += 1;
+  return [
+    ...events,
+    { ...input, id: `ev-${Date.now().toString(36)}-${eventCounter.toString(36)}`, order },
+  ];
+}
+
+export function removeWorldEvent(
+  events: WorldEvent[],
+  id: string,
+): WorldEvent[] {
+  return events.filter((e) => e.id !== id);
+}
+
+/** Sự kiện xếp theo thứ tự timeline (ổn định khi trùng order). */
+export function sortedEvents(events: WorldEvent[]): WorldEvent[] {
+  return [...events].sort((a, b) => a.order - b.order);
 }

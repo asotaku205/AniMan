@@ -8,13 +8,16 @@
  * tiếp rồi mới commit một lần khi thả chuột.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import {
   GROUND_SIZE,
   clampGround,
   modelDef,
+  placementFootprint,
   snapToGrid,
   type DioramaPlacement,
   type StoryEntity,
@@ -26,6 +29,8 @@ interface Props {
   selectedId: string | null;
   /** Đang cầm một mẫu để đặt — bấm vào mặt đất là đặt xuống. */
   placing: boolean;
+  /** dataUrl GLB theo asset id (từ kho tài sản Animation Studio). */
+  glbDataUrls: Record<string, string>;
   onSelect: (id: string | null) => void;
   onPlace: (x: number, z: number) => void;
   onMove: (id: string, x: number, z: number) => void;
@@ -55,7 +60,14 @@ function buildPlacementMesh(
   for (const part of def.parts) {
     let geometry: THREE.BufferGeometry;
     if (part.shape === "box") {
-      geometry = new THREE.BoxGeometry(...part.size);
+      // Bo góc nhẹ: khối hộp nhìn "đồ chơi" hơn hẳn hộp sắc cạnh, vẫn
+      // rẻ (RoundedBoxGeometry chỉ thêm vài đỉnh) — chuẩn low-poly
+      // stylized kiểu KayKit/Kenney.
+      const r = Math.min(0.12, part.size[0] / 4, part.size[1] / 4, part.size[2] / 4);
+      geometry =
+        r > 0.01
+          ? new RoundedBoxGeometry(part.size[0], part.size[1], part.size[2], 2, r)
+          : new THREE.BoxGeometry(...part.size);
     } else if (part.shape === "cone") {
       geometry = new THREE.ConeGeometry(
         part.size[0],
@@ -76,8 +88,16 @@ function buildPlacementMesh(
       part.color === "__entity__" ? (entity?.color ?? "#8b5cf6") : part.color;
     const mesh = new THREE.Mesh(
       geometry,
-      new THREE.MeshLambertMaterial({ color }),
+      // MeshStandardMaterial + flatShading = mặt phẳng có chiều sâu
+      // ánh sáng rõ hơn Lambert, đúng phong cách low-poly stylized.
+      new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.85,
+        metalness: 0,
+        flatShading: true,
+      }),
     );
+    mesh.castShadow = true;
     mesh.position.set(...part.offset);
     if (part.rotationY) mesh.rotation.y = part.rotationY;
     mesh.userData.placementId = p.id;
@@ -91,6 +111,7 @@ export function DioramaCanvas({
   entities,
   selectedId,
   placing,
+  glbDataUrls,
   onSelect,
   onPlace,
   onMove,
@@ -113,6 +134,12 @@ export function DioramaCanvas({
     downY: number;
     moved: boolean;
   } | null>(null);
+  // Cache scene GLB đã nạp theo asset id: clone mỗi lần dựng lại để
+  // tránh parse lại base64 khi gõ hồ sơ; clone CHIA SẺ geometry nên
+  // khi dọn KHÔNG được dispose clone (xem rebuild effect).
+  const glbCacheRef = useRef<Map<string, THREE.Group>>(new Map());
+  const glbFailedRef = useRef<Set<string>>(new Set());
+  const [, setGlbTick] = useState(0);
   const callbacksRef = useRef({ onSelect, onPlace, onMove, placing });
   callbacksRef.current = { onSelect, onPlace, onMove, placing };
 
@@ -122,6 +149,12 @@ export function DioramaCanvas({
     if (!container) return;
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // ACES tone mapping + bóng mềm: hai thứ rẻ nhất để sa bàn hết
+    // cảm giác "hình khối thô" mà không cần đổi mẫu vật.
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
 
@@ -144,22 +177,32 @@ export function DioramaCanvas({
     controls.minDistance = 10;
     controls.maxDistance = 70;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+    scene.add(new THREE.HemisphereLight(0xbcd7ff, 0x3a2f22, 0.55));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
     sun.position.set(20, 30, 10);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -30;
+    sun.shadow.camera.right = 30;
+    sun.shadow.camera.top = 30;
+    sun.shadow.camera.bottom = -30;
+    sun.shadow.camera.far = 100;
     scene.add(sun);
 
     // Đế sa bàn: khối đế + mặt đất phẳng + lưới mờ
     const base = new THREE.Mesh(
       new THREE.BoxGeometry(GROUND_SIZE + 2, 1, GROUND_SIZE + 2),
-      new THREE.MeshLambertMaterial({ color: "#3c2c17" }),
+      new THREE.MeshStandardMaterial({ color: "#3c2c17", roughness: 1 }),
     );
     base.position.y = -0.5;
+    base.receiveShadow = true;
     scene.add(base);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
-      new THREE.MeshLambertMaterial({ color: "#5d9150" }),
+      new THREE.MeshStandardMaterial({ color: "#5d9150", roughness: 1 }),
     );
+    ground.receiveShadow = true;
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = 0.01;
     scene.add(ground);
@@ -273,14 +316,12 @@ export function DioramaCanvas({
         return;
       }
       if (!drag.moved) return;
-      const def = modelDef(
-        placementsRef.current.find((p) => p.id === drag.id)?.modelId ??
-          "character",
-      );
+      const found = placementsRef.current.find((p) => p.id === drag.id);
+      const fp = found ? placementFootprint(found) : 0;
       callbacksRef.current.onMove(
         drag.id,
-        snapToGrid(clampGround(drag.group.position.x, def.footprint)),
-        snapToGrid(clampGround(drag.group.position.z, def.footprint)),
+        snapToGrid(clampGround(drag.group.position.x, fp)),
+        snapToGrid(clampGround(drag.group.position.z, fp)),
       );
     };
     const el = renderer.domElement;
@@ -313,6 +354,8 @@ export function DioramaCanvas({
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       controls.dispose();
+      for (const g of glbCacheRef.current.values()) disposeObject(g);
+      glbCacheRef.current.clear();
       disposeObject(objects);
       scene.traverse((child) => {
         if (child instanceof THREE.Mesh && child !== ring) {
@@ -337,11 +380,67 @@ export function DioramaCanvas({
     if (!t) return;
     for (const child of [...t.objects.children]) {
       t.objects.remove(child);
-      disposeObject(child);
+      // Clone GLB chia sẻ geometry với cache — dispose nó là hỏng cache.
+      if (!(child as THREE.Group).userData.sharedGlb) disposeObject(child);
     }
     const entityById = new Map(entities.map((e) => [e.id, e]));
+    const loader = new GLTFLoader();
     for (const p of placements) {
       if (!p.visible) continue;
+      if (p.glbAssetId) {
+        const cached = glbCacheRef.current.get(p.glbAssetId);
+        if (cached) {
+          const clone = cached.clone(true);
+          clone.position.set(p.x, 0, p.z);
+          clone.rotation.y = p.rotationY;
+          clone.scale.setScalar(p.scale);
+          clone.userData.placementId = p.id;
+          clone.userData.sharedGlb = true;
+          t.objects.add(clone);
+          continue;
+        }
+        const dataUrl = glbDataUrls[p.glbAssetId];
+        if (dataUrl && !glbFailedRef.current.has(p.glbAssetId)) {
+          // Hộp chờ trong lúc nạp file; nạp xong dựng lại 1 lần.
+          const holder = buildPlacementMesh(
+            { ...p, glbAssetId: null },
+            p.storyEntityId ? (entityById.get(p.storyEntityId) ?? null) : null,
+          );
+          t.objects.add(holder);
+          const assetId = p.glbAssetId;
+          loader
+            .loadAsync(dataUrl)
+            .then((gltf) => {
+              const scene = gltf.scene;
+              // Chuẩn hoá về chiều cao ~2 đơn vị (file ngoài đơn vị
+              // tuỳ ý: mét/cm) rồi cache để lần sau clone thẳng.
+              const box = new THREE.Box3().setFromObject(scene);
+              const size = new THREE.Vector3();
+              box.getSize(size);
+              const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+              scene.scale.setScalar(2 / maxDim);
+              scene.traverse((child) => {
+                if (child instanceof THREE.Mesh) child.castShadow = true;
+              });
+              glbCacheRef.current.set(assetId, scene);
+              setGlbTick((v) => v + 1);
+            })
+            .catch(() => {
+              glbFailedRef.current.add(assetId);
+              setGlbTick((v) => v + 1);
+            });
+          continue;
+        }
+        // Không có file (đã xoá bên Animation Studio / nạp lỗi): vẫn
+        // hiện hộp giữ chỗ để vật không biến mất âm thầm.
+        t.objects.add(
+          buildPlacementMesh(
+            { ...p, glbAssetId: null },
+            p.storyEntityId ? (entityById.get(p.storyEntityId) ?? null) : null,
+          ),
+        );
+        continue;
+      }
       t.objects.add(
         buildPlacementMesh(p, p.storyEntityId ? (entityById.get(p.storyEntityId) ?? null) : null),
       );
@@ -350,12 +449,11 @@ export function DioramaCanvas({
     if (sel) {
       t.ring.visible = true;
       t.ring.position.set(sel.x, 0.04, sel.z);
-      const r = modelDef(sel.modelId).footprint;
-      t.ring.scale.setScalar(r);
+      t.ring.scale.setScalar(placementFootprint(sel));
     } else {
       t.ring.visible = false;
     }
-  }, [placements, entities, selectedId]);
+  }, [placements, entities, selectedId, glbDataUrls]);
 
   return (
     <div

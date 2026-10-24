@@ -69,8 +69,9 @@ describe("đặc điểm và quan hệ của thực thể", () => {
   it("thêm/xoá đặc điểm, trùng và rỗng thì bỏ qua", async () => {
     const mod = await import("../lib/diorama");
     const base = {
-      id: "e1", kind: "character" as const, name: "Kira", role: "",
+      id: "e1", kind: "character", name: "Kira", role: "",
       traits: ["Dũng cảm"], description: "", color: "#ef4444", relations: [],
+      customFields: [], design2d: { palette: [], expressions: [] },
     };
     expect(mod.addTrait(base, "Dũng cảm").traits).toEqual(["Dũng cảm"]);
     expect(mod.addTrait(base, "  ").traits).toEqual(["Dũng cảm"]);
@@ -81,8 +82,9 @@ describe("đặc điểm và quan hệ của thực thể", () => {
   it("thêm quan hệ: ghi đè nhãn khi trùng, chặn tự quan hệ", async () => {
     const mod = await import("../lib/diorama");
     const base = {
-      id: "e1", kind: "character" as const, name: "Kira", role: "",
+      id: "e1", kind: "character", name: "Kira", role: "",
       traits: [], description: "", color: "#ef4444", relations: [],
+      customFields: [], design2d: { palette: [], expressions: [] },
     };
     const withRel = mod.addRelation(base, "e2", "Bạn thân");
     expect(withRel.relations).toEqual([{ entityId: "e2", label: "Bạn thân" }]);
@@ -91,5 +93,93 @@ describe("đặc điểm và quan hệ của thực thể", () => {
     ]);
     expect(mod.addRelation(base, "e1", "Tôi").relations).toEqual([]);
     expect(mod.removeRelation(withRel, "e2").relations).toEqual([]);
+  });
+});
+
+describe("W2: loại & trường tự do, thiết kế 2D, sự kiện, GLB", () => {
+  it("entityKindLabel: loại chuẩn dịch, loại tự đặt giữ nguyên", async () => {
+    const mod = await import("../lib/diorama");
+    expect(mod.entityKindLabel("character")).toBe("Nhân vật");
+    expect(mod.entityKindLabel("place")).toBe("Địa điểm");
+    expect(mod.entityKindLabel("Quốc gia")).toBe("Quốc gia");
+  });
+
+  it("trường tự do: thêm/cập nhật theo key/xoá", async () => {
+    const mod = await import("../lib/diorama");
+    const base = {
+      id: "e1", kind: "character", name: "Kira", role: "",
+      traits: [], description: "", color: "#ef4444", relations: [],
+      customFields: [], design2d: { palette: [], expressions: [] },
+    };
+    const one = mod.addCustomField(base, "Sức mạnh", "90");
+    expect(one.customFields).toEqual([{ key: "Sức mạnh", value: "90" }]);
+    expect(mod.addCustomField(one, "Sức mạnh", "95").customFields).toEqual([
+      { key: "Sức mạnh", value: "95" },
+    ]);
+    expect(mod.addCustomField(base, "  ", "x")).toBe(base);
+    expect(mod.removeCustomField(one, "Sức mạnh").customFields).toEqual([]);
+  });
+
+  it("bảng màu + biểu cảm: trùng thì ghi đè/bỏ qua, xoá được", async () => {
+    const mod = await import("../lib/diorama");
+    const base = {
+      id: "e1", kind: "character", name: "Kira", role: "",
+      traits: [], description: "", color: "#ef4444", relations: [],
+      customFields: [], design2d: { palette: [], expressions: [] },
+    };
+    const withColor = mod.addPaletteColor(base, "#123456");
+    expect(mod.addPaletteColor(withColor, "#123456").design2d.palette).toEqual(["#123456"]);
+    expect(mod.removePaletteColor(withColor, "#123456").design2d.palette).toEqual([]);
+    const withExpr = mod.addDesignExpression(base, "Vui", "data:,a");
+    expect(mod.addDesignExpression(withExpr, "Vui", "data:,b").design2d.expressions).toEqual([
+      { label: "Vui", dataUrl: "data:,b" },
+    ]);
+    expect(mod.removeDesignExpression(withExpr, "Vui").design2d.expressions).toEqual([]);
+  });
+
+  it("sự kiện: order tự tăng, xếp theo order, xoá được", async () => {
+    const mod = await import("../lib/diorama");
+    const evs = mod.addWorldEvent([], { title: "A", dateLabel: "", entityIds: [], description: "" });
+    const evs2 = mod.addWorldEvent(evs, { title: "B", dateLabel: "", entityIds: [], description: "" });
+    expect(evs2[1].order).toBeGreaterThan(evs2[0].order);
+    expect(mod.sortedEvents([evs2[1], evs2[0]]).map((e) => e.title)).toEqual(["A", "B"]);
+    expect(mod.removeWorldEvent(evs2, evs2[0].id)).toHaveLength(1);
+  });
+
+  it("placement GLB: footprint mặc định 2, khối dùng footprint mẫu", async () => {
+    const mod = await import("../lib/diorama");
+    const glb = mod.createPlacement("character", 0, 0, null, "Robot", "asset-1");
+    expect(glb.glbAssetId).toBe("asset-1");
+    expect(mod.placementFootprint(glb)).toBe(2);
+    expect(mod.placementFootprint(mod.createPlacement("school", 0, 0))).toBe(4.2);
+  });
+});
+
+describe("gói bàn giao ZIP (STORE, không nén)", () => {
+  it("đóng gói đúng chữ ký PK, đọc lại được tên file + dữ liệu", async () => {
+    const mod = await import("../lib/handoffZip");
+    const payload = new TextEncoder().encode("hello world");
+    const zip = mod.buildZip([
+      { name: "prompt.txt", data: payload },
+      { name: "view-front.png", data: new Uint8Array([1, 2, 3]) },
+    ]);
+    expect(zip[0]).toBe(0x50);
+    expect(zip[1]).toBe(0x4b);
+    const text = new TextDecoder().decode(zip);
+    expect(text).toContain("prompt.txt");
+    expect(text).toContain("view-front.png");
+    expect(text).toContain("hello world");
+    expect(mod.crc32(payload)).toBeGreaterThan(0);
+  });
+
+  it("prompt tiếng Anh chứa tên, vai trò, palette", async () => {
+    const mod = await import("../lib/handoffZip");
+    const prompt = mod.handoffPromptText({
+      name: "Kira", role: "Pháp sư", traits: ["Dũng cảm"],
+      description: "Người giữ đền", palette: ["#ef4444"],
+    });
+    expect(prompt).toContain("Kira");
+    expect(prompt).toContain("GLB");
+    expect(prompt).toContain("#ef4444");
   });
 });
