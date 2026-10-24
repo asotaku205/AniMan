@@ -39,4 +39,4 @@ export const INITIAL_NOTES: Note[] = [
   { id: 3, text: "Kiểm tra mạch cảm xúc chương 1 → 2.", top: 64, expanded: false },
 ];
 
-export type SideTabKey = "font" | "audio" | "timer" | "chapters" | "paper";
+export type SideTabKey = "font" | "audio" | "timer" | "stats" | "paper";

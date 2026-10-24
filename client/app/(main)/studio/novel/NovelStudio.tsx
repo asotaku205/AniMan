@@ -3,6 +3,7 @@
 import { SectionEyebrow }  from "./components/SectionEyebrow";
 import { WashiBookPage }   from "./components/WashiBookPage";
 import { TabbedSidePanel } from "./components/TabbedSidePanel";
+import { NovelBinder }     from "./components/NovelBinder";
 import { useNovelStudio }  from "./hooks/useNovelStudio";
 
 export function NovelStudio() {
@@ -20,7 +21,22 @@ export function NovelStudio() {
           desc="Click trực tiếp vào trang để viết. Tuỳ chỉnh font, mixer 5 lớp âm thanh, hẹn giờ Pomodoro và dán ghi chú lên lề trang."
         />
 
-        <div className="mt-12 grid lg:grid-cols-[1fr_320px] gap-8 items-start">
+        {s.saveError && (
+          <div className="mt-8 rounded-xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-rose-100 text-sm flex flex-wrap items-center gap-3">
+            <span className="flex-1">{s.saveError}</span>
+            <button onClick={() => void s.retrySave()} className="h-8 px-3 rounded-lg bg-white/10 border border-white/20 text-xs font-medium">
+              Thử lưu lại
+            </button>
+            <button onClick={() => void s.reload()} className="h-8 px-3 rounded-lg bg-white/10 border border-white/20 text-xs font-medium">
+              Tải lại
+            </button>
+          </div>
+        )}
+
+        <div className="mt-12 grid gap-8 items-start xl:grid-cols-[260px_minmax(0,1fr)_320px]">
+          {/* Cây sách */}
+          <NovelBinder s={s} />
+
           {/* Book + Sticky notes */}
           <WashiBookPage s={s} />
 
@@ -37,6 +53,12 @@ export function NovelStudio() {
             running={s.running}
             toggleRun={s.toggleRun}
             resetTimer={s.resetTimer}
+            sceneWords={s.sceneWordCount}
+            chapterWords={s.chapterWordCount}
+            novelWords={s.novelWordCount}
+            todayWords={s.todayWords}
+            goalWordsPerDay={s.selectedNovel?.goalWordsPerDay ?? 500}
+            setGoal={(n) => void s.setGoal(n)}
           />
         </div>
       </div>

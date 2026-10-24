@@ -21,6 +21,33 @@ function Page({ children, right }: { children: React.ReactNode; right?: boolean 
 }
 
 export function WashiBookPage({ s }: { s: NovelStudioState }) {
+  if (s.loading) {
+    return (
+      <div className="relative mx-auto w-full max-w-4xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 text-amber-100/70 text-sm">
+        Đang tải tiểu thuyết…
+      </div>
+    );
+  }
+  if (!s.selectedScene) {
+    return (
+      <div className="relative mx-auto w-full max-w-4xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 space-y-3 shadow-2xl">
+        <p className="text-amber-100/90 font-medium" style={{ fontFamily: "Shippori Mincho, serif" }}>
+          {s.selectedChapter ? "Chương này chưa có cảnh nào" : "Chưa chọn chương"}
+        </p>
+        <p className="text-amber-100/60 text-sm leading-relaxed">
+          Tạo cảnh ở cây sách bên trái rồi bấm vào cảnh để bắt đầu viết — nội dung được lưu tự động.
+        </p>
+        {s.selectedChapter && (
+          <button
+            onClick={() => void s.addScene("Cảnh 1")}
+            className="h-9 px-4 rounded-lg bg-amber-400 text-amber-950 text-sm font-semibold"
+          >
+            Tạo cảnh đầu tiên
+          </button>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="relative mx-auto w-full max-w-4xl">
       <motion.div
@@ -40,20 +67,16 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
           {/* Left page */}
           <Page>
             <div style={{ fontFamily: "Shippori Mincho, serif" }} className="text-[#3a2412]/90 text-sm tracking-widest mb-6 text-center font-medium">
-              Chương 1 — Mưa Xuân
+              {s.selectedChapter?.title ?? ""} — {s.selectedScene.title}
             </div>
             <div
               ref={s.leftRef}
               contentEditable
               suppressContentEditableWarning
-              onInput={s.recountWords}
+              onInput={s.onSceneInput}
               style={{ fontFamily: s.font }}
               className="text-[#2a1a0a] text-2xl leading-[1.7] outline-none min-h-[280px] focus:bg-amber-50/20 rounded px-1"
-            >
-              Tôi nhớ buổi chiều ấy, mưa rơi rất khẽ trên mái ngói cong của ngôi đền cũ.
-              Em đứng đó, ô giấy nghiêng nghiêng, ánh mắt lạc giữa những cánh hoa anh đào
-              cuối cùng còn sót lại của mùa xuân.
-            </div>
+            />
           </Page>
 
           {/* Right page */}
@@ -62,14 +85,10 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               ref={s.rightRef}
               contentEditable
               suppressContentEditableWarning
-              onInput={s.recountWords}
+              onInput={s.onSceneInput}
               style={{ fontFamily: s.font }}
               className="text-[#2a1a0a] text-2xl leading-[1.7] outline-none min-h-[280px] focus:bg-amber-50/20 rounded px-1"
-            >
-              "Cậu có tin vào kiếp sau không?" — em hỏi, không nhìn tôi.
-              Tôi chưa kịp đáp. Một cánh hoa rơi xuống bàn tay em, rồi tan
-              thành giọt mực loang trên trang giấy của ký ức.
-            </div>
+            />
             <div className="mt-10 text-right" style={{ fontFamily: "Shippori Mincho, serif" }}>
               <span className="text-[#3a2412]/60 text-xs">— SakuraStream · trang 128</span>
             </div>

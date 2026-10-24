@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { BookMarked, Feather, Pause, Play, RotateCcw, Timer, Type, Volume2 } from "lucide-react";
+import { Feather, Pause, Play, RotateCcw, Target, Timer, Type, Volume2 } from "lucide-react";
 import { FONTS, type SideTabKey, type Track } from "../data";
 
 const SIDE_TABS: { k: SideTabKey; label: string; icon: React.ReactNode }[] = [
   { k: "font", label: "Font", icon: <Type className="w-4 h-4" /> },
   { k: "audio", label: "Âm thanh", icon: <Volume2 className="w-4 h-4" /> },
   { k: "timer", label: "Pomodoro", icon: <Timer className="w-4 h-4" /> },
-  { k: "chapters", label: "Chương", icon: <BookMarked className="w-4 h-4" /> },
+  { k: "stats", label: "Thống kê", icon: <Target className="w-4 h-4" /> },
   { k: "paper", label: "Giấy", icon: <Feather className="w-4 h-4" /> },
 ];
 
@@ -24,11 +24,18 @@ interface TabbedSidePanelProps {
   running: boolean;
   toggleRun: () => void;
   resetTimer: () => void;
+  sceneWords: number;
+  chapterWords: number;
+  novelWords: number;
+  todayWords: number;
+  goalWordsPerDay: number;
+  setGoal: (n: number) => void;
 }
 
 export function TabbedSidePanel({
   fontId, setFontId, tracks, setTracks, phase, progress,
   mm, ss, running, toggleRun, resetTimer,
+  sceneWords, chapterWords, novelWords, todayWords, goalWordsPerDay, setGoal,
 }: TabbedSidePanelProps) {
   const [tab, setTab] = useState<SideTabKey>("font");
   const current = SIDE_TABS.find((t) => t.k === tab)!;
@@ -127,13 +134,41 @@ export function TabbedSidePanel({
           </div>
         )}
 
-        {tab === "chapters" && (
-          <div className="space-y-1 text-sm">
-            {["1 · Mưa xuân", "2 · Tiếng chuông gió", "3 · Cánh hoa cuối cùng", "+ Chương mới"].map((c, i) => (
-              <div key={c} className={`px-2.5 py-2 rounded cursor-pointer transition ${i === 0 ? "bg-amber-100/15 text-amber-50 font-medium" : "text-amber-50/60 hover:bg-white/5"}`}>
-                {c}
+        {tab === "stats" && (
+          <div className="space-y-2.5 text-sm">
+            {[
+              ["Cảnh đang viết", sceneWords],
+              ["Chương này", chapterWords],
+              ["Toàn truyện", novelWords],
+              ["Hôm nay viết thêm", todayWords],
+            ].map(([label, value]) => (
+              <div key={label as string} className="flex justify-between text-amber-50/80">
+                <span>{label as string}</span>
+                <span className="tabular-nums font-mono font-medium">{value as number} từ</span>
               </div>
             ))}
+            <label className="block text-amber-50/80 text-xs pt-1">
+              Mục tiêu (từ/ngày)
+              <input
+                type="number"
+                min={0}
+                step={100}
+                value={goalWordsPerDay}
+                onChange={(e) => setGoal(Number(e.currentTarget.value) || 0)}
+                className="mt-1 w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-sm text-amber-50 outline-none"
+              />
+            </label>
+            <div>
+              <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-pink-300 rounded-full"
+                  style={{ width: `${goalWordsPerDay > 0 ? Math.min(100, (todayWords / goalWordsPerDay) * 100) : 0}%` }}
+                />
+              </div>
+              <p className="text-amber-50/50 text-xs mt-1 tabular-nums">
+                {todayWords} / {goalWordsPerDay} từ hôm nay
+              </p>
+            </div>
           </div>
         )}
 
