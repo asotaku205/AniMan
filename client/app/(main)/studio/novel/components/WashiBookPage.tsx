@@ -132,6 +132,50 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
       ? sceneOrder[currentIdx + 1]
       : null;
   const pageTheme = PAGE_THEME[s.displayTheme];
+  // Chế độ mặc định nhìn như một dòng chảy liền mạch kiểu Wattpad nên
+  // phím mũi tên qua điểm nối 2 trang cũng phải nhảy sang trang kia.
+  const focusEditableEdge = (el: HTMLElement | null, atStart: boolean) => {
+    if (!el) return;
+    const sel = window.getSelection();
+    if (!sel) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(atStart);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    el.focus();
+  };
+  const handleDefaultKeyDown = (
+    e: React.KeyboardEvent,
+    side: "left" | "right",
+  ) => {
+    if (e.key === "Escape") {
+      setMention(null);
+      return;
+    }
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const rects = sel.getRangeAt(0).getClientRects();
+    if (rects.length === 0) return;
+    if (side === "left" && e.key === "ArrowDown") {
+      const el = s.leftRef.current;
+      if (!el) return;
+      const last = rects[rects.length - 1];
+      if (last.bottom >= el.getBoundingClientRect().bottom - 4) {
+        e.preventDefault();
+        focusEditableEdge(s.rightRef.current, true);
+      }
+    }
+    if (side === "right" && e.key === "ArrowUp") {
+      const el = s.rightRef.current;
+      if (!el) return;
+      const first = rects[0];
+      if (first.top <= el.getBoundingClientRect().top + 4) {
+        e.preventDefault();
+        focusEditableEdge(s.leftRef.current, false);
+      }
+    }
+  };
   // Lật giấy thật: khi đổi cảnh ở chế độ quyển, trang cũ (nội dung thật
   // của cảnh vừa rời) xoay quanh gáy để lộ trải mới bên dưới — trải mới
   // đã được nạp đủ nội dung trước khi lật, nên không còn đường mất nội
@@ -382,7 +426,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               : undefined,
           }}
         >
-          <div style={{ fontFamily: "Shippori Mincho, serif" }} className="text-sm tracking-widest mb-6 text-center font-medium opacity-80">
+          <div style={{ fontFamily: "Shippori Mincho, serif" }} className="text-lg mb-8 text-center font-semibold opacity-90">
             {s.selectedChapter?.title ?? ""} — {s.selectedScene.title}
           </div>
           <div
@@ -390,19 +434,18 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
             contentEditable
             suppressContentEditableWarning
             onInput={handleInput}
-            onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
+            onKeyDown={(e) => handleDefaultKeyDown(e, "left")}
             style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
-            className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
+            className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[160px] focus:bg-black/5 rounded px-1`}
           />
-          <div className="my-8 border-t border-black/10" />
           <div
             ref={s.rightRef}
             contentEditable
             suppressContentEditableWarning
             onInput={handleInput}
-            onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
+            onKeyDown={(e) => handleDefaultKeyDown(e, "right")}
             style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
-            className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
+            className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[160px] focus:bg-black/5 rounded px-1`}
           />
           <div className="mt-10 text-right" style={{ fontFamily: "Shippori Mincho, serif" }}>
             <span className="text-xs opacity-60">— SakuraStream · Cảnh {currentIdx + 1}/{sceneOrder.length}</span>
