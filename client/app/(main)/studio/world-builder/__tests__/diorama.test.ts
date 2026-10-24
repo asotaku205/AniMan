@@ -233,6 +233,21 @@ describe("W3: địa hình", () => {
   });
 });
 
+describe("Phase 2: bầu trời sống", () => {
+  it("pha trăng: tròn thì đĩa tối lệch hẳn, non thì che hết, bán nguyệt thì lệch 1 bán kính", async () => {
+    const d = await import("../lib/diorama");
+    expect(d.moonCoverOffset(0.5, 9)).toBe(18);
+    expect(d.moonCoverOffset(0, 9)).toBe(0);
+    expect(d.moonCoverOffset(0.25, 9)).toBe(9);
+    expect(d.moonCoverOffset(0.75, 9)).toBe(9);
+    expect(d.moonCoverSide(0.25)).toBe(-1);
+    expect(d.moonCoverSide(0.75)).toBe(1);
+    const phase = d.moonPhase(new Date(Date.UTC(2000, 0, 6, 18, 14)));
+    expect(phase).toBeGreaterThanOrEqual(0);
+    expect(phase).toBeLessThan(0.05);
+  });
+});
+
 describe("W9: sinh cảnh quan theo vùng", () => {
   it("núi nâng tâm cao, hồ hạ tâm + có nước, đảo có vành cát", async () => {
     const t = await import("../lib/terrain");

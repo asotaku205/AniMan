@@ -17,6 +17,9 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import {
   clampGround,
   modelDef,
+  moonCoverOffset,
+  moonCoverSide,
+  moonPhase,
   placementFootprint,
   skySun,
   placementParts,
@@ -29,6 +32,7 @@ import {
   type ModelPart,
   type StoryEntity,
 } from "../lib/diorama";
+import { mulberry32 } from "../lib/worldGen";
 import {
   CHUNK_SIZE,
   TERRAIN_CELLS,
@@ -237,6 +241,15 @@ export function DioramaCanvas({
   const customModelsRef = useRef(customModels);
   customModelsRef.current = customModels;
   const skyLightsRef = useRef<{ sun: THREE.DirectionalLight; hemi: THREE.HemisphereLight } | null>(null);
+  /** Bầu trời sống (Phase 2): đĩa mặt trời, mặt trăng + pha, sao, mây. */
+  const skyDressRef = useRef<{
+    sun: THREE.Sprite;
+    sunMat: THREE.SpriteMaterial;
+    moon: THREE.Group;
+    moonDark: THREE.Mesh;
+    stars: THREE.Points;
+    clouds: THREE.Sprite[];
+  } | null>(null);
   const weatherRef = useRef<{ points: THREE.Points; vel: Float32Array; kind: string } | null>(null);
   const flyRef = useRef<{
     fromPos: THREE.Vector3; fromTarget: THREE.Vector3;
@@ -272,7 +285,8 @@ export function DioramaCanvas({
       45,
       container.clientWidth / Math.max(1, container.clientHeight),
       0.1,
-      300,
+      // 1000 để chứa mặt trời/mặt trăng/sao ở 260–280m (Phase 2).
+      1000,
     );
     camera.position.set(22, 24, 22);
 
@@ -629,6 +643,15 @@ export function DioramaCanvas({
       const now = performance.now();
       const dt = Math.min(0.05, (now - lastT) / 1000);
       lastT = now;
+      // Bầu trời sống: mặt trăng hướng về camera, mây trôi rồi quấn lại.
+      const dress = skyDressRef.current;
+      if (dress) {
+        dress.moon.lookAt(camera.position);
+        for (const c of dress.clouds) {
+          c.position.x += (c.userData.speed as number) * dt;
+          if (c.position.x > 150) c.position.x = -150;
+        }
+      }
       // Pan bằng phím: dời cả camera lẫn điểm nhìn cùng một vector.
       if (keysDown.size > 0) {
         const fwd = new THREE.Vector3();
@@ -1078,6 +1101,92 @@ export function DioramaCanvas({
       (w.points.material as THREE.PointsMaterial).color.set(
         sky.weather === "rain" ? 0x9fc4e8 : 0xffffff,
       );
+    }
+    // Bầu trời sống (Phase 2): tạo 1 lần, cập nhật theo giờ.
+    if (!skyDressRef.current) {
+      const cv = document.createElement("canvas");
+      cv.width = 128;
+      cv.height = 128;
+      const ctx = cv.getContext("2d")!;
+      const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, "rgba(255,255,255,1)");
+      grad.addColorStop(0.35, "rgba(255,255,255,0.85)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 128, 128);
+      const glowTex = new THREE.CanvasTexture(cv);
+      const sunMat = new THREE.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, fog: false });
+      const sun = new THREE.Sprite(sunMat);
+      sun.scale.setScalar(70);
+      t.scene.add(sun);
+      const moon = new THREE.Group();
+      const moonBright = new THREE.Mesh(
+        new THREE.CircleGeometry(9, 32),
+        new THREE.MeshBasicMaterial({ color: "#e8ecf5", fog: false, transparent: true, opacity: 0.95 }),
+      );
+      const moonDark = new THREE.Mesh(
+        new THREE.CircleGeometry(9.4, 32),
+        new THREE.MeshBasicMaterial({ color: "#0d0817", fog: false, transparent: true, opacity: 1 }),
+      );
+      moonDark.position.z = 0.2;
+      moon.add(moonBright, moonDark);
+      t.scene.add(moon);
+      const rng = mulberry32(42);
+      const pos = new Float32Array(600 * 3);
+      for (let i = 0; i < 600; i += 1) {
+        const a = rng() * Math.PI * 2;
+        const y = 0.1 + rng() * 0.9;
+        const r = Math.sqrt(1 - y * y);
+        pos[i * 3] = Math.cos(a) * r * 280;
+        pos[i * 3 + 1] = y * 280;
+        pos[i * 3 + 2] = Math.sin(a) * r * 280;
+      }
+      const sg = new THREE.BufferGeometry();
+      sg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      const stars = new THREE.Points(
+        sg,
+        new THREE.PointsMaterial({ color: 0xffffff, size: 1.8, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false }),
+      );
+      t.scene.add(stars);
+      const crng = mulberry32(7);
+      const clouds: THREE.Sprite[] = [];
+      for (let i = 0; i < 16; i += 1) {
+        const m = new THREE.SpriteMaterial({ map: glowTex, color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, fog: false });
+        const sp = new THREE.Sprite(m);
+        sp.position.set((crng() - 0.5) * 280, 55 + crng() * 30, (crng() - 0.5) * 280);
+        sp.scale.set(30 + crng() * 30, 12 + crng() * 10, 1);
+        sp.userData = { speed: 0.6 + crng() * 0.9, base: 0.45 + crng() * 0.3 };
+        t.scene.add(sp);
+        clouds.push(sp);
+      }
+      skyDressRef.current = { sun, sunMat, moon, moonDark, stars, clouds };
+    }
+    const d = skyDressRef.current!;
+    const day = sky.time >= 6 && sky.time <= 18;
+    const sunDir = new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el));
+    d.sun.position.copy(sunDir).multiplyScalar(260);
+    d.sunMat.color.set(info.sunColor);
+    d.sun.visible = day;
+    const nightT = sky.time >= 18 ? sky.time - 18 : sky.time + 6;
+    const mAz = (nightT / 12) * Math.PI;
+    const mEl = Math.sin(mAz) * 0.9 + 0.08;
+    const moonDir = new THREE.Vector3(Math.cos(mAz) * Math.cos(mEl), Math.sin(mEl), Math.sin(mAz) * Math.cos(mEl));
+    d.moon.position.copy(moonDir).multiplyScalar(260);
+    d.moon.visible = !day;
+    const phase = moonPhase();
+    d.moonDark.position.set(moonCoverOffset(phase, 9) * moonCoverSide(phase), 0, 0.2);
+    (d.moonDark.material as THREE.MeshBasicMaterial).color.set(info.skyBg);
+    const darkness = !day ? 1 : sky.time < 7 || sky.time > 17 ? 0.4 : 0;
+    (d.stars.material as THREE.PointsMaterial).opacity = darkness * 0.9;
+    const cloudBase = day ? 1 : 0.3;
+    for (const c of d.clouds) {
+      c.material.opacity = (c.userData.base as number) * cloudBase;
+    }
+    if (!day) {
+      // Ban đêm đèn chính thành ánh trăng: xanh nhạt, từ hướng mặt trăng.
+      lights.sun.position.copy(moonDir).multiplyScalar(40);
+      lights.sun.color.set("#8ea2c8");
+      lights.sun.intensity = 0.3;
     }
   }, [sky]);
 

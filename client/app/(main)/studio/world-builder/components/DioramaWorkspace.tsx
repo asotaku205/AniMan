@@ -165,6 +165,17 @@ export function DioramaWorkspace() {
   const [terrainBiome, setTerrainBiome] = useState("grass");
   const [pathMode, setPathMode] = useState(false);
   const [draftPath, setDraftPath] = useState<Array<{ x: number; z: number }>>([]);
+  // Chạy thời gian (Phase 2): tự tăng giờ để xem ngày đêm chuyển động.
+  const [timeLapse, setTimeLapse] = useState(false);
+  useEffect(() => {
+    if (!timeLapse) return;
+    const id = setInterval(() => {
+      setState((prev) =>
+        prev ? { ...prev, sky: { ...prev.sky, time: Math.round((((prev.sky.time + 0.1) % 24) + 24) % 24 * 10) / 10 } } : prev,
+      );
+    }, 250);
+    return () => clearInterval(id);
+  }, [timeLapse]);
   // Sông (W9.3): vẽ đường rồi đào — như vẽ đường đi.
   const [riverMode, setRiverMode] = useState(false);
   const [draftRiver, setDraftRiver] = useState<Array<{ x: number; z: number }>>([]);
@@ -572,6 +583,13 @@ export function DioramaWorkspace() {
             className="w-28 accent-amber-400"
             aria-label="Giờ trong ngày"
           />
+          <button
+            onClick={() => setTimeLapse((v) => !v)}
+            title={timeLapse ? "Dừng chạy thời gian" : "Chạy thời gian (xem ngày đêm chuyển động)"}
+            className={`h-8 px-2.5 rounded-lg border text-[12px] whitespace-nowrap ${timeLapse ? "bg-amber-500/25 border-amber-400/50 text-amber-100" : "bg-white/5 border-white/10 text-white/70"}`}
+          >
+            {timeLapse ? "⏸ Dừng" : "▶ Chạy giờ"}
+          </button>
           <select
             value={state.sky.weather}
             onChange={(e) => setState({ ...state, sky: { ...state.sky, weather: e.target.value as typeof state.sky.weather } })}

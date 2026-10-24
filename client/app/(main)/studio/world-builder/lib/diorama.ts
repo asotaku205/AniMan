@@ -910,3 +910,24 @@ export function skySun(sky: SkySettings): {
   const hemiIntensity = day ? 0.9 : 0.35;
   return { elevation, sunIntensity, sunColor, skyBg, hemiIntensity };
 }
+
+/** Pha mặt trăng 0..1 theo ngày thật (0 = trăng non, 0.5 = trăng tròn),
+ * chu kỳ 29.53 ngày, neo vào trăng non 06/01/2000. Không cần lưu state. */
+export function moonPhase(date: Date = new Date()): number {
+  const synodic = 29.53;
+  const knownNew = Date.UTC(2000, 0, 6, 18, 14);
+  const days = (date.getTime() - knownNew) / 86400000;
+  return ((((days % synodic) + synodic) % synodic) / synodic);
+}
+
+/** Độ lệch của đĩa tối che mặt trăng: 0 khi trăng non (che hết),
+ * 2×bán kính khi trăng tròn (lệch hẳn ra ngoài), 1×bán kính khi bán nguyệt. */
+export function moonCoverOffset(phase: number, radius: number): number {
+  return (1 - Math.abs(phase - 0.5) * 2) * 2 * radius;
+}
+
+/** Phía đĩa tối lệch sang: trăng khuyết đầu tháng lệch một bên,
+ * cuối tháng lệch bên còn lại. */
+export function moonCoverSide(phase: number): number {
+  return phase < 0.5 ? -1 : 1;
+}
