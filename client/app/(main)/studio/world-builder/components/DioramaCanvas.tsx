@@ -309,14 +309,15 @@ export function DioramaCanvas({
       weatherRef.current = { points, vel, kind: "clear" };
     }
 
-    // Đế sa bàn: khối đế sâu 6m (địa hình đào sâu tới -3 vẫn nằm
-    // trong khối đế) + mặt địa hình + mặt nước + nhóm đường đi.
+    // Đế sa bàn: khối đế sâu 6m, mặt trên nằm NGAY DƯỚI đáy địa
+    // hình thấp nhất (-3) để không bao giờ đồng phẳng với mặt đất
+    // (đồng phẳng = nhấp nháy z-fighting ở vùng đất phẳng y=0).
     // Mặt địa hình dựng lại ở effect riêng khi terrain đổi.
     const base = new THREE.Mesh(
       new THREE.BoxGeometry(GROUND_SIZE + 2, 6, GROUND_SIZE + 2),
       new THREE.MeshStandardMaterial({ color: "#3c2c17", roughness: 1 }),
     );
-    base.position.y = -3;
+    base.position.y = -6.05; // mặt trên ở -3.05, dưới đáy địa hình -3
     base.receiveShadow = true;
     scene.add(base);
     const terrainMesh = new THREE.Mesh(

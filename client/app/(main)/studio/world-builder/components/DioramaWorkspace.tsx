@@ -635,8 +635,8 @@ export function DioramaWorkspace() {
   );
 
   const left = (
-    <aside className="w-[264px] flex-none bg-[#100a1f] border-r border-white/5 p-3 overflow-y-auto">
-      <div className="mb-3">
+    <aside className="w-[304px] flex-none bg-[#100a1f] border-r border-white/5 p-3 overflow-y-auto">
+      <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
         <label className="block text-[11px] text-white/40 mb-1">World đang mở</label>
         <div className="flex gap-1.5">
           <select
@@ -810,7 +810,7 @@ export function DioramaWorkspace() {
           </button>
         </div>
       </div>
-      <div className="flex gap-1.5 mb-3">
+      <div className="grid grid-cols-3 gap-1.5 mb-3">
         {(
           [
             ["models", "Mẫu 3D"],
@@ -823,12 +823,13 @@ export function DioramaWorkspace() {
           <button
             key={tab}
             onClick={() => setLeftTab(tab)}
-            className={`flex-1 h-9 rounded-lg text-[13px] font-medium ${leftTab === tab ? "bg-violet-500/25 border border-violet-400/40 text-violet-100" : "bg-white/5 border border-white/10 text-white/55"}`}
+            className={`h-9 rounded-lg text-[12px] font-medium ${leftTab === tab ? "bg-violet-500/25 border border-violet-400/40 text-violet-100" : "bg-white/5 border border-white/10 text-white/55"}`}
           >
             {label}
           </button>
         ))}
       </div>
+      <div className="h-px bg-white/5 mb-3" />
       {leftTab === "models" ? (
         <>
           <p className="text-[11px] text-white/40 leading-relaxed mb-2">
@@ -1323,7 +1324,7 @@ export function DioramaWorkspace() {
             chìm theo, không lơ lửng.
           </p>
           <p className="text-[11px] font-medium text-white/60 mb-1.5">Cọ địa hình</p>
-          <div className="flex flex-wrap gap-1.5 mb-2">
+          <div className="grid grid-cols-3 gap-1.5 mb-3">
             {(
               [
                 ["raise", "Nâng đất"],
@@ -1343,7 +1344,7 @@ export function DioramaWorkspace() {
                         : { kind: "brush", mode, radius: terrainRadius, strength: terrainStrength },
                     );
                   }}
-                  className={`h-8 px-3 rounded-lg border text-[12px] ${active ? "bg-violet-500/25 border-violet-400/40 text-violet-100" : "bg-white/5 border-white/10 text-white/70"}`}
+                  className={`h-9 px-1 rounded-lg border text-[12px] ${active ? "bg-violet-500/25 border-violet-400/40 text-violet-100" : "bg-white/5 border-white/10 text-white/70"}`}
                 >
                   {label}
                 </button>
@@ -1377,7 +1378,7 @@ export function DioramaWorkspace() {
             />
           </label>
           <p className="text-[11px] font-medium text-white/60 mb-1.5">Cọ biome (tô vùng đất)</p>
-          <div className="flex flex-wrap gap-1.5 mb-3">
+          <div className="grid grid-cols-2 gap-1.5 mb-3">
             {BIOMES.map((b) => {
               const active = terrainTool?.kind === "biome" && terrainTool.biomeId === b.id;
               return (
@@ -1391,7 +1392,7 @@ export function DioramaWorkspace() {
                     );
                   }}
                   title={b.name}
-                  className={`flex items-center gap-1.5 h-8 px-2.5 rounded-lg border text-[12px] ${active ? "border-violet-400/60 bg-violet-500/20 text-violet-100" : "bg-white/5 border-white/10 text-white/70"}`}
+                  className={`flex items-center gap-1.5 h-9 px-2.5 rounded-lg border text-[12px] ${active ? "border-violet-400/60 bg-violet-500/20 text-violet-100" : "bg-white/5 border-white/10 text-white/70"}`}
                 >
                   <span className="w-3 h-3 rounded-full" style={{ background: b.color }} />
                   {b.name}
