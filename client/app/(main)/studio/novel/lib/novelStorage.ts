@@ -17,9 +17,10 @@ import type {
   Plotline,
   Scene,
 } from "./novel";
+import type { Note } from "../data";
 
 const DB_NAME = "animan_novel_db";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE_NOVELS = "novels";
 const STORE_CHAPTERS = "chapters";
 const STORE_SCENES = "scenes";
@@ -30,6 +31,7 @@ const STORE_QUESTIONS = "questions";
 const STORE_ENTITIES = "entities";
 const STORE_SNAPSHOTS = "snapshots";
 const STORE_BRIDGES = "bridges";
+const STORE_NOTES = "notes";
 
 const isBrowser = typeof indexedDB !== "undefined";
 
@@ -67,6 +69,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_BRIDGES)) {
         db.createObjectStore(STORE_BRIDGES, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(STORE_NOTES)) {
+        db.createObjectStore(STORE_NOTES, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -116,6 +121,27 @@ export async function deleteBridge(id: string): Promise<void> {
   if (!isBrowser) return;
   const db = await openDb();
   await request(db, STORE_BRIDGES, "readwrite", ([s]) => s.delete(id));
+}
+
+export async function listNotes(): Promise<Note[]> {
+  return getAll<Note>(STORE_NOTES);
+}
+
+/**
+ * Ghi đè toàn bộ note lề (xoá + ghi trong 1 transaction) — dùng khi
+ * thêm/xoá note để bản ghi cũ không còn sót lại sau F5.
+ */
+export async function replaceNotes(notes: Note[]): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NOTES, "readwrite");
+    const store = tx.objectStore(STORE_NOTES);
+    store.clear();
+    for (const n of notes) store.put(n);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 }
 
 export async function listNovels(): Promise<Novel[]> {

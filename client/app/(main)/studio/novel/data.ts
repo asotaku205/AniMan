@@ -12,19 +12,7 @@ export const FONTS: FontOption[] = [
   { id: "noto", label: "Noto Serif", family: "Noto Serif, serif" },
 ];
 
-export interface Track {
-  id: string;
-  name: string;
-  vol: number;
-}
 
-export const INITIAL_TRACKS: Track[] = [
-  { id: "pen", name: "Ngòi bút sột soạt", vol: 80 },
-  { id: "rain", name: "Mưa nhẹ ngoài hiên", vol: 45 },
-  { id: "wind", name: "Chuông gió furin", vol: 30 },
-  { id: "bell", name: "Chuông đền xa", vol: 20 },
-  { id: "fire", name: "Lò sưởi tí tách", vol: 15 },
-];
 
 export interface Note {
   id: number;
@@ -39,4 +27,4 @@ export const INITIAL_NOTES: Note[] = [
   { id: 3, text: "Kiểm tra mạch cảm xúc chương 1 → 2.", top: 64, expanded: false },
 ];
 
-export type SideTabKey = "font" | "audio" | "timer" | "stats" | "paper";
+export type SideTabKey = "font" | "timer" | "stats";

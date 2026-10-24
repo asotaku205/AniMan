@@ -28,6 +28,12 @@ import type { NovelExportData } from "../lib/novel";
 import { checkSceneConsistency, summarizeScene } from "../../../../../lib/novel-ai";
 import type { AuthenticatedFetch } from "../../../../../lib/auth-api";
 import BridgeView from "./BridgeView";
+import { PAGE_THEME } from "./WashiBookPage";
+import {
+  loadNovelDisplaySettings,
+  saveNovelDisplaySettings,
+  type OutlineMode,
+} from "../lib/novelDisplay";
 
 type OutlineTab = "cards" | "plotlines" | "arcs" | "bible" | "versions" | "bridges";
 
@@ -93,6 +99,23 @@ function SnowflakeStrip({ s }: { s: NovelStudioState }) {
 
 export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s: NovelStudioState; onOpenScene: (sceneId: string) => void; authenticatedFetch: AuthenticatedFetch }) {
   const [tab, setTab] = useState<OutlineTab>("cards");
+  // Chế độ hiển thị dàn ý: "book" = thẻ mang màu nền quyển sách đang
+  // chọn (giống bên viết), "default" = kiểu cũ. Nhớ theo Cài đặt.
+  const [outlineMode, setOutlineModeState] = useState<OutlineMode>(() =>
+    loadNovelDisplaySettings().outlineMode,
+  );
+  const changeOutlineMode = (m: OutlineMode) => {
+    setOutlineModeState(m);
+    saveNovelDisplaySettings({ outlineMode: m });
+  };
+  const bookMode = outlineMode === "book";
+  const cardTheme = PAGE_THEME[s.displayTheme];
+  const bookCardStyle = {
+    background: cardTheme.bg,
+    color: cardTheme.text,
+    borderColor: `${cardTheme.text}33`,
+    fontFamily: "Shippori Mincho, serif",
+  };
   const [dragId, setDragId] = useState<string | null>(null);
   // N3: sổ tay + AI
   const [bibleKindFilter, setBibleKindFilter] = useState<"all" | BibleEntityKind>("all");
@@ -268,6 +291,22 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
         {tabBtn("bible", "Sổ tay")}
         {tabBtn("versions", "Phiên bản")}
         {tabBtn("bridges", "Cầu nối")}
+        <div className="ml-auto flex gap-1">
+          <button
+            type="button"
+            onClick={() => changeOutlineMode("book")}
+            className={`rounded-full px-3 py-1.5 text-sm ${outlineMode === "book" ? "bg-amber-700 text-white" : "bg-white/10 text-amber-100/80 hover:bg-white/20"}`}
+          >
+            Quyển sách
+          </button>
+          <button
+            type="button"
+            onClick={() => changeOutlineMode("default")}
+            className={`rounded-full px-3 py-1.5 text-sm ${outlineMode === "default" ? "bg-amber-700 text-white" : "bg-white/10 text-amber-100/80 hover:bg-white/20"}`}
+          >
+            Mặc định
+          </button>
+        </div>
       </div>
 
       {tab === "cards" && (
@@ -277,7 +316,8 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
             return (
               <section
                 key={chapter.id}
-                className="w-72 shrink-0 rounded-xl border border-amber-200/70 bg-amber-50 p-3"
+                className={bookMode ? "w-72 shrink-0 rounded-xl border p-3" : "w-72 shrink-0 rounded-xl border border-amber-200/70 bg-amber-50 p-3"}
+                style={bookMode ? { borderColor: `${cardTheme.text}33` } : undefined}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
@@ -285,8 +325,8 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
                   setDragId(null);
                 }}
               >
-                <h4 className="text-sm font-semibold text-stone-800">{chapter.title}</h4>
-                <p className="text-xs text-stone-400">{cards.length} cảnh</p>
+                <h4 className={bookMode ? "text-sm font-semibold" : "text-sm font-semibold text-stone-800"}>{chapter.title}</h4>
+                <p className={bookMode ? "text-xs opacity-60" : "text-xs text-stone-400"}>{cards.length} cảnh</p>
                 <div className="mt-3 space-y-3">
                   {cards.map((sc) => (
                     <article
@@ -304,14 +344,16 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
                         if (dragId && dragId !== sc.id) void s.moveSceneTo(dragId, chapter.id, sc.id);
                         setDragId(null);
                       }}
-                      className="cursor-grab rounded-lg border border-amber-200 bg-white p-3 shadow-sm active:cursor-grabbing"
+                      className={bookMode ? "cursor-grab rounded-lg border p-3 shadow-sm active:cursor-grabbing" : "cursor-grab rounded-lg border border-amber-200 bg-white p-3 shadow-sm active:cursor-grabbing"}
+                      style={bookMode ? bookCardStyle : undefined}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium text-stone-800">{sc.title}</p>
-                        <span className="shrink-0 text-xs text-stone-400">{sceneWords(sc)} từ</span>
+                        <p className={bookMode ? "text-sm font-medium" : "text-sm font-medium text-stone-800"}>{sc.title}</p>
+                        <span className={bookMode ? "shrink-0 text-xs opacity-60" : "shrink-0 text-xs text-stone-400"}>{sceneWords(sc)} từ</span>
                       </div>
                       <textarea
-                        className="mt-2 w-full rounded-md border border-stone-200 px-2 py-1 text-xs text-stone-700 outline-none focus:border-amber-400"
+                        className={bookMode ? "mt-2 w-full rounded-md border px-2 py-1 text-xs outline-none" : "mt-2 w-full rounded-md border border-stone-200 px-2 py-1 text-xs text-stone-700 outline-none focus:border-amber-400"}
+                        style={bookMode ? { background: "transparent", borderColor: `${cardTheme.text}33`, color: "inherit" } : undefined}
                         rows={2}
                         defaultValue={sc.synopsis}
                         placeholder="Tóm tắt 1-2 câu…"
@@ -319,7 +361,8 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
                       />
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <select
-                          className="rounded-md border border-stone-300 bg-white px-1.5 py-1 text-xs"
+                          className={bookMode ? "rounded-md border px-1.5 py-1 text-xs" : "rounded-md border border-stone-300 bg-white px-1.5 py-1 text-xs"}
+                          style={bookMode ? { background: "transparent", borderColor: `${cardTheme.text}33`, color: "inherit" } : undefined}
                           value={sc.status}
                           onChange={(e) => void s.updateSceneMeta(sc.id, { status: e.target.value as SceneStatus })}
                         >
@@ -387,7 +430,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
                       )}
                     </article>
                   ))}
-                  {cards.length === 0 && <p className="text-xs text-stone-400">Chưa có cảnh. Kéo cảnh từ chương khác vào đây.</p>}
+                  {cards.length === 0 && <p className={bookMode ? "text-xs opacity-60" : "text-xs text-stone-400"}>Chưa có cảnh. Kéo cảnh từ chương khác vào đây.</p>}
                 </div>
               </section>
             );

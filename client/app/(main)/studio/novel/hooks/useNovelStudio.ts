@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FONTS, INITIAL_NOTES, INITIAL_TRACKS, type Note, type Track } from "../data";
+import { FONTS, INITIAL_NOTES, type Note } from "../data";
+import {
+  loadNovelDisplaySettings,
+  saveNovelDisplaySettings,
+} from "../lib/novelDisplay";
+import { recordNotification } from "../../../notification/lib/notifications";
 import {
   applyWordDelta,
   chapterWords,
@@ -53,6 +58,8 @@ import {
   deleteSnapshot,
   listSnapshots,
   listBridges,
+  listNotes,
+  replaceNotes,
   saveBridge,
   deleteBridge,
   replaceNovelData,
@@ -77,8 +84,19 @@ export function useNovelStudio() {
   // ── Không khí viết (giữ nguyên như trước) ──────────────────────────────
   const [fontId, setFontId] = useState("caveat");
   const font = FONTS.find((f) => f.id === fontId)!.family;
-  const [tracks, setTracks] = useState<Track[]>(INITIAL_TRACKS);
-  const [notes, setNotes] = useState<Note[]>(INITIAL_NOTES);
+  const [notes, setNotesState] = useState<Note[]>([]);
+
+  /**
+   * Ghi note lề bền (novel DB v6) — xoá note là mất thật, F5 không
+   * hiện lại. Trước đây note chỉ nằm trong bộ nhớ + nạp lại mẫu mặc
+   * định mỗi lần mở trang nên note đã xoá vẫn hiện sau F5.
+   */
+  const setNotes = useCallback((next: Note[]) => {
+    setNotesState(next);
+    void replaceNotes(next).catch(() => {
+      setSaveError("Không lưu được ghi chú lề.");
+    });
+  }, []);
   const [wordCount, setWordCount] = useState(0);
 
   const leftRef = useRef<HTMLDivElement>(null);
@@ -110,7 +128,11 @@ export function useNovelStudio() {
   const ss = String(seconds % 60).padStart(2, "0");
 
   const addNote = () => {
-    setNotes((n) => [...n, { id: Date.now(), text: "Ghi chú mới…", top: Math.min(80, 8 + n.length * 18), expanded: true }]);
+    const next = [
+      ...notes,
+      { id: Date.now(), text: "Ghi chú mới…", top: Math.min(80, 8 + notes.length * 18), expanded: true },
+    ];
+    setNotes(next);
   };
 
   const toggleRun = () => setRunning((r) => !r);
@@ -128,9 +150,32 @@ export function useNovelStudio() {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   // Chế độ hiển thị (giống bên đọc tiểu thuyết, chỉ trong phiên làm việc).
-  const [displayTheme, setDisplayTheme] = useState<"paper" | "sepia" | "dark" | "night">("paper");
-  const [displayFontSize, setDisplayFontSize] = useState<"sm" | "md" | "lg" | "xl">("xl");
-  const [displayLineHeight, setDisplayLineHeight] = useState<"normal" | "relaxed" | "loose">("relaxed");
+  // Chế độ hiển thị: mặc định lấy từ Cài đặt (/settings), còn nhớ sau F5.
+  const [displayTheme, setDisplayThemeState] = useState<
+    "paper" | "sepia" | "dark" | "night"
+  >(() => loadNovelDisplaySettings().theme);
+  const [displayFontSize, setDisplayFontSizeState] = useState<
+    "sm" | "md" | "lg" | "xl"
+  >(() => loadNovelDisplaySettings().fontSize);
+  const [displayLineHeight, setDisplayLineHeightState] = useState<
+    "normal" | "relaxed" | "loose"
+  >(() => loadNovelDisplaySettings().lineHeight);
+  const setDisplayTheme = (
+    t: "paper" | "sepia" | "dark" | "night",
+  ) => {
+    setDisplayThemeState(t);
+    saveNovelDisplaySettings({ theme: t });
+  };
+  const setDisplayFontSize = (sz: "sm" | "md" | "lg" | "xl") => {
+    setDisplayFontSizeState(sz);
+    saveNovelDisplaySettings({ fontSize: sz });
+  };
+  const setDisplayLineHeight = (
+    lh: "normal" | "relaxed" | "loose",
+  ) => {
+    setDisplayLineHeightState(lh);
+    saveNovelDisplaySettings({ lineHeight: lh });
+  };
   const [plotlines, setPlotlines] = useState<Plotline[]>([]);
   const [beats, setBeats] = useState<Beat[]>([]);
   const [arcs, setArcs] = useState<CharacterArc[]>([]);
@@ -184,6 +229,14 @@ export function useNovelStudio() {
       setEntities(await listEntities());
       setSnapshots(await listSnapshots());
       setBridges(await listBridges());
+      // Note lề: đã lưu thì dùng bản đã lưu; chưa có thì seed mẫu 1 lần.
+      const storedNotes = await listNotes();
+      if (storedNotes.length > 0) {
+        setNotesState(storedNotes);
+      } else {
+        setNotesState(INITIAL_NOTES);
+        await replaceNotes(INITIAL_NOTES);
+      }
       const m = new Map<string, number>();
       for (const sc of scs) m.set(sc.id, sceneWords(sc));
       lastSavedWordsRef.current = m;
@@ -808,6 +861,12 @@ export function useNovelStudio() {
     try {
       await saveSnapshot(snap);
       setSnapshots((prev) => [...prev, snap]);
+      void recordNotification(
+        "snapshot",
+        `Đã chụp phiên bản “${snap.name}”`,
+        `Tiểu thuyết “${novel.title}” — ${snap.wordCount.toLocaleString("vi-VN")} từ.`,
+        "/studio/novel",
+      );
       return snap;
     } catch {
       setSaveError("Không chụp được phiên bản.");
@@ -922,7 +981,6 @@ export function useNovelStudio() {
     displayTheme, setDisplayTheme,
     displayFontSize, setDisplayFontSize,
     displayLineHeight, setDisplayLineHeight,
-    tracks, setTracks,
     notes, setNotes,
     wordCount,
     leftRef, rightRef,

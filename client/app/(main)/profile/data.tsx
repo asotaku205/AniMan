@@ -1,6 +1,6 @@
 import { BookOpen, Clock, MessageCircle, Star } from "lucide-react";
 
-export type Tab = "activity" | "watchlist" | "collections" | "about";
+export type Tab = "activity" | "works" | "about";
 
 export const BADGES = [
   { icon: "🌸", label: "Đầu tiên 100 tập", color: "from-pink-500 to-rose-400" },

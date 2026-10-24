@@ -71,8 +71,6 @@ export function NovelStudio() {
           <TabbedSidePanel
             fontId={s.fontId}
             setFontId={s.setFontId}
-            tracks={s.tracks}
-            setTracks={s.setTracks}
             phase={s.phase}
             progress={s.progress}
             mm={s.mm}

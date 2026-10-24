@@ -5,7 +5,7 @@ import type { Note } from "../data";
 
 interface StickyNotesMarginProps {
   notes: Note[];
-  setNotes: React.Dispatch<React.SetStateAction<Note[]>>;
+  setNotes: (notes: Note[]) => void;
 }
 
 export function StickyNotesMargin({ notes, setNotes }: StickyNotesMarginProps) {
@@ -14,7 +14,7 @@ export function StickyNotesMargin({ notes, setNotes }: StickyNotesMarginProps) {
       {notes.map((n) => (
         <div
           key={n.id}
-          onClick={() => setNotes((arr) => arr.map((x) => (x.id === n.id ? { ...x, expanded: !x.expanded } : x)))}
+          onClick={() => setNotes(notes.map((x) => (x.id === n.id ? { ...x, expanded: !x.expanded } : x)))}
           style={{ top: `${n.top}%` }}
           className="group absolute right-0 w-40 text-left pointer-events-auto bg-amber-200 text-amber-950 rounded-sm shadow-[4px_6px_18px_rgba(0,0,0,0.5)] rotate-[2deg] hover:rotate-0 transition p-2 cursor-pointer"
         >
@@ -26,7 +26,7 @@ export function StickyNotesMargin({ notes, setNotes }: StickyNotesMarginProps) {
               aria-label="Xoá ghi chú"
               onClick={(e) => {
                 e.stopPropagation();
-                setNotes((arr) => arr.filter((x) => x.id !== n.id));
+                setNotes(notes.filter((x) => x.id !== n.id));
               }}
               className="ml-auto h-4 w-4 rounded-full text-sm leading-none text-amber-900 opacity-0 hover:bg-amber-300 group-hover:opacity-100 focus:opacity-100"
             >

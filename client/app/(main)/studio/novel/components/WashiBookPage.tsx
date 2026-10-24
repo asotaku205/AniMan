@@ -18,7 +18,7 @@ interface MentionState {
 
 type DisplayTheme = "paper" | "sepia" | "dark" | "night";
 
-const PAGE_THEME: Record<DisplayTheme, { bg: string; text: string; label: string; light: boolean }> = {
+export const PAGE_THEME: Record<DisplayTheme, { bg: string; text: string; label: string; light: boolean }> = {
   paper: { bg: "#f5eedb", text: "#1f130a", label: "Giấy", light: true },
   sepia: { bg: "#ede0c8", text: "#2a1a08", label: "Sepia", light: true },
   dark: { bg: "#1e1b2e", text: "#ddd6ee", label: "Tối", light: false },
@@ -123,14 +123,14 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
 
   if (s.loading) {
     return (
-      <div className="relative mx-auto w-full max-w-4xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 text-amber-100/70 text-sm">
+      <div className="relative mx-auto w-full max-w-6xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 text-amber-100/70 text-sm">
         Đang tải tiểu thuyết…
       </div>
     );
   }
   if (!s.selectedScene) {
     return (
-      <div className="relative mx-auto w-full max-w-4xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 space-y-3 shadow-2xl">
+      <div className="relative mx-auto w-full max-w-6xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 space-y-3 shadow-2xl">
         <p className="text-amber-100/90 font-medium" style={{ fontFamily: "Shippori Mincho, serif" }}>
           {s.selectedChapter ? "Chương này chưa có cảnh nào" : "Chưa chọn chương"}
         </p>
@@ -149,7 +149,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
     );
   }
   return (
-    <div className="relative mx-auto w-full max-w-4xl">
+    <div className="relative mx-auto w-full max-w-6xl">
       {/* Chế độ hiển thị — giống bên đọc tiểu thuyết */}
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-2.5 backdrop-blur">
         <span className="text-xs text-amber-100/70">Cỡ chữ</span>
@@ -216,7 +216,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               onInput={handleInput}
               onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
               style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
-              className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[280px] focus:bg-black/5 rounded px-1`}
+              className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
             />
           </Page>
 
@@ -229,7 +229,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               onInput={handleInput}
               onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
               style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
-              className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[280px] focus:bg-black/5 rounded px-1`}
+              className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
             />
             <div className="mt-10 text-right" style={{ fontFamily: "Shippori Mincho, serif" }}>
               <span className="text-xs opacity-60">— SakuraStream · trang 128</span>

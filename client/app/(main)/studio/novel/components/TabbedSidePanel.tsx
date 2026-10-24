@@ -1,22 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { Feather, Pause, Play, RotateCcw, Target, Timer, Type, Volume2 } from "lucide-react";
-import { FONTS, type SideTabKey, type Track } from "../data";
+import { Pause, Play, RotateCcw, Target, Timer, Type } from "lucide-react";
+import { FONTS, type SideTabKey } from "../data";
 
+// Chỉ giữ các tab thật sự hoạt động: tab Giấy (Washi/Da cũ/Lụa) không
+// có handler và tab Âm thanh kéo được nhưng không phát ra tiếng nên đã
+// bỏ — chỉnh giao diện giấy dùng chấm theme trên quyển sách.
 const SIDE_TABS: { k: SideTabKey; label: string; icon: React.ReactNode }[] = [
   { k: "font", label: "Font", icon: <Type className="w-4 h-4" /> },
-  { k: "audio", label: "Âm thanh", icon: <Volume2 className="w-4 h-4" /> },
   { k: "timer", label: "Pomodoro", icon: <Timer className="w-4 h-4" /> },
   { k: "stats", label: "Thống kê", icon: <Target className="w-4 h-4" /> },
-  { k: "paper", label: "Giấy", icon: <Feather className="w-4 h-4" /> },
 ];
 
 interface TabbedSidePanelProps {
   fontId: string;
   setFontId: (id: string) => void;
-  tracks: Track[];
-  setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
   phase: "work" | "break";
   progress: number;
   mm: string;
@@ -33,7 +32,7 @@ interface TabbedSidePanelProps {
 }
 
 export function TabbedSidePanel({
-  fontId, setFontId, tracks, setTracks, phase, progress,
+  fontId, setFontId, phase, progress,
   mm, ss, running, toggleRun, resetTimer,
   sceneWords, chapterWords, novelWords, todayWords, goalWordsPerDay, setGoal,
 }: TabbedSidePanelProps) {
@@ -42,7 +41,7 @@ export function TabbedSidePanel({
 
   return (
     <div className="sticky top-6 rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 backdrop-blur overflow-hidden shadow-2xl">
-      <div className="grid grid-cols-5 border-b border-amber-200/10">
+      <div className="grid grid-cols-3 border-b border-amber-200/10">
         {SIDE_TABS.map((t) => (
           <button
             key={t.k}
@@ -80,26 +79,6 @@ export function TabbedSidePanel({
           </div>
         )}
 
-        {tab === "audio" && (
-          <div className="space-y-3">
-            {tracks.map((t) => (
-              <div key={t.id}>
-                <div className="flex justify-between text-amber-50/80 text-xs mb-1">
-                  <span>{t.name}</span>
-                  <span className="tabular-nums font-mono">{t.vol}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={t.vol}
-                  onChange={(e) => setTracks((arr) => arr.map((x) => (x.id === t.id ? { ...x, vol: Number(e.target.value) } : x)))}
-                  className="w-full accent-amber-400"
-                />
-              </div>
-            ))}
-          </div>
-        )}
 
         {tab === "timer" && (
           <div className="flex items-center gap-4">
@@ -172,15 +151,6 @@ export function TabbedSidePanel({
           </div>
         )}
 
-        {tab === "paper" && (
-          <div className="grid grid-cols-3 gap-2">
-            {["Washi", "Da cũ", "Lụa"].map((t, i) => (
-              <button key={t} className={`text-xs py-2 rounded-lg border transition ${i === 0 ? "bg-amber-100/20 border-amber-200/40 text-amber-50 font-medium" : "border-white/10 text-white/60 hover:bg-white/5"}`}>
-                {t}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

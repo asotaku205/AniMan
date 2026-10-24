@@ -21,6 +21,7 @@ import {
   panelDraftsForText,
   type MangaPageDraft,
 } from "../lib/novelBridge";
+import { recordNotification } from "../../../notification/lib/notifications";
 import {
   createAnimProjectFromDrafts,
   createMangaProjectFromAnim,
@@ -150,6 +151,12 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
         ),
       );
       setAnimProjects((prev) => [project, ...prev]);
+      await recordNotification(
+        "bridge",
+        `Đã tạo dự án Animation “${project.name}”`,
+        sourceNote,
+        `/studio/animation/project/${project.id}`,
+      );
       setResult({
         label: `Dự án Animation “${project.name}” (${project.scenes.length} cảnh)`,
         route: `/studio/animation/project/${project.id}`,
@@ -174,6 +181,12 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
           "/studio/manga-ai",
         ),
       );
+      await recordNotification(
+        "bridge",
+        `Đã tạo dự án Manga “${novel.title}”`,
+        `${created.pageCount} trang từ ${scopeLabel}.`,
+        "/studio/manga-ai",
+      );
       setResult({
         label: `Dự án Manga “${novel.title}” (${created.pageCount} trang) — mở Manga Studio là thấy dự án mới đã được chọn sẵn`,
         route: "/studio/manga-ai",
@@ -192,6 +205,12 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
           `${animProject.name} (${created.pageCount} trang)`,
           "/studio/manga-ai",
         ),
+      );
+      await recordNotification(
+        "bridge",
+        `Đã tạo dự án Manga “${animProject.name}”`,
+        `${created.pageCount} trang từ dự án Animation.`,
+        "/studio/manga-ai",
       );
       setResult({
         label: `Dự án Manga “${animProject.name}” (${created.pageCount} trang) — mở Manga Studio là thấy dự án mới đã được chọn sẵn`,
@@ -223,6 +242,12 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
           `${target.series.title} — Tập ${target.episode.number} (${target.cueCount} cue)`,
           `/studio/animation/translate-edit/episode/${target.episode.id}`,
         ),
+      );
+      await recordNotification(
+        "bridge",
+        `Đã tạo ${target.series.title} — Tập ${target.episode.number}`,
+        `${target.cueCount} cue thoại từ dự án Animation “${animProjectT.name}”.`,
+        `/studio/animation/translate-edit/episode/${target.episode.id}`,
       );
       setResult({
         label: `${target.series.title} — Tập ${target.episode.number} (${target.cueCount} cue thoại)`,

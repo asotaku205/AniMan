@@ -21,6 +21,7 @@ import {
 import { listNovels } from "../studio/novel/lib/novelStorage";
 import { getAllProjectsFromDB } from "../studio/manga-ai/lib/mangaStorage";
 import { listAnimProjects } from "../studio/animation/lib/animStorage";
+import { recordNotification } from "../notification/lib/notifications";
 
 interface StudioOption {
   value: string;
@@ -181,6 +182,12 @@ export default function UploadPageClient() {
           }),
         );
       }
+      await recordNotification(
+        "upload",
+        `Đã đăng “${title.trim()}”`,
+        "Tác phẩm đã lưu và hiện trong Sáng tác của tôi.",
+        "/my-works",
+      );
       router.push("/my-works");
     } finally {
       setSaving(false);

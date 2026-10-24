@@ -32,6 +32,10 @@ import { animeList, liveList } from "../data/catalog";
 import { mangaList } from "../data/mangas";
 import { novelList } from "../data/novels";
 import { useAuth } from "@/app/auth/AuthProvider";
+import {
+  NOTIF_CHANGED_EVENT,
+  listNotifications,
+} from "@/app/(main)/notification/lib/notifications";
 
 const primaryLinks = [
   { to: "/", label: "Trang chủ" },
@@ -145,6 +149,25 @@ export function Navbar() {
   const quick = getQuickResults(query);
   const profileRef = useRef<HTMLDivElement>(null);
   const isAuthenticated = !isLoading && user !== null;
+  // Chấm chuông chỉ hiện khi còn thông báo chưa đọc thật.
+  const [unreadCount, setUnreadCount] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let alive = true;
+    const refresh = () => {
+      void listNotifications().then((all) => {
+        if (alive) {
+          setUnreadCount(all.filter((n) => !n.read).length);
+        }
+      });
+    };
+    refresh();
+    window.addEventListener(NOTIF_CHANGED_EVENT, refresh);
+    return () => {
+      alive = false;
+      window.removeEventListener(NOTIF_CHANGED_EVENT, refresh);
+    };
+  }, [isAuthenticated]);
 
   async function handleLogout() {
     setLogoutError(null);
@@ -423,7 +446,9 @@ export function Navbar() {
             className="relative p-2 rounded-full hover:bg-white/5 transition shrink-0"
           >
             <Bell className="w-5 h-5 text-white/80" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-pink-400 animate-pulse" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-pink-400 animate-pulse" />
+            )}
           </Link>
         )}
         {/* Avatar */}
