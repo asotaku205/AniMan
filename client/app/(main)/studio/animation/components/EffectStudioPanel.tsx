@@ -4,7 +4,7 @@
  * rồi gắn vào timeline tại thời điểm + vị trí.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { PrevizScene } from "../lib/previz";
 import { newPrevizId } from "../lib/previz";
@@ -83,6 +83,13 @@ export function EffectStudioPanel({
   const [evFlash, setEvFlash] = useState(0);
 
   const draftSaved = draft ? formulas.some((f) => f.id === draft.id) : false;
+
+  // Đang xem thử thì bản nháp sửa tới đâu, sân khấu đổi tới đó.
+  useEffect(() => {
+    if (previewing && draft) onPreview(draft);
+    // Chỉ chạy khi bản nháp đổi trong lúc đang xem thử.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
 
   const updateLayer = (idx: number, patch: Partial<EffectLayer>) => {
     if (!draft) return;
