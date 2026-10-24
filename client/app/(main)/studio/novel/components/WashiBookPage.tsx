@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { Plus } from "lucide-react";
 import { StickyNotesMargin } from "./StickyNotesMargin";
 import { BIBLE_KIND_LABEL } from "../lib/novel";
@@ -121,6 +121,30 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
     ? s.entities.filter((e) => e.name.toLowerCase().includes(mention.query.trim().toLowerCase())).slice(0, 8)
     : [];
 
+  // Cảnh kề nhau trong toàn truyện (theo thứ tự đọc) — nút lật trang.
+  const sceneOrder = s.novelScenes;
+  const currentIdx = sceneOrder.findIndex(
+    (sc) => sc.id === s.selectedScene?.id,
+  );
+  const prevScene = currentIdx > 0 ? sceneOrder[currentIdx - 1] : null;
+  const nextScene =
+    currentIdx >= 0 && currentIdx < sceneOrder.length - 1
+      ? sceneOrder[currentIdx + 1]
+      : null;
+  const pageTheme = PAGE_THEME[s.displayTheme];
+  // Khi đổi chế độ hiển thị, khung soạn thảo mount lại nên nạp lại nội
+  // dung từ state (effect theo [selectedSceneId] của hook không chạy
+  // khi chỉ đổi chế độ mà không đổi cảnh).
+  useEffect(() => {
+    if (s.leftRef.current && s.selectedScene) {
+      s.leftRef.current.innerText = s.selectedScene.contentLeft;
+    }
+    if (s.rightRef.current && s.selectedScene) {
+      s.rightRef.current.innerText = s.selectedScene.contentRight;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.writeMode]);
+
   if (s.loading) {
     return (
       <div className="relative mx-auto w-full max-w-6xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 text-amber-100/70 text-sm">
@@ -189,7 +213,24 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
             {lh === "normal" ? "Chật" : lh === "relaxed" ? "Vừa" : "Rộng"}
           </button>
         ))}
+        <div className="ml-auto flex gap-1">
+          <button
+            type="button"
+            onClick={() => s.setWriteMode("book")}
+            className={`rounded-lg border px-2 py-1 text-xs transition ${s.writeMode === "book" ? "border-amber-400/70 bg-amber-400/20 text-amber-200" : "border-transparent text-amber-100/60 hover:text-amber-100"}`}
+          >
+            Quyển sách
+          </button>
+          <button
+            type="button"
+            onClick={() => s.setWriteMode("default")}
+            className={`rounded-lg border px-2 py-1 text-xs transition ${s.writeMode === "default" ? "border-amber-400/70 bg-amber-400/20 text-amber-200" : "border-transparent text-amber-100/60 hover:text-amber-100"}`}
+          >
+            Mặc định
+          </button>
+        </div>
       </div>
+      {s.writeMode === "book" ? (
       <motion.div
         initial={{ rotateX: 12, opacity: 0 }}
         whileInView={{ rotateX: 4, opacity: 1 }}
@@ -197,6 +238,15 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
         transition={{ duration: 1 }}
         className="relative [perspective:1500px]"
       >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={s.selectedScene.id}
+            initial={{ opacity: 0, rotateY: -45 }}
+            animate={{ opacity: 1, rotateY: 0 }}
+            exit={{ opacity: 0, rotateY: 45 }}
+            transition={{ duration: 0.4 }}
+            className="[transform-style:preserve-3d]"
+          >
         <div
           className="relative grid grid-cols-2 rounded-[8px] shadow-[0_60px_120px_-30px_rgba(0,0,0,0.8)] [transform-style:preserve-3d]"
           style={{ transform: "rotateX(6deg)" }}
@@ -236,6 +286,8 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
             </div>
           </Page>
         </div>
+          </motion.div>
+        </AnimatePresence>
 
         {/* Sticky notes margin */}
         <StickyNotesMargin notes={s.notes} setNotes={s.setNotes} />
@@ -247,6 +299,74 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
 
         <div className="absolute -bottom-6 left-10 w-56 h-3 rounded-full bg-gradient-to-r from-amber-700 via-yellow-600 to-amber-900 shadow-[0_10px_20px_rgba(0,0,0,0.6)] rotate-[-8deg]" />
       </motion.div>
+      ) : (
+      <div className="relative">
+        <div
+          className="relative rounded-[8px] p-8 shadow-[0_60px_120px_-30px_rgba(0,0,0,0.8)] sm:p-10"
+          style={{
+            backgroundColor: pageTheme.bg,
+            color: pageTheme.text,
+            backgroundImage: pageTheme.light
+              ? "radial-gradient(circle at 20% 30%, rgba(120,80,40,0.08), transparent 60%), radial-gradient(circle at 80% 70%, rgba(120,80,40,0.1), transparent 60%), repeating-linear-gradient(0deg, rgba(120,80,40,0.04) 0 1px, transparent 1px 28px)"
+              : undefined,
+          }}
+        >
+          <div style={{ fontFamily: "Shippori Mincho, serif" }} className="text-sm tracking-widest mb-6 text-center font-medium opacity-80">
+            {s.selectedChapter?.title ?? ""} — {s.selectedScene.title}
+          </div>
+          <div
+            ref={s.leftRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={handleInput}
+            onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
+            style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
+            className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
+          />
+          <div className="my-8 border-t border-black/10" />
+          <div
+            ref={s.rightRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={handleInput}
+            onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
+            style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
+            className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
+          />
+          <div className="mt-10 text-right" style={{ fontFamily: "Shippori Mincho, serif" }}>
+            <span className="text-xs opacity-60">— SakuraStream</span>
+          </div>
+        </div>
+
+        {/* Sticky notes margin */}
+        <StickyNotesMargin notes={s.notes} setNotes={s.setNotes} />
+
+        {/* Word count badge */}
+        <div className="absolute -bottom-4 right-4 px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 text-xs font-semibold shadow-lg">
+          {s.wordCount} từ
+        </div>
+      </div>
+      )}
+
+      {/* Nút lật trang — chuyển cảnh kề nhau (chế độ quyển có animation lật) */}
+      <div className="mt-8 flex justify-center gap-3">
+        <button
+          type="button"
+          disabled={!prevScene}
+          onClick={() => prevScene && s.selectScene(prevScene.id)}
+          className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
+        >
+          ← Cảnh trước
+        </button>
+        <button
+          type="button"
+          disabled={!nextScene}
+          onClick={() => nextScene && s.selectScene(nextScene.id)}
+          className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
+        >
+          Cảnh sau →
+        </button>
+      </div>
 
       {mention && suggestions.length > 0 && (
         <div

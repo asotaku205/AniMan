@@ -174,19 +174,19 @@ export default function SettingsClient() {
               </div>
             </div>
             <div>
-              <p className="text-white/60 mb-2">Chế độ hiển thị dàn ý</p>
+              <p className="text-white/60 mb-2">Chế độ hiển thị khi viết</p>
               <div className="flex gap-1.5">
                 <button
                   type="button"
-                  onClick={() => set({ outlineMode: "book" })}
-                  className={`rounded-lg border px-3 py-1.5 text-xs ${display.outlineMode === "book" ? "border-amber-400/70 bg-amber-400/20 text-amber-200" : "border-white/10 text-white/60 hover:text-white"}`}
+                  onClick={() => set({ writeMode: "book" })}
+                  className={`rounded-lg border px-3 py-1.5 text-xs ${display.writeMode === "book" ? "border-amber-400/70 bg-amber-400/20 text-amber-200" : "border-white/10 text-white/60 hover:text-white"}`}
                 >
                   Quyển sách
                 </button>
                 <button
                   type="button"
-                  onClick={() => set({ outlineMode: "default" })}
-                  className={`rounded-lg border px-3 py-1.5 text-xs ${display.outlineMode === "default" ? "border-amber-400/70 bg-amber-400/20 text-amber-200" : "border-white/10 text-white/60 hover:text-white"}`}
+                  onClick={() => set({ writeMode: "default" })}
+                  className={`rounded-lg border px-3 py-1.5 text-xs ${display.writeMode === "default" ? "border-amber-400/70 bg-amber-400/20 text-amber-200" : "border-white/10 text-white/60 hover:text-white"}`}
                 >
                   Mặc định
                 </button>

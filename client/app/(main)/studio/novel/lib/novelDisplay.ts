@@ -8,20 +8,20 @@
 export type NovelDisplayTheme = "paper" | "sepia" | "dark" | "night";
 export type NovelDisplaySize = "sm" | "md" | "lg" | "xl";
 export type NovelLineHeight = "normal" | "relaxed" | "loose";
-export type OutlineMode = "book" | "default";
+export type WriteMode = "book" | "default";
 
 export interface NovelDisplaySettings {
   theme: NovelDisplayTheme;
   fontSize: NovelDisplaySize;
   lineHeight: NovelLineHeight;
-  outlineMode: OutlineMode;
+  writeMode: WriteMode;
 }
 
 export const DEFAULT_NOVEL_DISPLAY: NovelDisplaySettings = {
   theme: "paper",
   fontSize: "xl",
   lineHeight: "relaxed",
-  outlineMode: "book",
+  writeMode: "book",
 };
 
 const KEY = "animan_novel_display_v1";
@@ -29,7 +29,7 @@ const KEY = "animan_novel_display_v1";
 const THEMES: NovelDisplayTheme[] = ["paper", "sepia", "dark", "night"];
 const SIZES: NovelDisplaySize[] = ["sm", "md", "lg", "xl"];
 const HEIGHTS: NovelLineHeight[] = ["normal", "relaxed", "loose"];
-const MODES: OutlineMode[] = ["book", "default"];
+const MODES: WriteMode[] = ["book", "default"];
 
 /** Chuẩn hoá dữ liệu thô (kể cả dữ liệu cũ/lỗi) về dạng hợp lệ. */
 export function sanitizeNovelDisplaySettings(
@@ -46,9 +46,9 @@ export function sanitizeNovelDisplaySettings(
     lineHeight: HEIGHTS.includes(r.lineHeight as NovelLineHeight)
       ? (r.lineHeight as NovelLineHeight)
       : DEFAULT_NOVEL_DISPLAY.lineHeight,
-    outlineMode: MODES.includes(r.outlineMode as OutlineMode)
-      ? (r.outlineMode as OutlineMode)
-      : DEFAULT_NOVEL_DISPLAY.outlineMode,
+    writeMode: MODES.includes(r.writeMode as WriteMode)
+      ? (r.writeMode as WriteMode)
+      : DEFAULT_NOVEL_DISPLAY.writeMode,
   };
 }
 

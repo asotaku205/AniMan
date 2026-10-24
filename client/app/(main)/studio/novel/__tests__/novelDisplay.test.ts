@@ -16,13 +16,13 @@ describe("novelDisplay — chuẩn hoá cài đặt", () => {
         theme: "dark",
         fontSize: "xxl",
         lineHeight: "relaxed",
-        outlineMode: "book",
+        writeMode: "book",
       }),
     ).toEqual({
       theme: "dark",
       fontSize: "xl",
       lineHeight: "relaxed",
-      outlineMode: "book",
+      writeMode: "book",
     });
   });
 

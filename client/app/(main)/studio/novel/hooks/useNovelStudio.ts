@@ -176,6 +176,15 @@ export function useNovelStudio() {
     setDisplayLineHeightState(lh);
     saveNovelDisplaySettings({ lineHeight: lh });
   };
+  // Chế độ hiển thị khi viết: "book" = trải giấy 2 trang,
+  // "default" = khung soạn thảo thường 1 cột.
+  const [writeMode, setWriteModeState] = useState<"book" | "default">(() =>
+    loadNovelDisplaySettings().writeMode,
+  );
+  const setWriteMode = (m: "book" | "default") => {
+    setWriteModeState(m);
+    saveNovelDisplaySettings({ writeMode: m });
+  };
   const [plotlines, setPlotlines] = useState<Plotline[]>([]);
   const [beats, setBeats] = useState<Beat[]>([]);
   const [arcs, setArcs] = useState<CharacterArc[]>([]);
@@ -987,6 +996,7 @@ export function useNovelStudio() {
     displayTheme, setDisplayTheme,
     displayFontSize, setDisplayFontSize,
     displayLineHeight, setDisplayLineHeight,
+    writeMode, setWriteMode,
     notes, setNotes,
     wordCount,
     leftRef, rightRef,
