@@ -166,7 +166,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
   };
 
   if (!s.selectedNovel) {
-    return <p className="text-sm text-stone-500">Chưa có tiểu thuyết nào. Tạo tiểu thuyết ở view Viết trước.</p>;
+    return <p className="text-sm text-amber-100/70">Chưa có tiểu thuyết nào. Tạo tiểu thuyết ở view Viết trước.</p>;
   }
 
   const tabBtn = (key: OutlineTab, label: string) => (
@@ -174,7 +174,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
       key={key}
       type="button"
       onClick={() => setTab(key)}
-      className={`rounded-full px-3 py-1.5 text-sm ${tab === key ? "bg-amber-700 text-white" : "bg-stone-100 text-stone-700 hover:bg-stone-200"}`}
+      className={`rounded-full px-3 py-1.5 text-sm ${tab === key ? "bg-amber-700 text-white" : "bg-white/10 text-amber-100/80 hover:bg-white/20"}`}
     >
       {label}
     </button>
@@ -212,7 +212,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
             return (
               <section
                 key={chapter.id}
-                className="w-72 shrink-0 rounded-xl border border-stone-200 bg-stone-50 p-3"
+                className="w-72 shrink-0 rounded-xl border border-amber-200/70 bg-amber-50 p-3"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
@@ -327,7 +327,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
               </section>
             );
           })}
-          {s.chapters.length === 0 && <p className="text-sm text-stone-500">Chưa có chương nào.</p>}
+          {s.chapters.length === 0 && <p className="text-sm text-amber-100/70">Chưa có chương nào.</p>}
         </div>
       )}
 
@@ -416,14 +416,14 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
               </section>
             );
           })}
-          {s.plotlines.length === 0 && <p className="text-sm text-stone-500">Chưa có tuyến truyện nào. Thêm tuyến đầu tiên ở trên.</p>}
+          {s.plotlines.length === 0 && <p className="text-sm text-amber-100/70">Chưa có tuyến truyện nào. Thêm tuyến đầu tiên ở trên.</p>}
         </div>
       )}
 
       {tab === "arcs" && (
         <div className="space-y-6">
           <section className="space-y-4">
-            <h3 className="text-sm font-semibold text-stone-800">Cung nhân vật</h3>
+            <h3 className="text-sm font-semibold text-amber-100">Cung nhân vật</h3>
             <form
               className="flex gap-2"
               onSubmit={(e) => {
@@ -498,11 +498,11 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
                 </article>
               );
             })}
-            {s.arcs.length === 0 && <p className="text-sm text-stone-500">Chưa có cung nhân vật nào.</p>}
+            {s.arcs.length === 0 && <p className="text-sm text-amber-100/70">Chưa có cung nhân vật nào.</p>}
           </section>
 
-          <section className="space-y-4 border-t border-stone-200 pt-4">
-            <h3 className="text-sm font-semibold text-stone-800">Câu hỏi mở</h3>
+          <section className="space-y-4 border-t border-amber-100/15 pt-4">
+            <h3 className="text-sm font-semibold text-amber-100">Câu hỏi mở</h3>
             <form
               className="flex gap-2"
               onSubmit={(e) => {
@@ -537,7 +537,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
                 );
               })}
             </ul>
-            {s.questions.length === 0 && <p className="text-sm text-stone-500">Chưa có câu hỏi mở nào.</p>}
+            {s.questions.length === 0 && <p className="text-sm text-amber-100/70">Chưa có câu hỏi mở nào.</p>}
           </section>
         </div>
       )}
@@ -551,7 +551,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
                   key={k}
                   type="button"
                   onClick={() => setBibleKindFilter(k)}
-                  className={`rounded-full px-2.5 py-1 text-xs ${bibleKindFilter === k ? "bg-amber-700 text-white" : "bg-stone-100 text-stone-700"}`}
+                  className={`rounded-full px-2.5 py-1 text-xs ${bibleKindFilter === k ? "bg-amber-700 text-white" : "bg-white/10 text-amber-100/80 hover:bg-white/20"}`}
                 >
                   {k === "all" ? "Tất cả" : BIBLE_KIND_LABEL[k]}
                 </button>
@@ -580,7 +580,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
               })}
             </ul>
             {s.entities.filter((e) => bibleKindFilter === "all" || e.kind === bibleKindFilter).length === 0 && (
-              <p className="text-sm text-stone-500">Chưa có thực thể nào.</p>
+              <p className="text-sm text-amber-100/70">Chưa có thực thể nào.</p>
             )}
             <form
               className="flex flex-wrap gap-2"
