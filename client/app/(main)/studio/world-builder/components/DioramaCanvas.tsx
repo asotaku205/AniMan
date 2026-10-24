@@ -201,6 +201,7 @@ export function DioramaCanvas({
     water: THREE.Mesh;
     pathsGroup: THREE.Group;
     base: THREE.Mesh;
+    skirt: THREE.Mesh;
   } | null>(null);
   const brushingRef = useRef(false);
   const lastBrushRef = useRef(0);
@@ -342,7 +343,16 @@ export function DioramaCanvas({
     scene.add(water);
     const pathsGroup = new THREE.Group();
     scene.add(pathsGroup);
-    terrainRef.current = { mesh: terrainMesh, water, pathsGroup, base };
+    // Váy nối: dải đứng quanh mép địa hình, kéo từ cao độ mép xuống
+    // mặt trên đế — để từ góc thấp không nhìn thấy khe hở giữa mặt
+    // đất và khối đế (mặt đất trông như "bị cao hơn" / lơ lửng).
+    const skirt = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
+    );
+    skirt.receiveShadow = true;
+    scene.add(skirt);
+    terrainRef.current = { mesh: terrainMesh, water, pathsGroup, base, skirt };
 
     const objects = new THREE.Group();
     scene.add(objects);
@@ -628,6 +638,8 @@ export function DioramaCanvas({
       terrainRef.current?.water.geometry.dispose();
       (terrainRef.current?.water.material as THREE.Material).dispose();
       if (terrainRef.current) disposeObject(terrainRef.current.pathsGroup);
+      terrainRef.current?.skirt.geometry.dispose();
+      (terrainRef.current?.skirt.material as THREE.Material).dispose();
       terrainRef.current = null;
       for (const g of glbCacheRef.current.values()) disposeObject(g);
       glbCacheRef.current.clear();
@@ -777,6 +789,44 @@ export function DioramaCanvas({
     const old = t.mesh.geometry;
     t.mesh.geometry = geo;
     old.dispose();
+    // Dựng váy nối quanh mép: vòng khép kín 320 điểm (mỗi cạnh 80),
+    // mỗi điểm kéo thẳng đứng xuống SKIRT_BOTTOM = mặt trên đế.
+    {
+      const cell = size / TERRAIN_CELLS;
+      const loop: Array<{ x: number; z: number; i: number; j: number }> = [];
+      for (let i = 0; i <= TERRAIN_CELLS; i += 1)
+        loop.push({ x: -size / 2 + i * cell, z: -size / 2, i, j: 0 });
+      for (let j = 1; j <= TERRAIN_CELLS; j += 1)
+        loop.push({ x: size / 2, z: -size / 2 + j * cell, i: TERRAIN_CELLS, j });
+      for (let i = TERRAIN_CELLS - 1; i >= 0; i -= 1)
+        loop.push({ x: -size / 2 + i * cell, z: size / 2, i, j: TERRAIN_CELLS });
+      for (let j = TERRAIN_CELLS - 1; j >= 1; j -= 1)
+        loop.push({ x: -size / 2, z: -size / 2 + j * cell, i: 0, j });
+      const SKIRT_BOTTOM = -3.05;
+      const spos: number[] = [];
+      const scol: number[] = [];
+      const pushV = (pt: { x: number; z: number; i: number; j: number }, y: number) => {
+        spos.push(pt.x, y, pt.z);
+        const c = seasonTint(terrainVertexColor(terrain, pt.i, pt.j), sky.season);
+        scol.push(c[0] * 0.72, c[1] * 0.72, c[2] * 0.72);
+      };
+      for (let k = 0; k < loop.length; k += 1) {
+        const a = loop[k];
+        const b = loop[(k + 1) % loop.length];
+        const ay = terrain.heights[a.j][a.i];
+        const by = terrain.heights[b.j][b.i];
+        // 2 tam giác, thứ tự cho pháp tuyến hướng ra ngoài.
+        pushV(a, ay); pushV(b, by); pushV(b, SKIRT_BOTTOM);
+        pushV(a, ay); pushV(b, SKIRT_BOTTOM); pushV(a, SKIRT_BOTTOM);
+      }
+      const sgeo = new THREE.BufferGeometry();
+      sgeo.setAttribute("position", new THREE.Float32BufferAttribute(spos, 3));
+      sgeo.setAttribute("color", new THREE.Float32BufferAttribute(scol, 3));
+      sgeo.computeVertexNormals();
+      const sold = t.skirt.geometry;
+      t.skirt.geometry = sgeo;
+      sold.dispose();
+    }
     // Đế + mặt nước co giãn theo cỡ sa bàn (chiều cao đế giữ nguyên).
     const k = size / GROUND_SIZE;
     t.base.scale.set(k, 1, k);
