@@ -270,8 +270,8 @@ export function DioramaCanvas({
     controls.enableDamping = true;
     controls.dampingFactor = 0.12;
     controls.maxPolarAngle = Math.PI / 2 - 0.05;
-    controls.minDistance = 10;
-    controls.maxDistance = 70;
+    controls.minDistance = 4;
+    controls.maxDistance = 120;
 
     const hemi = new THREE.HemisphereLight(0xbcd7ff, 0x3a2f22, 0.55);
     scene.add(hemi);
@@ -416,8 +416,20 @@ export function DioramaCanvas({
     // vật và quét cọ, cao độ lấy từ heightAt() sau đó.
     const groundPoint = (e: PointerEvent): { x: number; z: number } | null => {
       raycaster.setFromCamera(ndc(e), camera);
-      const hit = new THREE.Vector3();
-      if (!raycaster.ray.intersectPlane(groundPlane, hit)) return null;
+      const td = terrainDataRef.current;
+      // Lặp theo cao độ thật: giao mặt phẳng y=0 -> lấy cao độ tại đó
+      // -> giao lại với mặt phẳng y=cao độ... 3 lần là hội tụ, vật bám
+      // đúng con trỏ cả trên đồi lẫn dưới hố (không raycast mesh đắt).
+      let y = 0;
+      let hit = new THREE.Vector3();
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      for (let k = 0; k < 3; k += 1) {
+        plane.constant = -y;
+        if (!raycaster.ray.intersectPlane(plane, hit)) return null;
+        const h = heightAt(td.terrain, td.groundSize, hit.x, hit.z);
+        if (Math.abs(h - y) < 0.02) break;
+        y = h;
+      }
       return { x: hit.x, z: hit.z };
     };
     const pickPlacement = (e: PointerEvent): THREE.Group | null => {
@@ -578,9 +590,50 @@ export function DioramaCanvas({
     });
     observer.observe(container);
 
+    // Di chuyển tự do bằng phím: WASD/mũi tên pan theo hướng nhìn,
+    // Q/E lên/xuống. Bỏ qua khi đang gõ trong ô nhập.
+    const keysDown = new Set<string>();
+    const onKeyDown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("input, textarea, select")) return;
+      keysDown.add(e.code);
+      if (e.code.startsWith("Arrow")) e.preventDefault();
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      keysDown.delete(e.code);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+
     let raf = 0;
+    let lastT = performance.now();
     const loop = () => {
       raf = requestAnimationFrame(loop);
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - lastT) / 1000);
+      lastT = now;
+      // Pan bằng phím: dời cả camera lẫn điểm nhìn cùng một vector.
+      if (keysDown.size > 0) {
+        const fwd = new THREE.Vector3();
+        camera.getWorldDirection(fwd);
+        fwd.y = 0;
+        if (fwd.lengthSq() > 1e-6) {
+          fwd.normalize();
+          const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0));
+          const move = new THREE.Vector3();
+          if (keysDown.has("KeyW") || keysDown.has("ArrowUp")) move.add(fwd);
+          if (keysDown.has("KeyS") || keysDown.has("ArrowDown")) move.sub(fwd);
+          if (keysDown.has("KeyD") || keysDown.has("ArrowRight")) move.add(right);
+          if (keysDown.has("KeyA") || keysDown.has("ArrowLeft")) move.sub(right);
+          if (keysDown.has("KeyE")) move.y += 1;
+          if (keysDown.has("KeyQ")) move.y -= 1;
+          if (move.lengthSq() > 0) {
+            move.normalize().multiplyScalar(18 * dt);
+            camera.position.add(move);
+            controls.target.add(move);
+          }
+        }
+      }
       if (settle) {
         const t = Math.min(1, (performance.now() - settle.start) / 160);
         const ease = 1 - Math.pow(1 - t, 3);
@@ -632,6 +685,8 @@ export function DioramaCanvas({
       el.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
       controls.dispose();
       terrainRef.current?.mesh.geometry.dispose();
       (terrainRef.current?.mesh.material as THREE.Material).dispose();

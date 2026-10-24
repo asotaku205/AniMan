@@ -628,7 +628,7 @@ export function DioramaWorkspace() {
           onMove={(id, x, z) => updatePlacement(id, { x, z })}
         />
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/60 border border-white/10 rounded-full px-3.5 py-1.5 text-[11px] text-white/60 pointer-events-none whitespace-nowrap">
-          Kéo để xoay góc nhìn · Lăn chuột để phóng to · Kéo vật để dời (snap 0.5)
+          Kéo để xoay góc nhìn · Chuột phải hoặc WASD để di chuyển tự do · Lăn chuột để phóng to · Kéo vật để dời (snap 0.5)
         </div>
       </div>
     </div>
