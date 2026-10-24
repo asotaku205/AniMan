@@ -64,3 +64,32 @@ describe("mẫu vật và vật khởi điểm", () => {
     expect(rotatePlacement(rotatePlacement(p)).rotationY).toBeCloseTo(Math.PI / 2);
   });
 });
+
+describe("đặc điểm và quan hệ của thực thể", () => {
+  it("thêm/xoá đặc điểm, trùng và rỗng thì bỏ qua", async () => {
+    const mod = await import("../lib/diorama");
+    const base = {
+      id: "e1", kind: "character" as const, name: "Kira", role: "",
+      traits: ["Dũng cảm"], description: "", color: "#ef4444", relations: [],
+    };
+    expect(mod.addTrait(base, "Dũng cảm").traits).toEqual(["Dũng cảm"]);
+    expect(mod.addTrait(base, "  ").traits).toEqual(["Dũng cảm"]);
+    expect(mod.addTrait(base, "Kiên cường").traits).toEqual(["Dũng cảm", "Kiên cường"]);
+    expect(mod.removeTrait(base, "Dũng cảm").traits).toEqual([]);
+  });
+
+  it("thêm quan hệ: ghi đè nhãn khi trùng, chặn tự quan hệ", async () => {
+    const mod = await import("../lib/diorama");
+    const base = {
+      id: "e1", kind: "character" as const, name: "Kira", role: "",
+      traits: [], description: "", color: "#ef4444", relations: [],
+    };
+    const withRel = mod.addRelation(base, "e2", "Bạn thân");
+    expect(withRel.relations).toEqual([{ entityId: "e2", label: "Bạn thân" }]);
+    expect(mod.addRelation(withRel, "e2", "Bạn chí cốt").relations).toEqual([
+      { entityId: "e2", label: "Bạn chí cốt" },
+    ]);
+    expect(mod.addRelation(base, "e1", "Tôi").relations).toEqual([]);
+    expect(mod.removeRelation(withRel, "e2").relations).toEqual([]);
+  });
+});

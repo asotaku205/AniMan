@@ -164,6 +164,13 @@ export interface DioramaPlacement {
   visible: boolean;
 }
 
+export interface EntityRelation {
+  /** Id thực thể ở đầu kia của quan hệ. */
+  entityId: string;
+  /** Nhãn quan hệ theo góc nhìn của thực thể này (VD: "Bạn thân"). */
+  label: string;
+}
+
 export interface StoryEntity {
   id: string;
   kind: "character" | "place" | "event";
@@ -172,6 +179,8 @@ export interface StoryEntity {
   traits: string[];
   description: string;
   color: string;
+  /** Quan hệ với các thực thể khác (hồ sơ sống trong vật). */
+  relations: EntityRelation[];
 }
 
 export interface DioramaState {
@@ -259,6 +268,7 @@ export function migrateLegacyWorld(
     traits: c.traits,
     description: c.backstory,
     color: c.color,
+    relations: [],
   }));
   const placements: DioramaPlacement[] = chars.map((c) => {
     const { x, z } = hexToGround(c.hexCol, c.hexRow);
@@ -281,4 +291,47 @@ export function starterPlacements(): DioramaPlacement[] {
     createPlacement("tree-green", -13, -3),
     createPlacement("station", -12, -10),
   ];
+}
+
+/** Thêm đặc điểm (trùng thì bỏ qua, rỗng thì bỏ qua). */
+export function addTrait(entity: StoryEntity, trait: string): StoryEntity {
+  const clean = trait.trim();
+  if (!clean || entity.traits.includes(clean)) return entity;
+  return { ...entity, traits: [...entity.traits, clean] };
+}
+
+export function removeTrait(entity: StoryEntity, trait: string): StoryEntity {
+  return { ...entity, traits: entity.traits.filter((t) => t !== trait) };
+}
+
+/** Thêm quan hệ tới một thực thể khác (tự quan hệ với chính mình thì bỏ qua). */
+export function addRelation(
+  entity: StoryEntity,
+  targetId: string,
+  label: string,
+): StoryEntity {
+  const clean = label.trim();
+  if (!clean || targetId === entity.id) return entity;
+  if (entity.relations.some((r) => r.entityId === targetId)) {
+    return {
+      ...entity,
+      relations: entity.relations.map((r) =>
+        r.entityId === targetId ? { ...r, label: clean } : r,
+      ),
+    };
+  }
+  return {
+    ...entity,
+    relations: [...entity.relations, { entityId: targetId, label: clean }],
+  };
+}
+
+export function removeRelation(
+  entity: StoryEntity,
+  targetId: string,
+): StoryEntity {
+  return {
+    ...entity,
+    relations: entity.relations.filter((r) => r.entityId !== targetId),
+  };
 }

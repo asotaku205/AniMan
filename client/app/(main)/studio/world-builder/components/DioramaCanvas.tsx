@@ -263,7 +263,11 @@ export function DioramaCanvas({
       dragRef.current = null;
       controls.enabled = true;
       if (!drag) {
-        // Bấm vào khoảng trống (không kéo camera) → bỏ chọn
+        // Chỉ bấm vào khoảng trống TRÊN SA BÀN mới bỏ chọn. Bấm vào
+        // panel hồ sơ, cột trái hay nút bấm (target ngoài canvas) mà
+        // cũng bỏ chọn thì ô nhập đang sửa sẽ biến mất ngay khi bấm
+        // vào — đúng lỗi "nhấn vào hồ sơ thì bị out focus".
+        if (e.target !== el) return;
         const cb = callbacksRef.current;
         if (!cb.placing && !pickPlacement(e)) cb.onSelect(null);
         return;

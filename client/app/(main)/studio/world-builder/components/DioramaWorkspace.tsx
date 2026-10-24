@@ -25,10 +25,14 @@ import {
 import { DioramaCanvas } from "./DioramaCanvas";
 import {
   MODEL_DEFS,
+  addRelation,
+  addTrait,
   clampGround,
   createPlacement,
   migrateLegacyWorld,
   modelDef,
+  removeRelation,
+  removeTrait,
   rotatePlacement,
   snapToGrid,
   starterPlacements,
@@ -79,6 +83,9 @@ export function DioramaWorkspace() {
   const [leftTab, setLeftTab] = useState<"models" | "story">("models");
   const [newEntityName, setNewEntityName] = useState("");
   const [newEntityKind, setNewEntityKind] = useState<StoryEntity["kind"]>("character");
+  const [traitDraft, setTraitDraft] = useState("");
+  const [relTargetId, setRelTargetId] = useState("");
+  const [relLabel, setRelLabel] = useState("");
   const firstSaveRef = useRef(true);
 
   // Nạp: IndexedDB trước; chưa có thì chuyển từ bản đồ hex cũ
@@ -228,6 +235,7 @@ export function DioramaWorkspace() {
       traits: [],
       description: "",
       color: "#8b5cf6",
+      relations: [],
     };
     setState({ ...state, entities: [...state.entities, entity] });
     setNewEntityName("");
@@ -523,15 +531,123 @@ export function DioramaWorkspace() {
                 rows={4}
                 className="w-full rounded-lg bg-black/40 border border-white/10 px-2 py-1.5 text-[12px] outline-none resize-y"
               />
-              <div className="flex flex-wrap gap-1.5">
-                {selectedEntity.traits.map((t) => (
-                  <span key={t} className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/70">
-                    {t}
-                  </span>
-                ))}
-                {selectedEntity.traits.length === 0 && (
-                  <span className="text-[11px] text-white/35">Chưa có đặc điểm nào.</span>
+              <div>
+                <p className="text-[11px] text-white/40 mb-1">Đặc điểm — bấm × để xoá, gõ thêm ở dưới</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedEntity.traits.map((t) => (
+                    <span key={t} className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/70">
+                      {t}
+                      <button
+                        onClick={() => updateEntity(selectedEntity.id, removeTrait(selectedEntity, t))}
+                        aria-label={`Xoá đặc điểm ${t}`}
+                        className="text-white/40 hover:text-rose-300"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {selectedEntity.traits.length === 0 && (
+                    <span className="text-[11px] text-white/35">Chưa có đặc điểm nào.</span>
+                  )}
+                </div>
+                <div className="flex gap-1.5 mt-1.5">
+                  <input
+                    value={traitDraft}
+                    onChange={(e) => setTraitDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        updateEntity(selectedEntity.id, addTrait(selectedEntity, traitDraft));
+                        setTraitDraft("");
+                      }
+                    }}
+                    placeholder="Đặc điểm mới (VD: Kiên cường…)"
+                    className="flex-1 min-w-0 h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      updateEntity(selectedEntity.id, addTrait(selectedEntity, traitDraft));
+                      setTraitDraft("");
+                    }}
+                    className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] text-white/70"
+                  >
+                    Thêm
+                  </button>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-[11px] text-white/40">
+                Màu nhân vật
+                <input
+                  type="color"
+                  value={selectedEntity.color}
+                  onChange={(e) => updateEntity(selectedEntity.id, { color: e.target.value })}
+                  aria-label="Màu nhân vật"
+                  className="w-8 h-8 rounded bg-transparent cursor-pointer"
+                />
+                <span className="text-white/60">{selectedEntity.color}</span>
+              </label>
+              <div>
+                <p className="text-[11px] text-white/40 mb-1">Quan hệ với thực thể khác</p>
+                {selectedEntity.relations.map((r) => {
+                  const target = state.entities.find((e) => e.id === r.entityId);
+                  return (
+                    <div key={r.entityId} className="flex items-center gap-2 py-1 border-b border-white/5 last:border-0">
+                      <button
+                        onClick={() => {
+                          const pl = state.placements.find((pp) => pp.storyEntityId === r.entityId);
+                          if (pl) setSelectedId(pl.id);
+                        }}
+                        title={target ? "Nhảy tới vật của thực thể này" : undefined}
+                        className="text-[12px] font-medium hover:text-violet-300 text-left"
+                      >
+                        {target?.name ?? "Thực thể đã xoá"}
+                      </button>
+                      <span className="text-[11px] text-white/40">— {r.label}</span>
+                      <button
+                        onClick={() => updateEntity(selectedEntity.id, removeRelation(selectedEntity, r.entityId))}
+                        aria-label="Xoá quan hệ"
+                        className="ml-auto text-white/35 hover:text-rose-400"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
+                {selectedEntity.relations.length === 0 && (
+                  <p className="text-[11px] text-white/35">Chưa có quan hệ nào.</p>
                 )}
+                <div className="flex gap-1.5 mt-1.5">
+                  <select
+                    value={relTargetId}
+                    onChange={(e) => setRelTargetId(e.target.value)}
+                    aria-label="Thực thể liên quan"
+                    className="h-8 rounded-lg bg-black/40 border border-white/10 px-1.5 text-[12px] outline-none"
+                  >
+                    <option value="">Chọn thực thể…</option>
+                    {state.entities
+                      .filter((e) => e.id !== selectedEntity.id)
+                      .map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name}
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    value={relLabel}
+                    onChange={(e) => setRelLabel(e.target.value)}
+                    placeholder="Quan hệ (VD: Bạn thân)"
+                    className="flex-1 min-w-0 h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!relTargetId) return;
+                      updateEntity(selectedEntity.id, addRelation(selectedEntity, relTargetId, relLabel));
+                      setRelLabel("");
+                    }}
+                    className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] text-white/70"
+                  >
+                    Thêm
+                  </button>
+                </div>
               </div>
               <p className="text-[11px] text-white/35 leading-relaxed">
                 Hồ sơ này sống trong chính vật trên sa bàn — đổi ở đây là

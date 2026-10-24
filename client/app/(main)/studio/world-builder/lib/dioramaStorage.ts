@@ -67,7 +67,14 @@ export async function loadDiorama(): Promise<DioramaState | null> {
       } | null>,
     );
     if (!rec || !Array.isArray(rec.state?.placements)) return null;
-    return rec.state;
+    // Bản lưu từ W1 chưa có relations — chuẩn hoá để UI mới không vỡ.
+    return {
+      ...rec.state,
+      entities: (rec.state.entities ?? []).map((e) => ({
+        ...e,
+        relations: e.relations ?? [],
+      })),
+    };
   } catch {
     return null;
   }
