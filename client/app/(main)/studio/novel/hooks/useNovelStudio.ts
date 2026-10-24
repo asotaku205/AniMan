@@ -116,6 +116,10 @@ export function useNovelStudio() {
   const [selectedNovelId, setSelectedNovelId] = useState<string | null>(null);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  // Chế độ hiển thị (giống bên đọc tiểu thuyết, chỉ trong phiên làm việc).
+  const [displayTheme, setDisplayTheme] = useState<"paper" | "sepia" | "dark" | "night">("paper");
+  const [displayFontSize, setDisplayFontSize] = useState<"sm" | "md" | "lg" | "xl">("xl");
+  const [displayLineHeight, setDisplayLineHeight] = useState<"normal" | "relaxed" | "loose">("relaxed");
   const [plotlines, setPlotlines] = useState<Plotline[]>([]);
   const [beats, setBeats] = useState<Beat[]>([]);
   const [arcs, setArcs] = useState<CharacterArc[]>([]);
@@ -788,6 +792,9 @@ export function useNovelStudio() {
 
   return {
     fontId, setFontId, font,
+    displayTheme, setDisplayTheme,
+    displayFontSize, setDisplayFontSize,
+    displayLineHeight, setDisplayLineHeight,
     tracks, setTracks,
     notes, setNotes,
     wordCount,

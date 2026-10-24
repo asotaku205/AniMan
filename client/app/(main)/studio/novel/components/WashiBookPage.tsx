@@ -16,16 +16,42 @@ interface MentionState {
   left: number;
 }
 
-function Page({ children, right }: { children: React.ReactNode; right?: boolean }) {
+type DisplayTheme = "paper" | "sepia" | "dark" | "night";
+
+const PAGE_THEME: Record<DisplayTheme, { bg: string; text: string; label: string; light: boolean }> = {
+  paper: { bg: "#f5eedb", text: "#1f130a", label: "Giấy", light: true },
+  sepia: { bg: "#ede0c8", text: "#2a1a08", label: "Sepia", light: true },
+  dark: { bg: "#1e1b2e", text: "#ddd6ee", label: "Tối", light: false },
+  night: { bg: "#141414", text: "#c9c2b4", label: "Đêm", light: false },
+};
+
+const EDITOR_SIZE: Record<"sm" | "md" | "lg" | "xl", string> = {
+  sm: "text-base",
+  md: "text-lg",
+  lg: "text-xl",
+  xl: "text-2xl",
+};
+
+const LINE_HEIGHT: Record<"normal" | "relaxed" | "loose", number> = {
+  normal: 1.6,
+  relaxed: 1.8,
+  loose: 2.1,
+};
+
+function Page({ children, right, theme }: { children: React.ReactNode; right?: boolean; theme: DisplayTheme }) {
+  const t = PAGE_THEME[theme];
   return (
     <div
-      className={`relative aspect-[3/4] p-10 ${right ? "rounded-r-[6px]" : "rounded-l-[6px]"} bg-[#f3e6c8]`}
+      className={`relative aspect-[3/4] p-10 ${right ? "rounded-r-[6px]" : "rounded-l-[6px]"}`}
       style={{
-        backgroundImage:
-          "radial-gradient(circle at 20% 30%, rgba(120,80,40,0.08), transparent 60%), radial-gradient(circle at 80% 70%, rgba(120,80,40,0.1), transparent 60%), repeating-linear-gradient(0deg, rgba(120,80,40,0.04) 0 1px, transparent 1px 28px)",
+        backgroundColor: t.bg,
+        color: t.text,
+        backgroundImage: t.light
+          ? "radial-gradient(circle at 20% 30%, rgba(120,80,40,0.08), transparent 60%), radial-gradient(circle at 80% 70%, rgba(120,80,40,0.1), transparent 60%), repeating-linear-gradient(0deg, rgba(120,80,40,0.04) 0 1px, transparent 1px 28px)"
+          : undefined,
       }}
     >
-      <div className={`absolute inset-y-0 ${right ? "left-0 bg-gradient-to-r" : "right-0 bg-gradient-to-l"} from-black/30 to-transparent w-10 pointer-events-none`} />
+      <div className={`absolute inset-y-0 ${right ? "left-0 bg-gradient-to-r" : "right-0 bg-gradient-to-l"} from-black/20 to-transparent w-10 pointer-events-none`} />
       {children}
     </div>
   );
@@ -124,6 +150,46 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
   }
   return (
     <div className="relative mx-auto w-full max-w-4xl">
+      {/* Chế độ hiển thị — giống bên đọc tiểu thuyết */}
+      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-2.5 backdrop-blur">
+        <span className="text-xs text-amber-100/70">Cỡ chữ</span>
+        {(["sm", "md", "lg", "xl"] as const).map((sz) => (
+          <button
+            key={sz}
+            type="button"
+            onClick={() => s.setDisplayFontSize(sz)}
+            className={`h-7 w-7 rounded-lg border text-xs transition ${s.displayFontSize === sz ? "border-amber-400/70 bg-amber-400/20 text-amber-200" : "border-transparent text-amber-100/60 hover:text-amber-100"}`}
+          >
+            {sz.toUpperCase()}
+          </button>
+        ))}
+        <div className="mx-1 h-5 w-px bg-white/10" />
+        <span className="text-xs text-amber-100/70">Giao diện</span>
+        {(Object.keys(PAGE_THEME) as DisplayTheme[]).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => s.setDisplayTheme(t)}
+            title={PAGE_THEME[t].label}
+            className="h-5 w-5 rounded-full border-2 transition"
+            style={{ borderColor: s.displayTheme === t ? "#fbbf24" : "transparent" }}
+          >
+            <div className="h-full w-full rounded-full" style={{ background: PAGE_THEME[t].bg }} />
+          </button>
+        ))}
+        <div className="mx-1 h-5 w-px bg-white/10" />
+        <span className="text-xs text-amber-100/70">Giãn dòng</span>
+        {(["normal", "relaxed", "loose"] as const).map((lh) => (
+          <button
+            key={lh}
+            type="button"
+            onClick={() => s.setDisplayLineHeight(lh)}
+            className={`rounded-lg border px-2 py-1 text-xs transition ${s.displayLineHeight === lh ? "border-amber-400/70 bg-amber-400/20 text-amber-200" : "border-transparent text-amber-100/60 hover:text-amber-100"}`}
+          >
+            {lh === "normal" ? "Chật" : lh === "relaxed" ? "Vừa" : "Rộng"}
+          </button>
+        ))}
+      </div>
       <motion.div
         initial={{ rotateX: 12, opacity: 0 }}
         whileInView={{ rotateX: 4, opacity: 1 }}
@@ -139,8 +205,8 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
           <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-6 bg-gradient-to-r from-[#3a1908] via-[#1a0a04] to-[#3a1908] z-10" />
 
           {/* Left page */}
-          <Page>
-            <div style={{ fontFamily: "Shippori Mincho, serif" }} className="text-[#3a2412]/90 text-sm tracking-widest mb-6 text-center font-medium">
+          <Page theme={s.displayTheme}>
+            <div style={{ fontFamily: "Shippori Mincho, serif" }} className="text-sm tracking-widest mb-6 text-center font-medium opacity-80">
               {s.selectedChapter?.title ?? ""} — {s.selectedScene.title}
             </div>
             <div
@@ -149,24 +215,24 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               suppressContentEditableWarning
               onInput={handleInput}
               onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
-              style={{ fontFamily: s.font }}
-              className="text-[#2a1a0a] text-2xl leading-[1.7] outline-none min-h-[280px] focus:bg-amber-50/20 rounded px-1"
+              style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
+              className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[280px] focus:bg-black/5 rounded px-1`}
             />
           </Page>
 
           {/* Right page */}
-          <Page right>
+          <Page right theme={s.displayTheme}>
             <div
               ref={s.rightRef}
               contentEditable
               suppressContentEditableWarning
               onInput={handleInput}
               onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
-              style={{ fontFamily: s.font }}
-              className="text-[#2a1a0a] text-2xl leading-[1.7] outline-none min-h-[280px] focus:bg-amber-50/20 rounded px-1"
+              style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
+              className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[280px] focus:bg-black/5 rounded px-1`}
             />
             <div className="mt-10 text-right" style={{ fontFamily: "Shippori Mincho, serif" }}>
-              <span className="text-[#3a2412]/60 text-xs">— SakuraStream · trang 128</span>
+              <span className="text-xs opacity-60">— SakuraStream · trang 128</span>
             </div>
           </Page>
         </div>
