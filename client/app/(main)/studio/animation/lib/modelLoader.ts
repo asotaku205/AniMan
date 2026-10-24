@@ -12,9 +12,15 @@ import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { listAnimAssets } from "./animStorage";
 import type { Model3DAsset } from "./animAssets";
 
-const cache = new Map<string, Promise<THREE.Group>>();
+interface CachedModel {
+  group: THREE.Group;
+  /** Clip xương trong file GLB (có thể rỗng) — dùng chung, chỉ đọc. */
+  clips: THREE.AnimationClip[];
+}
 
-async function fetchModelGroup(assetId: string): Promise<THREE.Group> {
+const cache = new Map<string, Promise<CachedModel>>();
+
+async function fetchModelGroup(assetId: string): Promise<CachedModel> {
   const assets = await listAnimAssets();
   const asset = assets.find(
     (a): a is Model3DAsset => a.kind === "model3d" && a.id === assetId,
@@ -35,16 +41,24 @@ async function fetchModelGroup(assetId: string): Promise<THREE.Group> {
   wrapper.scale.setScalar(1 / height);
   const outer = new THREE.Group();
   outer.add(wrapper);
-  return outer;
+  return { group: outer, clips: gltf.animations ?? [] };
 }
 
 /** Lấy một BẢN SAO của mô hình (đã chuẩn hoá), sẵn sàng đặt vào cảnh. */
 export async function loadModelForScene(
   assetId: string,
 ): Promise<THREE.Object3D> {
+  const { group } = await loadModelForSceneWithClips(assetId);
+  return group;
+}
+
+/** Như loadModelForScene, kèm clip xương của file gốc. */
+export async function loadModelForSceneWithClips(
+  assetId: string,
+): Promise<{ group: THREE.Object3D; clips: THREE.AnimationClip[] }> {
   if (!cache.has(assetId)) {
     cache.set(assetId, fetchModelGroup(assetId));
   }
   const proto = await cache.get(assetId)!;
-  return cloneSkeleton(proto) as THREE.Object3D;
+  return { group: cloneSkeleton(proto.group) as THREE.Object3D, clips: proto.clips };
 }

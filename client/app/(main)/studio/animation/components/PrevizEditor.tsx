@@ -33,7 +33,9 @@ import {
 } from "../lib/previz";
 import { videoGenStatus } from "../lib/videoGen";
 import { newDialogueId, type DialogueLine } from "../lib/dialogue";
-import { loadModelForScene } from "../lib/modelLoader";
+import { loadModelForSceneWithClips } from "../lib/modelLoader";
+import { createActionSegment, sampleActionSegment } from "../lib/actionTrack";
+import { createMixerState, updateMixerState, type MixerState } from "../lib/clipPlayer";
 import {
   createWeatherPoints,
   updateWeatherPoints,
@@ -339,6 +341,8 @@ export function PrevizEditor({
     controls: OrbitControls;
     groups: Map<string, THREE.Object3D>;
     characters: Map<string, CharacterParts>;
+    /** Mixer phát clip xương cho từng vật thể model (Phase 4). */
+    mixers: Map<string, MixerState>;
     weatherPoints: THREE.Points | null;
     particlePoints: THREE.Points | null;
   } | null>(null);
@@ -363,6 +367,13 @@ export function PrevizEditor({
   const [draftPos, setDraftPos] = useState<Vec3>(vec3());
   const [draftRotY, setDraftRotY] = useState(0);
   const [draftPose, setDraftPose] = useState("stand");
+  /** Tên clip xương đã nạp cho từng vật thể model (Phase 4). */
+  const [modelClipNames, setModelClipNames] = useState<Record<string, string[]>>({});
+  const [draftActClip, setDraftActClip] = useState("");
+  const [draftActStart, setDraftActStart] = useState(0);
+  const [draftActDur, setDraftActDur] = useState(2);
+  const [draftActLoop, setDraftActLoop] = useState(true);
+  const [draftActSpeed, setDraftActSpeed] = useState(1);
   const [draftDirty, setDraftDirty] = useState(false);
   const [easing, setEasing] = useState<EasingId>("ease-in-out");
   const [draftCamPos, setDraftCamPos] = useState<Vec3>(vec3(0, 1.6, 6));
@@ -435,6 +446,7 @@ export function PrevizEditor({
       controls,
       groups: new Map(),
       characters: new Map(),
+      mixers: new Map(),
       weatherPoints: null,
       particlePoints: null,
     };
@@ -590,9 +602,16 @@ export function PrevizEditor({
           ctx.groups.set(obj.id, holder);
           ctx.scene.add(holder);
           if (obj.modelAssetId) {
-            void loadModelForScene(obj.modelAssetId)
+            void loadModelForSceneWithClips(obj.modelAssetId)
               .then((loaded) => {
-                if (ctx.groups.get(obj.id) === holder) holder.add(loaded);
+                if (ctx.groups.get(obj.id) !== holder) return;
+                holder.add(loaded.group);
+                const ms = createMixerState(loaded.group, loaded.clips);
+                if (ms) ctx.mixers.set(obj.id, ms);
+                setModelClipNames((prev) => ({
+                  ...prev,
+                  [obj.id]: loaded.clips.map((c) => c.name),
+                }));
               })
               .catch(() => undefined);
           }
@@ -614,6 +633,7 @@ export function PrevizEditor({
         ctx.scene.remove(group);
         ctx.groups.delete(id);
         ctx.characters.delete(id);
+        ctx.mixers.delete(id);
       }
     }
   }, [previz]);
@@ -652,6 +672,12 @@ export function PrevizEditor({
             mat.emissiveIntensity = sampled.glow * 0.55;
           }
         });
+        if (obj.kind === "model") {
+          const ms = ctx.mixers.get(obj.id);
+          if (ms) {
+            updateMixerState(ms, st.timeSec, sampleActionSegment(obj.actions, st.timeSec));
+          }
+        }
         const parts = ctx.characters.get(obj.id);
         if (parts) {
           const pose =
@@ -1134,6 +1160,130 @@ export function PrevizEditor({
                   </span>
                 ))}
               </div>
+            </section>
+          )}
+
+          {selected && selected.kind === "model" && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2.5">
+              <h3 className="text-[12px] font-semibold text-white/70">
+                HÀNH ĐỘNG (clip xương)
+              </h3>
+              {(() => {
+                const clipNames = modelClipNames[selected.id];
+                if (clipNames === undefined) {
+                  return <p className="text-[11px] text-white/40">Đang nạp model…</p>;
+                }
+                if (clipNames.length === 0) {
+                  return (
+                    <p className="text-[11px] text-white/40 leading-relaxed">
+                      Model này không có clip xương. Nạp file .glb có sẵn clip
+                      (ví dụ tải từ Mixamo) thì clip mới hiện ở đây để gắn
+                      vào timeline.
+                    </p>
+                  );
+                }
+                const clip = clipNames.includes(draftActClip) ? draftActClip : clipNames[0];
+                return (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(selected.actions ?? []).map((a) => (
+                        <span
+                          key={a.id}
+                          className="flex items-center gap-1 px-2 h-6 rounded-md bg-violet-500/15 border border-violet-400/30 text-[11px]"
+                        >
+                          {a.clipName} · {a.startSec.toFixed(1)}–{(a.startSec + a.durationSec).toFixed(1)}s
+                          {a.loop ? " · lặp" : " · 1 lần"} · ×{a.speed}
+                          <button
+                            onClick={() =>
+                              updateObject(selected.id, {
+                                actions: (selected.actions ?? []).filter((x) => x.id !== a.id),
+                              })
+                            }
+                            aria-label="Xoá hành động"
+                            className="text-white/40 hover:text-rose-400"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <label className="flex items-center gap-2 text-[11px] text-white/45">
+                      <span className="w-14">Clip</span>
+                      <select
+                        value={clip}
+                        onChange={(e) => setDraftActClip(e.currentTarget.value)}
+                        className="flex-1 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                      >
+                        {clipNames.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex gap-2">
+                      <label className="flex-1 text-[11px] text-white/45">
+                        Bắt đầu (s)
+                        <input
+                          type="number" step={0.1} min={0} value={draftActStart}
+                          onChange={(e) => setDraftActStart(Number(e.currentTarget.value) || 0)}
+                          className="mt-0.5 w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                        />
+                      </label>
+                      <label className="flex-1 text-[11px] text-white/45">
+                        Dài (s)
+                        <input
+                          type="number" step={0.1} min={0.1} value={draftActDur}
+                          onChange={(e) => setDraftActDur(Number(e.currentTarget.value) || 0.1)}
+                          className="mt-0.5 w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                        />
+                      </label>
+                      <label className="flex-1 text-[11px] text-white/45">
+                        Tốc độ
+                        <input
+                          type="number" step={0.1} min={0.1} value={draftActSpeed}
+                          onChange={(e) => setDraftActSpeed(Number(e.currentTarget.value) || 1)}
+                          className="mt-0.5 w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <label className="flex items-center gap-1.5 text-[11px] text-white/60 px-1">
+                        <input
+                          type="checkbox" checked={draftActLoop}
+                          onChange={(e) => setDraftActLoop(e.currentTarget.checked)}
+                        />
+                        Lặp tới hết đoạn
+                      </label>
+                      <button
+                        onClick={() => setDraftActStart(Math.round(timeSec * 100) / 100)}
+                        className="h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[11px]"
+                      >
+                        Lấy mốc đang xem ({timeSec.toFixed(2)}s)
+                      </button>
+                      <button
+                        onClick={() => {
+                          updateObject(selected.id, {
+                            actions: [
+                              ...(selected.actions ?? []),
+                              {
+                                ...createActionSegment(clip, draftActStart, draftActDur),
+                                loop: draftActLoop,
+                                speed: draftActSpeed,
+                              },
+                            ],
+                          });
+                        }}
+                        className="flex-1 h-8 rounded-lg bg-violet-500/25 border border-violet-400/40 text-[12px] font-medium hover:bg-violet-500/35"
+                      >
+                        Thêm hành động
+                      </button>
+                    </div>
+                    <p className="text-[10.5px] text-white/30 leading-relaxed">
+                      Bấm phát là nhân vật diễn đúng đoạn đã gắn; xuất WebM
+                      ghi lại đúng hành động đang xem.
+                    </p>
+                  </>
+                );
+              })()}
             </section>
           )}
 

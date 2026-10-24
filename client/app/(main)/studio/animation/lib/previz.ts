@@ -84,10 +84,26 @@ export interface PrevizKey {
   easing: EasingId;
 }
 
+/** Một đoạn hành động trên timeline (Phase 4): phát clip xương của
+ * model trong khoảng [startSec, startSec + durationSec). Clip lấy từ
+ * file GLB của model (ví dụ clip Mixamo). */
+export interface ActionSegment {
+  id: string;
+  clipName: string;
+  startSec: number;
+  durationSec: number;
+  /** Lặp clip tới hết đoạn (mặc định lặp). */
+  loop: boolean;
+  /** Tốc độ phát (1 = đúng tốc độ gốc). */
+  speed: number;
+}
+
 export interface PrevizObject {
   id: string;
   kind: PrevizObjectKind;
   name: string;
+  /** Rãnh hành động (chỉ kind "model" dùng) — xem lib/actionTrack.ts. */
+  actions?: ActionSegment[];
   /** Mã tài sản mô hình (chỉ kind "model" dùng) — trỏ vào thư viện tài sản. */
   modelAssetId?: string;
   /** Phát sáng 0..1 (S2) — áp emissive cho vật thể 3D. */
