@@ -190,3 +190,23 @@ export function terrainVertexColor(
     Math.min(1, Math.max(0, c[2] + noise)),
   ];
 }
+
+export type Season = "spring" | "summer" | "autumn" | "winter";
+
+/** Pha màu theo mùa: thu ngả cam, đông bạc màu + sáng, xuân tươi hơn. */
+export function seasonTint(
+  c: [number, number, number],
+  season: Season,
+): [number, number, number] {
+  const [r, g, b] = c;
+  if (season === "summer") return c;
+  if (season === "autumn") {
+    const green = (g + r) / 2;
+    return [Math.min(1, r * 1.05), green * 0.72, b * 0.6];
+  }
+  if (season === "winter") {
+    const avg = (r + g + b) / 3;
+    return [Math.min(1, avg * 0.9 + 0.12), Math.min(1, avg * 0.9 + 0.12), Math.min(1, avg * 0.95 + 0.15)];
+  }
+  return [Math.min(1, r * 0.95), Math.min(1, g * 1.08), Math.min(1, b * 0.95)];
+}

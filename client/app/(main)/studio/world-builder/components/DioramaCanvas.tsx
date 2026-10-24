@@ -19,13 +19,21 @@ import {
   clampGround,
   modelDef,
   placementFootprint,
+  skySun,
+  placementParts,
   snapToGrid,
+  type CustomModel,
+  type CameraView,
+  type Faction,
+  type SkySettings,
   type DioramaPlacement,
+  type ModelPart,
   type StoryEntity,
 } from "../lib/diorama";
 import {
   TERRAIN_CELLS,
   heightAt,
+  seasonTint,
   terrainVertexColor,
   type Terrain,
   type TerrainBrushMode,
@@ -41,6 +49,14 @@ interface Props {
   /** dataUrl GLB theo asset id (từ kho tài sản Animation Studio). */
   glbDataUrls: Record<string, string>;
   /** Địa hình W3 + cỡ sa bàn + đường đi. */
+  customModels: CustomModel[];
+  factions: Faction[];
+  sky: SkySettings;
+  flyTo: { position: [number, number, number]; target: [number, number, number]; nonce: number } | null;
+  canvasApiRef: React.MutableRefObject<{
+    capture: () => string | null;
+    getCamera: () => { position: [number, number, number]; target: [number, number, number] } | null;
+  } | null>;
   terrain: Terrain;
   groundSize: number;
   paths: TerrainPath[];
@@ -72,14 +88,19 @@ function disposeObject(obj: THREE.Object3D) {
 function buildPlacementMesh(
   p: DioramaPlacement,
   entity: StoryEntity | null,
+  parts: ModelPart[],
 ): THREE.Group {
-  const def = modelDef(p.modelId);
   const group = new THREE.Group();
   group.position.set(p.x, 0, p.z);
-  group.rotation.y = p.rotationY;
-  group.scale.setScalar(p.scale);
+  group.rotation.set(p.rotationX ?? 0, p.rotationY, p.rotationZ ?? 0);
+  group.scale.set(
+    p.scale * (p.scaleX ?? 1),
+    p.scale * (p.scaleY ?? 1),
+    p.scale * (p.scaleZ ?? 1),
+  );
   group.userData.placementId = p.id;
-  for (const part of def.parts) {
+  for (let partIdx = 0; partIdx < parts.length; partIdx += 1) {
+    const part = parts[partIdx];
     let geometry: THREE.BufferGeometry;
     if (part.shape === "box") {
       // Bo góc nhẹ: khối hộp nhìn "đồ chơi" hơn hẳn hộp sắc cạnh, vẫn
@@ -107,7 +128,10 @@ function buildPlacementMesh(
       geometry = new THREE.SphereGeometry(part.size[0], 18, 14);
     }
     const color =
-      part.color === "__entity__" ? (entity?.color ?? "#8b5cf6") : part.color;
+      p.partColors?.[partIdx] ??
+      (part.color === "__entity__"
+        ? (entity?.color ?? "#8b5cf6")
+        : (p.tint ?? part.color));
     const mesh = new THREE.Mesh(
       geometry,
       // Smooth shading + Standard: mẫu khối chỉ còn là placeholder bày
@@ -134,6 +158,11 @@ export function DioramaCanvas({
   selectedId,
   placing,
   glbDataUrls,
+  customModels,
+  factions,
+  sky,
+  flyTo,
+  canvasApiRef,
   terrain,
   groundSize,
   paths,
@@ -194,6 +223,14 @@ export function DioramaCanvas({
   const entityColorSig = entities.map((e) => e.id + ":" + e.color).join("|");
   const entitiesRef = useRef(entities);
   entitiesRef.current = entities;
+  const customModelsRef = useRef(customModels);
+  customModelsRef.current = customModels;
+  const skyLightsRef = useRef<{ sun: THREE.DirectionalLight; hemi: THREE.HemisphereLight } | null>(null);
+  const weatherRef = useRef<{ points: THREE.Points; vel: Float32Array; kind: string } | null>(null);
+  const flyRef = useRef<{
+    fromPos: THREE.Vector3; fromTarget: THREE.Vector3;
+    toPos: THREE.Vector3; toTarget: THREE.Vector3; start: number;
+  } | null>(null);
 
   // Khởi tạo sân khấu 1 lần
   useEffect(() => {
@@ -235,7 +272,8 @@ export function DioramaCanvas({
     controls.minDistance = 10;
     controls.maxDistance = 70;
 
-    scene.add(new THREE.HemisphereLight(0xbcd7ff, 0x3a2f22, 0.55));
+    const hemi = new THREE.HemisphereLight(0xbcd7ff, 0x3a2f22, 0.55);
+    scene.add(hemi);
     scene.add(new THREE.AmbientLight(0xffffff, 0.3));
     const sun = new THREE.DirectionalLight(0xffffff, 1.5);
     sun.position.set(20, 30, 10);
@@ -247,6 +285,29 @@ export function DioramaCanvas({
     sun.shadow.camera.bottom = -30;
     sun.shadow.camera.far = 100;
     scene.add(sun);
+    skyLightsRef.current = { sun, hemi };
+    // Hạt thời tiết: 1200 điểm rơi trong hộp 60×30×60 quanh tâm.
+    {
+      const N = 1200;
+      const pos = new Float32Array(N * 3);
+      const vel = new Float32Array(N);
+      for (let i = 0; i < N; i += 1) {
+        pos[i * 3] = (Math.random() - 0.5) * 60;
+        pos[i * 3 + 1] = Math.random() * 30;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 60;
+        vel[i] = 0.5 + Math.random();
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      const points = new THREE.Points(
+        geo,
+        new THREE.PointsMaterial({ color: 0xcfe6ff, size: 0.16, transparent: true, opacity: 0.85 }),
+      );
+      points.visible = false;
+      points.frustumCulled = false;
+      scene.add(points);
+      weatherRef.current = { points, vel, kind: "clear" };
+    }
 
     // Đế sa bàn: khối đế sâu 6m (địa hình đào sâu tới -3 vẫn nằm
     // trong khối đế) + mặt địa hình + mặt nước + nhóm đường đi.
@@ -307,6 +368,26 @@ export function DioramaCanvas({
       ring,
       raycaster,
       groundPlane,
+    };
+    canvasApiRef.current = {
+      getCamera: () => {
+        const t = threeRef.current;
+        if (!t) return null;
+        return {
+          position: [t.camera.position.x, t.camera.position.y, t.camera.position.z],
+          target: [t.controls.target.x, t.controls.target.y, t.controls.target.z],
+        };
+      },
+      capture: () => {
+        const t = threeRef.current;
+        if (!t) return null;
+        const wasRing = t.ring.visible;
+        t.ring.visible = false;
+        t.renderer.render(t.scene, t.camera);
+        const url = t.renderer.domElement.toDataURL("image/png");
+        t.ring.visible = wasRing;
+        return url;
+      },
     };
 
     const ndc = (e: PointerEvent) => {
@@ -372,6 +453,8 @@ export function DioramaCanvas({
       if (!group) return;
       const id = group.userData.placementId as string;
       cb.onSelect(id);
+      const locked = placementsRef.current.find((pp) => pp.id === id)?.locked;
+      if (locked) return;
       controls.enabled = false;
       dragRef.current = {
         id,
@@ -403,7 +486,7 @@ export function DioramaCanvas({
       const td = terrainDataRef.current;
       const fp =
         placementsRef.current.find((pp) => pp.id === drag.id) ?
-          placementFootprint(placementsRef.current.find((pp) => pp.id === drag.id)!) : 0;
+          placementFootprint(placementsRef.current.find((pp) => pp.id === drag.id)!, customModelsRef.current) : 0;
       drag.group.position.x = clampGround(pt.x, fp, td.groundSize);
       drag.group.position.z = clampGround(pt.z, fp, td.groundSize);
       drag.group.position.y = heightAt(td.terrain, td.groundSize, drag.group.position.x, drag.group.position.z);
@@ -434,7 +517,7 @@ export function DioramaCanvas({
       }
       if (!drag.moved) return;
       const found = placementsRef.current.find((p) => p.id === drag.id);
-      const fp = found ? placementFootprint(found) : 0;
+      const fp = found ? placementFootprint(found, customModelsRef.current) : 0;
       const td = terrainDataRef.current;
       const sx = snapToGrid(clampGround(drag.group.position.x, fp, td.groundSize));
       const sz = snapToGrid(clampGround(drag.group.position.z, fp, td.groundSize));
@@ -500,6 +583,31 @@ export function DioramaCanvas({
           callbacksRef.current.onMove(done.id, done.sx, done.sz);
         }
       }
+      // Bay tới góc nhìn đã lưu (0,8s, ease-out).
+      if (flyRef.current) {
+        const f = flyRef.current;
+        const t = Math.min(1, (performance.now() - f.start) / 800);
+        const ease = 1 - Math.pow(1 - t, 3);
+        camera.position.lerpVectors(f.fromPos, f.toPos, ease);
+        controls.target.lerpVectors(f.fromTarget, f.toTarget, ease);
+        if (t >= 1) flyRef.current = null;
+      }
+      // Hạt mưa/tuyết rơi, hết tầm thì đưa lên đầu lại.
+      const w = weatherRef.current;
+      if (w && w.points.visible) {
+        const arr = (w.points.geometry.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
+        const speed = w.kind === "rain" ? 16 : 2.5;
+        for (let i = 0; i < w.vel.length; i += 1) {
+          arr[i * 3 + 1] -= speed * w.vel[i] * 0.016;
+          if (w.kind === "snow") arr[i * 3] += Math.sin(performance.now() / 900 + i) * 0.008;
+          if (arr[i * 3 + 1] < 0) {
+            arr[i * 3 + 1] = 30;
+            arr[i * 3] = (Math.random() - 0.5) * 60;
+            arr[i * 3 + 2] = (Math.random() - 0.5) * 60;
+          }
+        }
+        w.points.geometry.getAttribute("position").needsUpdate = true;
+      }
       controls.update();
       renderer.render(scene, camera);
     };
@@ -558,8 +666,12 @@ export function DioramaCanvas({
         if (cached) {
           const clone = cached.clone(true);
           clone.position.set(p.x, heightAt(terrain, groundSize, p.x, p.z), p.z);
-          clone.rotation.y = p.rotationY;
-          clone.scale.setScalar(p.scale);
+          clone.rotation.set(p.rotationX ?? 0, p.rotationY, p.rotationZ ?? 0);
+          clone.scale.set(
+            p.scale * (p.scaleX ?? 1),
+            p.scale * (p.scaleY ?? 1),
+            p.scale * (p.scaleZ ?? 1),
+          );
           clone.userData.placementId = p.id;
           clone.userData.sharedGlb = true;
           t.objects.add(clone);
@@ -571,6 +683,7 @@ export function DioramaCanvas({
           const holder = buildPlacementMesh(
             { ...p, glbAssetId: null },
             p.storyEntityId ? (entityById.get(p.storyEntityId) ?? null) : null,
+            modelDef(p.modelId).parts,
           );
           t.objects.add(holder);
           const assetId = p.glbAssetId;
@@ -603,15 +716,35 @@ export function DioramaCanvas({
           buildPlacementMesh(
             { ...p, glbAssetId: null },
             p.storyEntityId ? (entityById.get(p.storyEntityId) ?? null) : null,
+            modelDef(p.modelId).parts,
           ),
         );
         continue;
       }
-      t.objects.add(
-        buildPlacementMesh(p, p.storyEntityId ? (entityById.get(p.storyEntityId) ?? null) : null),
+      const group = buildPlacementMesh(
+        p,
+        p.storyEntityId ? (entityById.get(p.storyEntityId) ?? null) : null,
+        placementParts(p, customModelsRef.current),
       );
+      group.position.y = heightAt(terrain, groundSize, p.x, p.z);
+      t.objects.add(group);
     }
-  }, [placements, glbDataUrls, entityColorSig, glbTick]);
+    // Vòng màu phe dưới chân vật: nhìn là biết vật thuộc phe nào.
+    const factionById = new Map(factions.map((f) => [f.id, f]));
+    for (const p of placements) {
+      if (!p.visible || !p.storyEntityId) continue;
+      const ent = entityById.get(p.storyEntityId);
+      const fac = ent?.factionId ? factionById.get(ent.factionId) : undefined;
+      if (!fac) continue;
+      const circle = new THREE.Mesh(
+        new THREE.CircleGeometry(placementFootprint(p, customModelsRef.current) + 0.3, 32),
+        new THREE.MeshBasicMaterial({ color: fac.color, transparent: true, opacity: 0.35, side: THREE.DoubleSide }),
+      );
+      circle.rotation.x = -Math.PI / 2;
+      circle.position.set(p.x, heightAt(terrain, groundSize, p.x, p.z) + 0.03, p.z);
+      t.objects.add(circle);
+    }
+  }, [placements, glbDataUrls, entityColorSig, glbTick, factions]);
 
   // Dựng mặt địa hình khi terrain/size/đường đổi: mesh cao độ +
   // màu đỉnh (smooth normals — hướng realistic, không faceted) + mặt
@@ -630,7 +763,7 @@ export function DioramaCanvas({
       const j = Math.floor(v / (TERRAIN_CELLS + 1));
       const i = v % (TERRAIN_CELLS + 1);
       pos.setY(v, terrain.heights[j][i]);
-      const c = terrainVertexColor(terrain, i, j);
+      const c = seasonTint(terrainVertexColor(terrain, i, j), sky.season);
       colors[v * 3] = c[0];
       colors[v * 3 + 1] = c[1];
       colors[v * 3 + 2] = c[2];
@@ -713,7 +846,7 @@ export function DioramaCanvas({
     if (draftPath.length > 0) {
       t.pathsGroup.add(buildRibbon(draftPath, "#c4a06a", 0.5));
     }
-  }, [terrain, groundSize, paths, draftPath]);
+  }, [terrain, groundSize, paths, draftPath, sky.season]);
 
   // Vòng chọn: effect riêng, chỉ di chuyển vòng (không dựng lại mesh).
   // Trong lúc kéo/settle, vòng được cập nhật trực tiếp từ handler nên
@@ -730,11 +863,53 @@ export function DioramaCanvas({
         heightAt(terrain, groundSize, sel.x, sel.z) + 0.04,
         sel.z,
       );
-      t.ring.scale.setScalar(placementFootprint(sel));
+      t.ring.scale.setScalar(placementFootprint(sel, customModels));
     } else {
       t.ring.visible = false;
     }
-  }, [placements, selectedId, terrain, groundSize]);
+  }, [placements, selectedId, terrain, groundSize, customModels]);
+
+  // Bầu trời: mặt trời, nền, sương theo giờ + thời tiết.
+  useEffect(() => {
+    const t = threeRef.current;
+    const lights = skyLightsRef.current;
+    if (!t || !lights) return;
+    const info = skySun(sky);
+    const az = ((sky.time - 6) / 12) * Math.PI;
+    const el = Math.max(0.05, info.elevation);
+    lights.sun.position.set(Math.cos(az) * Math.cos(el) * 40, Math.sin(el) * 40, Math.sin(az) * Math.cos(el) * 40);
+    lights.sun.intensity = info.sunIntensity;
+    lights.sun.color.set(info.sunColor);
+    lights.hemi.intensity = info.hemiIntensity;
+    t.scene.background = new THREE.Color(info.skyBg);
+    const fog = t.scene.fog as THREE.Fog | null;
+    if (fog) {
+      fog.color.set(sky.weather === "fog" ? "#c8ccd4" : info.skyBg);
+      fog.near = sky.weather === "fog" ? 12 : 70;
+      fog.far = sky.weather === "fog" ? 45 : 130;
+    }
+    const w = weatherRef.current;
+    if (w) {
+      w.kind = sky.weather;
+      w.points.visible = sky.weather === "rain" || sky.weather === "snow";
+      (w.points.material as THREE.PointsMaterial).color.set(
+        sky.weather === "rain" ? 0x9fc4e8 : 0xffffff,
+      );
+    }
+  }, [sky]);
+
+  // Bay tới góc nhìn đã lưu khi workspace yêu cầu.
+  useEffect(() => {
+    const t = threeRef.current;
+    if (!t || !flyTo) return;
+    flyRef.current = {
+      fromPos: t.camera.position.clone(),
+      fromTarget: t.controls.target.clone(),
+      toPos: new THREE.Vector3(...flyTo.position),
+      toTarget: new THREE.Vector3(...flyTo.target),
+      start: performance.now(),
+    };
+  }, [flyTo]);
 
   return (
     <div

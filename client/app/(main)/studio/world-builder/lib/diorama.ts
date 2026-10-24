@@ -24,7 +24,11 @@ export type DioramaModelId =
   | "shrine"
   | "bridge"
   | "station"
-  | "character";
+  | "character"
+  | "house-detail"
+  | "pine"
+  | "lamp"
+  | "rock";
 
 export type ModelPartShape = "box" | "cone" | "cylinder" | "sphere";
 
@@ -137,6 +141,54 @@ export const MODEL_DEFS: ModelDef[] = [
     ],
   },
   {
+    id: "house-detail",
+    name: "Nhà chi tiết",
+    license: "Tự tạo trong app",
+    footprint: 3,
+    parts: [
+      { shape: "box", size: [4.4, 2.6, 3.6], offset: [0, 1.3, 0], color: "#e8dcc8" },
+      { shape: "cone", size: [3.6, 1.6, 4], offset: [0, 3.4, 0], color: "#a8442c", rotationY: Math.PI / 4 },
+      { shape: "box", size: [0.9, 1.7, 0.25], offset: [0, 0.85, 1.9], color: "#6b3f22" },
+      { shape: "box", size: [1, 0.9, 0.2], offset: [-1.4, 1.5, 1.85], color: "#9fc6e8" },
+      { shape: "box", size: [1, 0.9, 0.2], offset: [1.4, 1.5, 1.85], color: "#9fc6e8" },
+      { shape: "box", size: [0.5, 0.9, 0.5], offset: [1.5, 4.1, -0.8], color: "#8a8a8a" },
+    ],
+  },
+  {
+    id: "pine",
+    name: "Cây thông",
+    license: "Tự tạo trong app",
+    footprint: 1.4,
+    parts: [
+      { shape: "cylinder", size: [0.22, 0.9, 0], offset: [0, 0.45, 0], color: "#6b3f22" },
+      { shape: "cone", size: [1.5, 1.4, 8], offset: [0, 1.4, 0], color: "#2f6b33" },
+      { shape: "cone", size: [1.15, 1.2, 8], offset: [0, 2.3, 0], color: "#357a3b" },
+      { shape: "cone", size: [0.8, 1, 8], offset: [0, 3.1, 0], color: "#3f8a44" },
+    ],
+  },
+  {
+    id: "lamp",
+    name: "Đèn đường",
+    license: "Tự tạo trong app",
+    footprint: 0.8,
+    parts: [
+      { shape: "cylinder", size: [0.12, 3.2, 0], offset: [0, 1.6, 0], color: "#2b2b33" },
+      { shape: "cylinder", size: [0.3, 0.25, 0], offset: [0, 0.12, 0], color: "#3a3a44" },
+      { shape: "sphere", size: [0.32, 0, 0], offset: [0, 3.4, 0], color: "#ffe9a8" },
+      { shape: "box", size: [0.7, 0.15, 0.15], offset: [0.3, 3.2, 0], color: "#2b2b33" },
+    ],
+  },
+  {
+    id: "rock",
+    name: "Tảng đá",
+    license: "Tự tạo trong app",
+    footprint: 1.2,
+    parts: [
+      { shape: "box", size: [1.6, 1, 1.2], offset: [0, 0.5, 0], color: "#8a8a8a", rotationY: 0.4 },
+      { shape: "box", size: [0.9, 0.7, 0.8], offset: [0.7, 1.1, 0.3], color: "#9a9a9a", rotationY: -0.3 },
+    ],
+  },
+  {
     id: "character",
     name: "Nhân vật",
     license: "Tự tạo trong app",
@@ -170,10 +222,32 @@ export const ASSET_STATUSES: Array<{ id: AssetStatus; label: string }> = [
   { id: "ready", label: "Sẵn sàng" },
 ];
 
+/** Vật tự ghép từ chi tiết (W4): người dùng tự đặt tên, thêm/bớt
+ * chi tiết khối cơ bản, lưu lại dùng nhiều lần như mẫu có sẵn. */
+export interface CustomModel {
+  id: string;
+  name: string;
+  parts: ModelPart[];
+}
+
 export interface DioramaPlacement {
   id: string;
-  /** Mẫu khối cơ bản — khi có glbAssetId thì GLB được ưu tiên dựng. */
+  /** Mẫu khối cơ bản — khi có glbAssetId/customModelId thì loại đó
+   * được ưu tiên dựng (thứ tự: GLB > tự ghép > khối có sẵn). */
   modelId: DioramaModelId;
+  /** Id vật tự ghép (null = không dùng). */
+  customModelId?: string | null;
+  /** Màu tổng thể ghi đè (null = giữ màu gốc từng chi tiết). */
+  tint?: string | null;
+  /** Màu ghi đè từng chi tiết theo chỉ số part. */
+  partColors?: Record<number, string>;
+  /** Khóa vật: vẫn chọn được nhưng không kéo dời được. */
+  locked?: boolean;
+  rotationX?: number;
+  rotationZ?: number;
+  scaleX?: number;
+  scaleY?: number;
+  scaleZ?: number;
   /** Id asset GLB trong kho tài sản Animation Studio (null = dùng khối). */
   glbAssetId?: string | null;
   /** Trạng thái tài sản của vật (mặc định "rough" cho mẫu khối). */
@@ -231,6 +305,25 @@ export interface StoryEntity {
   relations: EntityRelation[];
   customFields: CustomField[];
   design2d: Design2D;
+  articles: Article[];
+  /** Id phe phái (null = chưa thuộc phe nào). */
+  factionId?: string | null;
+}
+
+/** Bài viết lore gắn vào thực thể (W5): bấm vật là đọc được. */
+export interface Article {
+  id: string;
+  title: string;
+  body: string;
+}
+
+/** Phe phái / tổ chức (W5): tô màu viền vật theo phe trên sa bàn. */
+export interface Faction {
+  id: string;
+  name: string;
+  color: string;
+  memberIds: string[];
+  description: string;
 }
 
 /** Sự kiện trong dòng thời gian của world (W2). */
@@ -239,6 +332,8 @@ export interface WorldEvent {
   title: string;
   /** Nhãn thời gian tự do (VD: "Năm 1023", "Kỷ nguyên Thứ ba"). */
   dateLabel: string;
+  /** Kỷ nguyên để nhóm/lọc timeline (W5, để trống = không kỷ nguyên). */
+  era?: string;
   order: number;
   entityIds: string[];
   description: string;
@@ -252,6 +347,26 @@ export interface DioramaState {
   groundSize: number;
   terrain: import("./terrain").Terrain;
   paths: import("./terrain").TerrainPath[];
+  customModels: CustomModel[];
+  factions: Faction[];
+  sky: SkySettings;
+  views: CameraView[];
+}
+
+/** Bầu trời của world (W6): giờ trong ngày, thời tiết, mùa. */
+export interface SkySettings {
+  /** Giờ trong ngày 0–24. */
+  time: number;
+  weather: "clear" | "fog" | "rain" | "snow";
+  season: import("./terrain").Season;
+}
+
+/** Góc nhìn đã lưu (W6): vị trí camera + điểm nhìn. */
+export interface CameraView {
+  id: string;
+  name: string;
+  position: [number, number, number];
+  target: [number, number, number];
 }
 
 /** Nhãn hiển thị cho loại thực thể: loại chuẩn dịch sang tiếng Việt,
@@ -263,10 +378,40 @@ export function entityKindLabel(kind: string): string {
   return kind || "Thực thể";
 }
 
-/** Bán kính vòng chọn: vật GLB dùng mặc định 2 (kích thước thật chỉ
- * biết sau khi nạp file, vòng chọn chỉ cần đủ để bấm trúng). */
-export function placementFootprint(p: DioramaPlacement): number {
-  return p.glbAssetId ? 2 : modelDef(p.modelId).footprint;
+/** Bán kính vòng chọn: GLB mặc định 2; vật tự ghép tính từ chi
+ * tiết xa tâm nhất; khối có sẵn dùng footprint của mẫu. */
+export function placementFootprint(
+  p: DioramaPlacement,
+  customModels: CustomModel[] = [],
+): number {
+  if (p.glbAssetId) return 2;
+  if (p.customModelId) {
+    const m = customModels.find((c) => c.id === p.customModelId);
+    if (m) {
+      let r = 0.8;
+      for (const part of m.parts) {
+        r = Math.max(
+          r,
+          Math.abs(part.offset[0]) + part.size[0] / 2,
+          Math.abs(part.offset[2]) + part.size[2] / 2,
+        );
+      }
+      return r;
+    }
+  }
+  return modelDef(p.modelId).footprint;
+}
+
+/** Chi tiết dựng cho vật: tự ghép > khối có sẵn (GLB xử lý riêng). */
+export function placementParts(
+  p: DioramaPlacement,
+  customModels: CustomModel[] = [],
+): ModelPart[] {
+  if (p.customModelId) {
+    const m = customModels.find((c) => c.id === p.customModelId);
+    if (m) return m.parts;
+  }
+  return modelDef(p.modelId).parts;
 }
 
 let placementCounter = 0;
@@ -308,6 +453,12 @@ export function createPlacement(
     rotationY: 0,
     scale: 1,
     visible: true,
+    rotationX: 0,
+    rotationZ: 0,
+    scaleX: 1,
+    scaleY: 1,
+    scaleZ: 1,
+    locked: false,
   };
 }
 
@@ -356,6 +507,8 @@ export function migrateLegacyWorld(
     relations: [],
     customFields: [],
     design2d: { palette: [], expressions: [] },
+    articles: [],
+    factionId: null,
   }));
   const placements: DioramaPlacement[] = chars.map((c) => {
     const { x, z } = hexToGround(c.hexCol, c.hexRow);
@@ -371,6 +524,10 @@ export function migrateLegacyWorld(
     groundSize: GROUND_SIZE,
     terrain: createFlatTerrain(),
     paths: [],
+    customModels: [],
+    factions: [],
+    sky: { time: 10, weather: "clear", season: "summer" },
+    views: [],
   };
 }
 
@@ -528,4 +685,146 @@ export function removeWorldEvent(
 /** Sự kiện xếp theo thứ tự timeline (ổn định khi trùng order). */
 export function sortedEvents(events: WorldEvent[]): WorldEvent[] {
   return [...events].sort((a, b) => a.order - b.order);
+}
+
+let customCounter = 0;
+
+/** Tạo vật tự ghép mới (1 khối thân mặc định để không rỗng). */
+export function createCustomModel(name: string): CustomModel {
+  customCounter += 1;
+  return {
+    id: `cm-${Date.now().toString(36)}-${customCounter.toString(36)}`,
+    name: name.trim() || "Vật tự ghép",
+    parts: [
+      { shape: "box", size: [1.6, 1, 1.6], offset: [0, 0.5, 0], color: "#b08968" },
+    ],
+  };
+}
+
+export function addPartToModel(model: CustomModel, part: ModelPart): CustomModel {
+  return { ...model, parts: [...model.parts, part] };
+}
+
+export function removePartFromModel(model: CustomModel, index: number): CustomModel {
+  if (model.parts.length <= 1) return model;
+  return { ...model, parts: model.parts.filter((_, i) => i !== index) };
+}
+
+export function updatePartInModel(
+  model: CustomModel,
+  index: number,
+  patch: Partial<ModelPart>,
+): CustomModel {
+  return {
+    ...model,
+    parts: model.parts.map((part, i) => (i === index ? { ...part, ...patch } : part)),
+  };
+}
+
+let articleCounter = 0;
+let factionCounter = 0;
+
+/** Thêm bài viết lore vào thực thể. */
+export function addArticle(
+  entity: StoryEntity,
+  title: string,
+  body: string,
+): StoryEntity {
+  articleCounter += 1;
+  return {
+    ...entity,
+    articles: [
+      ...(entity.articles ?? []),
+      { id: `art-${Date.now().toString(36)}-${articleCounter.toString(36)}`, title: title.trim() || "Không tên", body },
+    ],
+  };
+}
+
+export function removeArticle(entity: StoryEntity, id: string): StoryEntity {
+  return { ...entity, articles: (entity.articles ?? []).filter((a) => a.id !== id) };
+}
+
+/** Tạo phe phái mới. */
+export function createFaction(name: string, color: string): Faction {
+  factionCounter += 1;
+  return {
+    id: `fac-${Date.now().toString(36)}-${factionCounter.toString(36)}`,
+    name: name.trim() || "Phe mới",
+    color,
+    memberIds: [],
+    description: "",
+  };
+}
+
+/** @mention: tách body thành đoạn text và tên thực thể được nhắc tới. */
+export function parseMentions(
+  body: string,
+  entities: StoryEntity[],
+): Array<{ type: "text" | "mention"; value: string; entityId?: string }> {
+  const out: Array<{ type: "text" | "mention"; value: string; entityId?: string }> = [];
+  // Khớp tên dài nhất trước để tên có khoảng trắng ("Hội Pháp sư") vẫn
+  // nhận diện đúng, tên không khớp thì giữ nguyên dạng text.
+  const byLength = [...entities].sort((a, b) => b.name.length - a.name.length);
+  const pushText = (text: string) => {
+    if (!text) return;
+    const prev = out[out.length - 1];
+    if (prev?.type === "text") prev.value += text;
+    else out.push({ type: "text", value: text });
+  };
+  let i = 0;
+  while (i < body.length) {
+    if (body[i] !== "@") {
+      const next = body.indexOf("@", i);
+      const end = next === -1 ? body.length : next;
+      pushText(body.slice(i, end));
+      i = end;
+      continue;
+    }
+    const hit = byLength.find((e) => body.startsWith(`@${e.name}`, i));
+    if (hit) {
+      out.push({ type: "mention", value: `@${hit.name}`, entityId: hit.id });
+      i += hit.name.length + 1;
+    } else {
+      pushText("@");
+      i += 1;
+    }
+  }
+  return out;
+}
+
+let viewCounter = 0;
+
+export function createCameraView(
+  name: string,
+  position: [number, number, number],
+  target: [number, number, number],
+): CameraView {
+  viewCounter += 1;
+  return {
+    id: `view-${Date.now().toString(36)}-${viewCounter.toString(36)}`,
+    name: name.trim() || "Góc nhìn",
+    position,
+    target,
+  };
+}
+
+/** Mặt trời theo giờ: độ cao, cường độ, màu nắng, màu nền, cường độ
+ * ánh sáng môi trường — để canvas và test dùng chung một công thức. */
+export function skySun(sky: SkySettings): {
+  elevation: number;
+  sunIntensity: number;
+  sunColor: string;
+  skyBg: string;
+  hemiIntensity: number;
+} {
+  const t = sky.time;
+  const day = t >= 6 && t <= 18;
+  const phase = ((t - 6) / 12) * Math.PI;
+  const elevation = day ? Math.sin(phase) : -0.15;
+  const sunIntensity = day ? 0.6 + 0.9 * Math.sin(phase) : 0.12;
+  const warm = day && (t < 8 || t > 16);
+  const sunColor = day ? (warm ? "#ffb066" : "#fff3d6") : "#8ea2c8";
+  const skyBg = day ? (warm ? "#f2b880" : "#8ec3ee") : "#0d0817";
+  const hemiIntensity = day ? 0.9 : 0.35;
+  return { elevation, sunIntensity, sunColor, skyBg, hemiIntensity };
 }

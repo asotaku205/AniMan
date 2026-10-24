@@ -1,102 +1,76 @@
 /**
- * Cầu nối World Builder → Thư viện tài sản của Animation Studio (Đợt Đ4).
- * Đúng vai trò đã chốt cho World Builder: nơi quản trị thế giới và nhân
- * vật của câu chuyện — từ đây, nhân vật thành NHÂN VẬT 3D dùng được
- * trong phim, vùng đất thành MẪU PHONG CẢNH khởi điểm cho cảnh quay.
- * Gửi lại cùng một nhân vật/vùng sẽ CẬP NHẬT tài sản cũ (mã cố định theo
- * mã nguồn), không tạo bản trùng.
+ * Cầu nối World Builder → Animation Studio (W7, thay bản Đợt Đ4 dùng bản
+ * đồ hex cũ). Theo nguyên tắc tự tạo: mọi thứ chuyển sang đều là điểm
+ * khởi đầu chỉnh được, không phải thành phẩm đóng hộp.
+ *
+ * - Địa điểm → dự án 3D mới, cảnh đầu tiên mang tên địa điểm + ghi chú
+ *   mô tả (người dùng tự dựng tiếp trong Animation Studio).
+ * - Góc nhìn sa bàn → ảnh nền 2D trong thư viện tài sản.
+ * - Nhân vật → tài sản nhân vật 2D (biểu cảm từ hồ sơ thiết kế).
  */
 
-import { saveAnimAsset } from "../../animation/lib/animStorage";
-import { createPrevizObject, vec3 } from "../../animation/lib/previz";
-import { TERRAIN, type TerrainType, type WorldCharacter } from "../data";
-import type { HexCell } from "../data";
+import { createAnimProject, createAnimScene } from "../../animation/lib/animProject";
+import { newAssetId } from "../../animation/lib/animAssets";
+import { saveAnimAsset, saveAnimProject } from "../../animation/lib/animStorage";
+import type { DioramaPlacement, StoryEntity } from "./diorama";
 
-export async function sendWorldCharacterToLibrary(
-  char: WorldCharacter,
+/** Tạo dự án 3D từ một địa điểm (placement gắn thực thể). */
+export async function placeToAnimationProject(
+  place: DioramaPlacement,
+  entities: StoryEntity[],
 ): Promise<string> {
-  await saveAnimAsset({
-    kind: "character3d",
-    id: `wb-char-${char.id}`,
-    name: char.name,
-    color: char.color,
-    size: 1.7,
-    createdAt: Date.now(),
-  });
-  return `Đã đưa nhân vật "${char.name}" vào thư viện tài sản — mở Animation Studio, mục Thư viện tài sản sẽ có nhân vật này để thêm vào cảnh.`;
+  const ent = place.storyEntityId ? entities.find((e) => e.id === place.storyEntityId) : undefined;
+  const name = ent?.name ?? place.name;
+  const project = createAnimProject(`Địa điểm: ${name}`, "3d");
+  const scene = createAnimScene(`Địa điểm: ${name}`, 5);
+  scene.note = [
+    `Chuyển từ World Builder — địa điểm "${name}"`,
+    ent?.description ? `Mô tả: ${ent.description}` : "",
+    `Vị trí trên sa bàn: (${place.x}, ${place.z}), xoay ${Math.round((place.rotationY * 180) / Math.PI)}°.`,
+    "Mở Animation Studio để dựng cảnh tiếp từ đây.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  project.scenes = [scene];
+  await saveAnimProject(project);
+  return project.id;
 }
 
-function objectsForTerrain(terrain: TerrainType) {
-  const mk = (
-    kind: "box" | "cylinder" | "wall",
-    name: string,
-    color: string,
-    size: number,
-    x: number,
-    z: number,
-  ) => {
-    const obj = createPrevizObject(kind, name);
-    obj.color = color;
-    obj.size = size;
-    obj.keys = [
-      { ...obj.keys[0], position: vec3(x, kind === "cylinder" ? 0 : 0, z) },
-    ];
-    return obj;
-  };
-  switch (terrain) {
-    case "forest":
-      return [
-        mk("cylinder", "Cây cổ thụ", "#2e6b34", 3.4, -2.6, -2),
-        mk("cylinder", "Cây vừa", "#357a3c", 2.6, 2.8, -2.4),
-        mk("cylinder", "Cây nhỏ", "#3f8f46", 1.9, 0.4, -3),
-      ];
-    case "city":
-      return [
-        mk("wall", "Toà nhà trái", "#7a6a55", 2.6, -2.6, -3),
-        mk("wall", "Toà nhà phải", "#6a7a8c", 3.1, 2.6, -3),
-        mk("box", "Ki-ốt", "#8a4a5e", 0.9, 0.6, -1),
-      ];
-    case "mountain":
-      return [
-        mk("box", "Khối núi", "#8c8578", 2.8, -1.8, -3),
-        mk("box", "Mỏm đá", "#7a7468", 1.6, 2, -2),
-      ];
-    case "desert":
-      return [
-        mk("cylinder", "Xương rồng", "#3f8f46", 1.8, -2.2, -2),
-        mk("box", "Tảng đá sa mạc", "#b59a6a", 1, 2.2, -1.4),
-      ];
-    case "snow":
-      return [
-        mk("cylinder", "Thông tuyết", "#2e5b4f", 3, -2.4, -2.2),
-        mk("box", "Khối băng", "#bfe3ff", 1.1, 2, -1.6),
-      ];
-    case "sea":
-      return [mk("box", "Mặt nước (khối thấp)", "#3f7fbf", 0.25, 0, -1)];
-    case "magic":
-      return [
-        mk("cylinder", "Cột pha lê", "#a855f7", 2.4, -1.8, -2),
-        mk("cylinder", "Cột pha lê nhỏ", "#c084fc", 1.6, 1.9, -2.2),
-      ];
-    default:
-      return [
-        mk("cylinder", "Cây xanh", "#3f8f46", 2.6, -2.4, -2),
-        mk("box", "Phiến đá", "#8c8578", 0.7, 2, -1.2),
-      ];
+/** Lưu ảnh chụp sa bàn thành ảnh nền 2D trong thư viện tài sản. */
+export async function viewToBackgroundAsset(viewName: string, dataUrl: string): Promise<string> {
+  const id = newAssetId("image");
+  await saveAnimAsset({
+    kind: "image",
+    id,
+    name: `Nền từ sa bàn — ${viewName}`,
+    category: "background",
+    dataUrl,
+    createdAt: Date.now(),
+  });
+  return id;
+}
+
+/**
+ * Lưu nhân vật thành tài sản 2D: biểu cảm từ hồ sơ thiết kế; nếu chưa
+ * vẽ biểu cảm nào thì dùng ảnh mặt trước làm "Mặc định" (nếu có).
+ * Trả null khi nhân vật chưa có ảnh thiết kế nào.
+ */
+export async function entityToCharacterAsset(entity: StoryEntity): Promise<string | null> {
+  const design = entity.design2d;
+  const expressions = (design?.expressions ?? [])
+    .filter((e) => e.dataUrl)
+    .map((e) => ({ label: e.label, dataUrl: e.dataUrl }));
+  if (expressions.length === 0 && design?.front) {
+    expressions.push({ label: "Mặc định", dataUrl: design.front });
   }
-}
-
-export async function sendWorldRegionToLibrary(
-  cell: HexCell,
-): Promise<string> {
-  const name = cell.name ?? TERRAIN[cell.terrain].label;
+  if (expressions.length === 0) return null;
+  const id = newAssetId("character");
   await saveAnimAsset({
-    kind: "scenery",
-    id: `wb-region-${cell.col}-${cell.row}`,
-    name: `Phong cảnh — ${name}`,
-    backdrop: TERRAIN[cell.terrain].dark,
-    objects: objectsForTerrain(cell.terrain),
+    kind: "character2d",
+    id,
+    name: entity.name,
+    expressions,
     createdAt: Date.now(),
   });
-  return `Đã tạo phong cảnh "${name}" trong thư viện tài sản — vào Animation Studio để áp cho cảnh 3D.`;
+  return id;
 }

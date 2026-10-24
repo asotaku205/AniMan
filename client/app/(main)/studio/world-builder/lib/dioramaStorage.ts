@@ -79,11 +79,17 @@ export async function loadDiorama(): Promise<DioramaState | null> {
         waterLevel: -1,
       },
       paths: rec.state.paths ?? [],
+      customModels: rec.state.customModels ?? [],
+      factions: rec.state.factions ?? [],
+      sky: rec.state.sky ?? { time: 10, weather: "clear", season: "summer" },
+      views: rec.state.views ?? [],
       entities: (rec.state.entities ?? []).map((e) => ({
         ...e,
         relations: e.relations ?? [],
         customFields: e.customFields ?? [],
         design2d: e.design2d ?? { palette: [], expressions: [] },
+        articles: e.articles ?? [],
+        factionId: e.factionId ?? null,
       })),
     };
   } catch {
@@ -98,4 +104,100 @@ export async function saveDiorama(state: DioramaState): Promise<void> {
   await request(
     tx.objectStore(STORE).put({ id: RECORD_ID, state, savedAt: Date.now() }),
   );
+}
+
+/** ============ W7: nhiều world ============ */
+
+export interface WorldRecord {
+  id: string;
+  name: string;
+  updatedAt: number;
+  state: DioramaState;
+}
+
+const WORLDS_STORE = "worlds";
+const ACTIVE_KEY = "animan-world-active";
+
+let worldCounter = 0;
+export function newWorldId(): string {
+  worldCounter += 1;
+  return `world-${Date.now().toString(36)}-${worldCounter.toString(36)}`;
+}
+
+/** Mở DB v2 (thêm store worlds; store diorama cũ giữ nguyên để migrate). */
+export function openDbV2(): Promise<IDBDatabase> {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(WORLDS_STORE)) {
+        db.createObjectStore(WORLDS_STORE, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = db.transaction(store, mode);
+    const req = run(t.objectStore(store));
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function listWorlds(): Promise<WorldRecord[]> {
+  if (!isBrowser) return [];
+  const db = await openDbV2();
+  const all = await tx<WorldRecord[]>(db, WORLDS_STORE, "readonly", (s) => s.getAll());
+  return (all ?? []).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function saveWorld(rec: WorldRecord): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDbV2();
+  await tx(db, WORLDS_STORE, "readwrite", (s) => s.put(rec));
+}
+
+export async function deleteWorld(id: string): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDbV2();
+  await tx(db, WORLDS_STORE, "readwrite", (s) => s.delete(id));
+}
+
+/** Migrate world đơn "main" cũ thành world đầu tiên (chạy 1 lần). */
+export async function migrateLegacyWorld(): Promise<WorldRecord | null> {
+  const legacy = await loadDiorama();
+  if (!legacy) return null;
+  const rec: WorldRecord = {
+    id: newWorldId(),
+    name: "Thế giới đầu tiên",
+    updatedAt: Date.now(),
+    state: legacy,
+  };
+  await saveWorld(rec);
+  return rec;
+}
+
+export function getActiveWorldId(): string | null {
+  if (!isBrowser) return null;
+  try {
+    return localStorage.getItem(ACTIVE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveWorldId(id: string): void {
+  if (!isBrowser) return;
+  try {
+    localStorage.setItem(ACTIVE_KEY, id);
+  } catch {
+    /* bỏ qua */
+  }
 }

@@ -71,7 +71,7 @@ describe("đặc điểm và quan hệ của thực thể", () => {
     const base = {
       id: "e1", kind: "character", name: "Kira", role: "",
       traits: ["Dũng cảm"], description: "", color: "#ef4444", relations: [],
-      customFields: [], design2d: { palette: [], expressions: [] },
+      customFields: [], design2d: { palette: [], expressions: [] }, articles: [], factionId: null,
     };
     expect(mod.addTrait(base, "Dũng cảm").traits).toEqual(["Dũng cảm"]);
     expect(mod.addTrait(base, "  ").traits).toEqual(["Dũng cảm"]);
@@ -84,7 +84,7 @@ describe("đặc điểm và quan hệ của thực thể", () => {
     const base = {
       id: "e1", kind: "character", name: "Kira", role: "",
       traits: [], description: "", color: "#ef4444", relations: [],
-      customFields: [], design2d: { palette: [], expressions: [] },
+      customFields: [], design2d: { palette: [], expressions: [] }, articles: [], factionId: null,
     };
     const withRel = mod.addRelation(base, "e2", "Bạn thân");
     expect(withRel.relations).toEqual([{ entityId: "e2", label: "Bạn thân" }]);
@@ -109,7 +109,7 @@ describe("W2: loại & trường tự do, thiết kế 2D, sự kiện, GLB", ()
     const base = {
       id: "e1", kind: "character", name: "Kira", role: "",
       traits: [], description: "", color: "#ef4444", relations: [],
-      customFields: [], design2d: { palette: [], expressions: [] },
+      customFields: [], design2d: { palette: [], expressions: [] }, articles: [], factionId: null,
     };
     const one = mod.addCustomField(base, "Sức mạnh", "90");
     expect(one.customFields).toEqual([{ key: "Sức mạnh", value: "90" }]);
@@ -125,7 +125,7 @@ describe("W2: loại & trường tự do, thiết kế 2D, sự kiện, GLB", ()
     const base = {
       id: "e1", kind: "character", name: "Kira", role: "",
       traits: [], description: "", color: "#ef4444", relations: [],
-      customFields: [], design2d: { palette: [], expressions: [] },
+      customFields: [], design2d: { palette: [], expressions: [] }, articles: [], factionId: null,
     };
     const withColor = mod.addPaletteColor(base, "#123456");
     expect(mod.addPaletteColor(withColor, "#123456").design2d.palette).toEqual(["#123456"]);
@@ -229,5 +229,103 @@ describe("W3: địa hình", () => {
     const mod = await import("../lib/diorama");
     expect(mod.clampGround(30, 0, 20)).toBeLessThan(10);
     expect(mod.clampGround(30, 0, 60)).toBe(29.5);
+  });
+});
+
+describe("W4: vật tự ghép + biến đổi", () => {
+  it("tạo vật, thêm/xoá/sửa chi tiết, giữ tối thiểu 1 chi tiết", async () => {
+    const mod = await import("../lib/diorama");
+    const m = mod.createCustomModel("Nhà sàn");
+    expect(m.parts).toHaveLength(1);
+    const m2 = mod.addPartToModel(m, { shape: "cone", size: [2, 1, 4], offset: [0, 1.5, 0], color: "#a8442c" });
+    expect(m2.parts).toHaveLength(2);
+    const m3 = mod.updatePartInModel(m2, 0, { color: "#ffffff" });
+    expect(m3.parts[0].color).toBe("#ffffff");
+    expect(mod.removePartFromModel(m3, 1).parts).toHaveLength(1);
+    expect(mod.removePartFromModel(m, 0)).toBe(m);
+  });
+
+  it("footprint vật tự ghép tính từ chi tiết xa tâm nhất", async () => {
+    const mod = await import("../lib/diorama");
+    const m = mod.createCustomModel("X");
+    const p = mod.createPlacement("house", 0, 0);
+    p.customModelId = m.id;
+    expect(mod.placementFootprint(p, [m])).toBeGreaterThanOrEqual(0.8);
+    const wide = mod.addPartToModel(m, { shape: "box", size: [1, 1, 1], offset: [5, 0.5, 0], color: "#fff" });
+    expect(mod.placementFootprint(p, [wide])).toBeCloseTo(5.5, 5);
+    expect(mod.placementParts(p, [wide])).toHaveLength(2);
+  });
+});
+
+describe("W5: bài viết, @mention, phe phái", () => {
+  it("thêm/xoá bài viết, @mention tách đúng thực thể", async () => {
+    const mod = await import("../lib/diorama");
+    const kira = {
+      id: "e1", kind: "character", name: "Kira", role: "",
+      traits: [], description: "", color: "#ef4444", relations: [],
+      customFields: [], design2d: { palette: [], expressions: [] },
+      articles: [], factionId: null,
+    };
+    const withArt = mod.addArticle(kira, "Nguồn gốc", "Kira sinh ra ở đền.");
+    expect(withArt.articles).toHaveLength(1);
+    expect(mod.removeArticle(withArt, withArt.articles[0].id).articles).toHaveLength(0);
+    const parts = mod.parseMentions("Chào @Kira và @Người lạ nhé", [kira]);
+    expect(parts.find((x) => x.type === "mention")?.entityId).toBe("e1");
+    expect(parts.some((x) => x.type === "text" && x.value.includes("@Người lạ"))).toBe(true);
+  });
+
+  it("tạo phe phái có id/màu/thành viên rỗng", async () => {
+    const mod = await import("../lib/diorama");
+    const f = mod.createFaction("Hội Pháp sư", "#38bdf8");
+    expect(f.name).toBe("Hội Pháp sư");
+    expect(f.memberIds).toEqual([]);
+  });
+});
+
+describe("W6: bầu trời + góc nhìn", () => {
+  it("mặt trời trưa mạnh hơn sáng sớm, đêm tối và nền tối", async () => {
+    const mod = await import("../lib/diorama");
+    const noon = mod.skySun({ time: 12, weather: "clear", season: "summer" });
+    const morning = mod.skySun({ time: 7, weather: "clear", season: "summer" });
+    const night = mod.skySun({ time: 22, weather: "clear", season: "summer" });
+    expect(noon.sunIntensity).toBeGreaterThan(morning.sunIntensity);
+    expect(night.sunIntensity).toBeLessThan(morning.sunIntensity);
+    expect(night.skyBg).toBe("#0d0817");
+  });
+
+  it("mùa thu ngả cam, mùa đông bạc màu; góc nhìn có id", async () => {
+    const ter = await import("../lib/terrain");
+    const autumn = ter.seasonTint([0.3, 0.6, 0.3], "autumn");
+    expect(autumn[0]).toBeGreaterThan(autumn[2]);
+    const winter = ter.seasonTint([0.3, 0.6, 0.3], "winter");
+    expect(Math.abs(winter[0] - winter[1])).toBeLessThan(0.05);
+    const mod = await import("../lib/diorama");
+    const v = mod.createCameraView("Toàn cảnh", [10, 20, 10], [0, 0, 0]);
+    expect(v.position).toEqual([10, 20, 10]);
+  });
+});
+
+describe("W7: mẫu world khởi điểm", () => {
+  it("làng quê có trường + nhà + 2 nhân vật + sự kiện + phe", async () => {
+    const presets = await import("../lib/worldPresets");
+    const v = presets.buildPresetWorld("village");
+    expect(v.placements.length).toBeGreaterThanOrEqual(6);
+    expect(v.entities).toHaveLength(2);
+    expect(v.events).toHaveLength(1);
+    expect(v.factions).toHaveLength(1);
+    expect(v.entities.every((e) => e.factionId === v.factions[0].id)).toBe(true);
+  });
+
+  it("cảng có nước + cát, tuyết có núi + tuyết, trống rỗng", async () => {
+    const presets = await import("../lib/worldPresets");
+    const port = presets.buildPresetWorld("port");
+    expect(port.terrain.waterLevel).toBeGreaterThan(-1);
+    expect(port.terrain.biomes.flat()).toContain("sand");
+    const snow = presets.buildPresetWorld("snow");
+    expect(snow.terrain.biomes.flat()).toContain("snow");
+    expect(Math.max(...snow.terrain.heights.flat())).toBeGreaterThan(3);
+    const blank = presets.buildPresetWorld("blank");
+    expect(blank.placements).toEqual([]);
+    expect(presets.WORLD_PRESETS).toHaveLength(4);
   });
 });
