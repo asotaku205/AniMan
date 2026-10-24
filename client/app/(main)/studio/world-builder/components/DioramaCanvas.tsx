@@ -37,6 +37,7 @@ import {
   seasonTint,
   terrainVertexColor,
   worldBounds,
+  type River,
   type TerrainBrushMode,
   type TerrainPath,
   type WorldTerrain,
@@ -62,12 +63,17 @@ interface Props {
   terrain: WorldTerrain;
   paths: TerrainPath[];
   draftPath: Array<{ x: number; z: number }>;
+  /** Sông/suối (W9) + nét sông đang vẽ. */
+  rivers: River[];
+  draftRiver: Array<{ x: number; z: number }>;
   /** Cọ địa hình đang cầm (null = không vẽ địa hình). */
   terrainTool:
     | { kind: "brush"; mode: TerrainBrushMode; radius: number; strength: number }
     | { kind: "biome"; biomeId: string; radius: number }
     | null;
   pathMode: boolean;
+  riverMode: boolean;
+  onRiverPoint: (x: number, z: number) => void;
   onTerrainBrush: (x: number, z: number) => void;
   onPathPoint: (x: number, z: number) => void;
   onSelect: (id: string | null) => void;
@@ -167,8 +173,12 @@ export function DioramaCanvas({
   terrain,
   paths,
   draftPath,
+  rivers,
+  draftRiver,
   terrainTool,
   pathMode,
+  riverMode,
+  onRiverPoint,
   onSelect,
   onPlace,
   onMove,
@@ -209,12 +219,12 @@ export function DioramaCanvas({
   const glbFailedRef = useRef<Set<string>>(new Set());
   const [glbTick, setGlbTick] = useState(0);
   const callbacksRef = useRef({
-    onSelect, onPlace, onMove, placing, terrainTool, pathMode,
-    onTerrainBrush, onPathPoint,
+    onSelect, onPlace, onMove, placing, terrainTool, pathMode, riverMode,
+    onTerrainBrush, onPathPoint, onRiverPoint,
   });
   callbacksRef.current = {
-    onSelect, onPlace, onMove, placing, terrainTool, pathMode,
-    onTerrainBrush, onPathPoint,
+    onSelect, onPlace, onMove, placing, terrainTool, pathMode, riverMode,
+    onTerrainBrush, onPathPoint, onRiverPoint,
   };
   const terrainDataRef = useRef({ terrain });
   terrainDataRef.current = { terrain };
@@ -467,6 +477,11 @@ export function DioramaCanvas({
       if (cb.pathMode) {
         const pt = groundPoint(e);
         if (pt) cb.onPathPoint(pt.x, pt.z);
+        return;
+      }
+      if (cb.riverMode) {
+        const pt = groundPoint(e);
+        if (pt) cb.onRiverPoint(pt.x, pt.z);
         return;
       }
       if (cb.placing) {
@@ -943,17 +958,21 @@ export function DioramaCanvas({
       points: Array<{ x: number; z: number }>,
       color: string,
       width: number,
+      yOff = 0.06,
+      water = false,
     ) => {
       const group = new THREE.Group();
       if (points.length === 1) {
         const dot = new THREE.Mesh(
           new THREE.CircleGeometry(width, 16),
-          new THREE.MeshStandardMaterial({ color, roughness: 1 }),
+          water
+            ? new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.75, roughness: 0.15 })
+            : new THREE.MeshStandardMaterial({ color, roughness: 1 }),
         );
         dot.rotation.x = -Math.PI / 2;
         dot.position.set(
           points[0].x,
-          heightAt(terrain, points[0].x, points[0].z) + 0.07,
+          heightAt(terrain, points[0].x, points[0].z) + yOff + 0.01,
           points[0].z,
         );
         group.add(dot);
@@ -969,8 +988,8 @@ export function DioramaCanvas({
         const len = Math.hypot(dx, dz) || 1;
         const px = (-dz / len) * width;
         const pz = (dx / len) * width;
-        const yA = heightAt(terrain, a.x, a.z) + 0.06;
-        const yB = heightAt(terrain, b.x, b.z) + 0.06;
+        const yA = heightAt(terrain, a.x, a.z) + yOff;
+        const yB = heightAt(terrain, b.x, b.z) + yOff;
         const baseIdx = verts.length / 3;
         verts.push(a.x + px, yA, a.z + pz, a.x - px, yA, a.z - pz);
         verts.push(b.x + px, yB, b.z + pz, b.x - px, yB, b.z - pz);
@@ -987,7 +1006,9 @@ export function DioramaCanvas({
       group.add(
         new THREE.Mesh(
           g,
-          new THREE.MeshStandardMaterial({ color, roughness: 1, side: THREE.DoubleSide }),
+          water
+            ? new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.75, roughness: 0.15, side: THREE.DoubleSide })
+            : new THREE.MeshStandardMaterial({ color, roughness: 1, side: THREE.DoubleSide }),
         ),
       );
       return group;
@@ -1000,7 +1021,15 @@ export function DioramaCanvas({
     if (draftPath.length > 0) {
       t.pathsGroup.add(buildRibbon(draftPath, "#c4a06a", 0.5));
     }
-  }, [terrain, paths, draftPath, sky.season]);
+    for (const river of rivers) {
+      if (river.points.length > 0) {
+        t.pathsGroup.add(buildRibbon(river.points, "#2f8fe0", river.width / 2, 0.15, true));
+      }
+    }
+    if (draftRiver.length > 0) {
+      t.pathsGroup.add(buildRibbon(draftRiver, "#7cc4ff", 0.5, 0.15, true));
+    }
+  }, [terrain, paths, draftPath, rivers, draftRiver, sky.season]);
 
   // Vòng chọn: effect riêng, chỉ di chuyển vòng (không dựng lại mesh).
   // Trong lúc kéo/settle, vòng được cập nhật trực tiếp từ handler nên

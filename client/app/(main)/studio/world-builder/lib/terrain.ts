@@ -32,6 +32,8 @@ export const BIOMES: BiomeDef[] = [
   { id: "rock", name: "Đá núi", color: "#8a8a8a" },
   { id: "snow", name: "Tuyết", color: "#eef4f8" },
   { id: "field", name: "Ruộng", color: "#a8a05a" },
+  { id: "desert", name: "Sa mạc", color: "#d8b878" },
+  { id: "swamp", name: "Đầm lầy", color: "#4a6b3f" },
 ];
 
 export function biomeColor(id: string): string {
@@ -47,6 +49,15 @@ export interface TerrainChunk {
 export interface TerrainPath {
   id: string;
   points: Array<{ x: number; z: number }>;
+}
+
+/** Sông/suối (W9): đường vẽ + chiều rộng + độ sâu đào. Dải nước vẽ
+ * riêng bám đường (không dùng mặt nước toàn cục). */
+export interface River {
+  id: string;
+  points: Array<{ x: number; z: number }>;
+  width: number;
+  depth: number;
 }
 
 /** Toàn bộ địa hình thế giới: map chunk + mực nước chung. */

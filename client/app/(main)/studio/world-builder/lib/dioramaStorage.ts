@@ -20,7 +20,7 @@ export function normalizeState(state: DioramaState): DioramaState {
     x: clampGround(pl.x, 0),
     z: clampGround(pl.z, 0),
   }));
-  return { ...state, terrain, placements };
+  return { ...state, terrain, placements, rivers: state.rivers ?? [] };
 }
 
 const DB_NAME = "animan_world_builder_db";

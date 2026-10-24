@@ -79,6 +79,17 @@ import {
   worldBounds,
   type TerrainBrushMode,
 } from "../lib/terrain";
+import {
+  GEN_KINDS,
+  carveRiver,
+  generateFarm,
+  generatePort,
+  generateTerrain,
+  generateTown,
+  generateVillage,
+  scatterForest,
+  type GenKind,
+} from "../lib/worldGen";
 import type { Model3DAsset } from "../../animation/lib/animAssets";
 import { inspectionSummary, inspectGlbDataUrl } from "../../animation/lib/modelInspect";
 import { drawTopDownMap } from "../lib/topdownMap";
@@ -154,6 +165,16 @@ export function DioramaWorkspace() {
   const [terrainBiome, setTerrainBiome] = useState("grass");
   const [pathMode, setPathMode] = useState(false);
   const [draftPath, setDraftPath] = useState<Array<{ x: number; z: number }>>([]);
+  // Sông (W9.3): vẽ đường rồi đào — như vẽ đường đi.
+  const [riverMode, setRiverMode] = useState(false);
+  const [draftRiver, setDraftRiver] = useState<Array<{ x: number; z: number }>>([]);
+  const [riverWidth, setRiverWidth] = useState(3);
+  const [riverDepth, setRiverDepth] = useState(1.2);
+  // Sinh cảnh quan (W9.2/W9.4): chọn loại rồi bấm điểm trên sa bàn.
+  const [generating, setGenerating] = useState<GenKind | null>(null);
+  const [genKind, setGenKind] = useState<GenKind>("mountain");
+  const [genRadius, setGenRadius] = useState(10);
+  const [genPeak, setGenPeak] = useState(6);
   const [searchQuery, setSearchQuery] = useState("");
   const [newArticleTitle, setNewArticleTitle] = useState("");
   const [newArticleBody, setNewArticleBody] = useState("");
@@ -237,6 +258,7 @@ export function DioramaWorkspace() {
         events: [],
         terrain: createFlatWorld(),
         paths: [],
+        rivers: [],
         customModels: [],
         factions: [],
         sky: { time: 10, weather: "clear", season: "summer" },
@@ -299,10 +321,13 @@ export function DioramaWorkspace() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (expanded) setExpanded(false);
-      else if (terrainTool || pathMode) {
+      else if (terrainTool || pathMode || riverMode || generating) {
         setTerrainTool(null);
         setPathMode(false);
         setDraftPath([]);
+        setRiverMode(false);
+        setDraftRiver([]);
+        setGenerating(null);
       } else if (placingModel || placingGlb || placingCustom) {
         setPlacingModel(null);
         setPlacingGlb(null);
@@ -312,7 +337,7 @@ export function DioramaWorkspace() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [expanded, placingModel, placingGlb, placingCustom, terrainTool, pathMode]);
+  }, [expanded, placingModel, placingGlb, placingCustom, terrainTool, pathMode, riverMode, generating]);
 
   const updatePlacement = useCallback(
     (id: string, patch: Partial<DioramaPlacement>) => {
@@ -377,12 +402,44 @@ export function DioramaWorkspace() {
 
   const handlePlace = useCallback(
     (x: number, z: number) => {
+      // Sinh cảnh quan: bấm điểm là sinh, không đặt vật.
+      if (generating) {
+        setState((s) => {
+          if (!s) return s;
+          switch (generating) {
+            case "forest":
+              return { ...s, placements: [...s.placements, ...scatterForest(s.terrain, s.placements, x, z, genRadius, 0.08, 7)] };
+            case "village": {
+              const v = generateVillage(s.terrain, s.placements, x, z, 7);
+              return { ...s, placements: [...s.placements, ...v.placements], paths: [...(s.paths ?? []), ...v.paths] };
+            }
+            case "town": {
+              const v = generateTown(s.terrain, s.placements, x, z, 7);
+              return { ...s, placements: [...s.placements, ...v.placements], paths: [...(s.paths ?? []), ...v.paths] };
+            }
+            case "port": {
+              const v = generatePort(s.terrain, s.placements, x, z, 7);
+              return { ...s, placements: [...s.placements, ...v.placements] };
+            }
+            case "farm": {
+              const f = generateFarm(s.terrain, s.placements, x, z, genRadius, 7);
+              return { ...s, terrain: f.terrain, placements: [...s.placements, ...f.placements] };
+            }
+            default:
+              return { ...s, terrain: generateTerrain(s.terrain, generating, x, z, genRadius, genPeak, 7) };
+          }
+        });
+        setGenerating(null);
+        setNote(`Đã sinh ${GEN_KINDS.find((g) => g.id === generating)?.name ?? generating} tại điểm đã bấm.`);
+        return;
+      }
       if (!placingModel && !placingGlb && !placingCustom) return;
       const modelId = placingModel ?? "character";
       const customId = placingCustom?.id ?? null;
       const def = modelDef(modelId);
       setState((s) => {
         if (!s) return s;
+        const b = worldBounds(s.terrain);
         const placement = createPlacement(
           modelId,
           x,
@@ -392,6 +449,7 @@ export function DioramaWorkspace() {
             ? (s.entities.find((e) => e.id === pendingEntityId)?.name ?? def.name)
             : (placingCustom?.name ?? placingGlb?.name ?? undefined),
           placingGlb?.id ?? null,
+          { minX: b.minX, maxX: b.maxX, minZ: b.minZ, maxZ: b.maxZ },
         );
         if (customId) placement.customModelId = customId;
         return { ...s, placements: [...s.placements, placement] };
@@ -400,7 +458,7 @@ export function DioramaWorkspace() {
       // Giữ chế độ đặt để bày nhiều vật liên tiếp; Esc hoặc bấm lại mẫu để dừng
       setPendingEntityId(null);
     },
-    [placingModel, placingGlb, placingCustom, pendingEntityId],
+    [placingModel, placingGlb, placingCustom, pendingEntityId, generating, genRadius, genPeak],
   );
 
   const selected = state?.placements.find((p) => p.id === selectedId) ?? null;
@@ -613,7 +671,7 @@ export function DioramaWorkspace() {
           placements={state.placements}
           entities={state.entities}
           selectedId={selectedId}
-          placing={placingModel !== null || placingGlb !== null || placingCustom !== null}
+          placing={placingModel !== null || placingGlb !== null || placingCustom !== null || generating !== null}
           glbDataUrls={Object.fromEntries(glbAssets.map((a) => [a.id, a.dataUrl]))}
           customModels={state.customModels ?? []}
           factions={state.factions ?? []}
@@ -623,8 +681,12 @@ export function DioramaWorkspace() {
           terrain={state.terrain}
           paths={state.paths ?? []}
           draftPath={draftPath}
+          rivers={state.rivers ?? []}
+          draftRiver={draftRiver}
           terrainTool={terrainTool}
           pathMode={pathMode}
+          riverMode={riverMode}
+          onRiverPoint={(x, z) => setDraftRiver((cur) => [...cur, { x: snapToGrid(x), z: snapToGrid(z) }])}
           onTerrainBrush={handleTerrainBrush}
           onPathPoint={handlePathPoint}
           onSelect={setSelectedId}
@@ -868,6 +930,7 @@ export function DioramaWorkspace() {
                     events: st.events ?? [],
                     terrain: st.terrain ? migrateTerrainToWorld(st.terrain) : createFlatWorld(),
                     paths: st.paths ?? [],
+                    rivers: st.rivers ?? [],
                     customModels: st.customModels ?? [],
                     factions: st.factions ?? [],
                     sky: st.sky ?? { time: 10, weather: "clear", season: "summer" },
@@ -1591,6 +1654,154 @@ export function DioramaWorkspace() {
                 </button>
               </div>
             ))}
+          </div>
+          {/* Sinh cảnh quan (W9.2/W9.4): chọn loại, chỉnh thông số,
+              bấm "Chọn điểm để sinh" rồi bấm 1 điểm trên sa bàn. */}
+          <div className="rounded-xl border border-white/10 bg-black/30 p-2.5 space-y-2 mb-4">
+            <p className="text-[12px] text-white/80 font-medium">Sinh cảnh quan</p>
+            <select
+              value={genKind}
+              onChange={(e) => setGenKind(e.target.value as GenKind)}
+              className="w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
+            >
+              {GEN_KINDS.map((g) => (
+                <option key={g.id} value={g.id}>{g.name} — {g.desc}</option>
+              ))}
+            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-[11px] text-white/40">
+                Bán kính (m)
+                <input
+                  type="number"
+                  min={3}
+                  max={30}
+                  value={genRadius}
+                  onChange={(e) => setGenRadius(Number(e.target.value) || 10)}
+                  className="mt-1 w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
+                />
+              </label>
+              <label className="block text-[11px] text-white/40">
+                Độ cao / sâu (m)
+                <input
+                  type="number"
+                  min={1}
+                  max={8}
+                  step={0.5}
+                  value={genPeak}
+                  onChange={(e) => setGenPeak(Number(e.target.value) || 6)}
+                  className="mt-1 w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
+                />
+              </label>
+            </div>
+            <button
+              onClick={() => {
+                setTerrainTool(null);
+                setPathMode(false);
+                setGenerating(genKind);
+              }}
+              className={`w-full h-8 rounded-lg border text-[12px] ${generating ? "bg-emerald-500/25 border-emerald-400/40 text-emerald-100" : "bg-white/5 border-white/10 text-white/70"}`}
+            >
+              {generating ? "Đang chờ bấm điểm trên sa bàn… (Esc để huỷ)" : "Chọn điểm để sinh"}
+            </button>
+            <p className="text-[11px] text-white/40 leading-relaxed">
+              Sinh xong vẫn sửa được: địa hình sửa bằng cọ, vật sinh ra
+              kéo/xoá từng vật như vật đặt tay.
+            </p>
+          </div>
+          {/* Sông / suối (W9.3): vẽ đường như đường đi rồi đào lòng. */}
+          <div className="rounded-xl border border-white/10 bg-black/30 p-2.5 space-y-2 mb-4">
+            <p className="text-[12px] text-white/80 font-medium">Sông / suối</p>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => {
+                  setTerrainTool(null);
+                  setRiverMode((v) => !v);
+                }}
+                className={`h-8 px-3 rounded-lg border text-[12px] ${riverMode ? "bg-sky-500/25 border-sky-400/40 text-sky-100" : "bg-white/5 border-white/10 text-white/70"}`}
+              >
+                {riverMode ? "Đang vẽ sông…" : "Vẽ sông"}
+              </button>
+              {draftRiver.length > 1 && (
+                <>
+                  <button
+                    onClick={() => {
+                      setState((prev) => {
+                        if (!prev) return prev;
+                        const terrain = carveRiver(prev.terrain, draftRiver, riverWidth, riverDepth);
+                        return {
+                          ...prev,
+                          terrain,
+                          rivers: [...(prev.rivers ?? []), { id: `river-${Date.now().toString(36)}`, points: draftRiver, width: riverWidth, depth: riverDepth }],
+                        };
+                      });
+                      setDraftRiver([]);
+                      setRiverMode(false);
+                    }}
+                    className="h-8 px-3 rounded-lg bg-sky-500/25 border border-sky-400/40 text-sky-100 text-[12px]"
+                  >
+                    Đào sông
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDraftRiver([]);
+                      setRiverMode(false);
+                    }}
+                    className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-white/70 text-[12px]"
+                  >
+                    Huỷ
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-[11px] text-white/40">
+                Rộng (m)
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  step={0.5}
+                  value={riverWidth}
+                  onChange={(e) => setRiverWidth(Number(e.target.value) || 3)}
+                  className="mt-1 w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
+                />
+              </label>
+              <label className="block text-[11px] text-white/40">
+                Sâu (m)
+                <input
+                  type="number"
+                  min={0.5}
+                  max={3}
+                  step={0.1}
+                  value={riverDepth}
+                  onChange={(e) => setRiverDepth(Number(e.target.value) || 1.2)}
+                  className="mt-1 w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
+                />
+              </label>
+            </div>
+            <p className="text-[11px] text-white/40">
+              {riverMode
+                ? `Bấm lên sa bàn để thêm điểm (${draftRiver.length} điểm) — bấm "Đào sông" để đào lòng + vẽ nước.`
+                : "Bấm Vẽ sông rồi bấm từng điểm trên sa bàn để định tuyến sông."}
+            </p>
+            <div className="space-y-1.5">
+              {(state.rivers ?? []).map((river) => (
+                <div key={river.id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-2.5 py-2">
+                  <span className="flex-1 text-[12px] text-white/70">Sông · {river.points.length} điểm · rộng {river.width}m</span>
+                  <button
+                    onClick={() =>
+                      setState((prev) =>
+                        prev ? { ...prev, rivers: (prev.rivers ?? []).filter((r) => r.id !== river.id) } : prev,
+                      )
+                    }
+                    aria-label="Xoá sông"
+                    className="text-white/35 hover:text-rose-300"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
           <p className="text-[11px] text-white/40 leading-relaxed">
             Thế giới giờ mở rộng bằng chunk 40m — xem bản đồ ở thẻ World

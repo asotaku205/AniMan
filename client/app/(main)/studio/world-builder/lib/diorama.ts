@@ -32,7 +32,13 @@ export type DioramaModelId =
   | "house-detail"
   | "pine"
   | "lamp"
-  | "rock";
+  | "rock"
+  | "cave-gate"
+  | "grass-tuft"
+  | "bench"
+  | "wall"
+  | "tower"
+  | "stall";
 
 export type ModelPartShape = "box" | "cone" | "cylinder" | "sphere";
 
@@ -193,6 +199,72 @@ export const MODEL_DEFS: ModelDef[] = [
     ],
   },
   {
+    id: "cave-gate",
+    name: "Cổng hang",
+    license: "Tự tạo trong app",
+    footprint: 2.2,
+    parts: [
+      { shape: "box", size: [0.8, 3, 1.2], offset: [-1.4, 1.5, 0], color: "#6b6b6b" },
+      { shape: "box", size: [0.8, 3, 1.2], offset: [1.4, 1.5, 0], color: "#6b6b6b" },
+      { shape: "box", size: [3.8, 1, 1.2], offset: [0, 3.5, 0], color: "#7a7a7a" },
+      { shape: "box", size: [2.2, 2.6, 0.3], offset: [0, 1.3, 0.1], color: "#11111a" },
+    ],
+  },
+  {
+    id: "grass-tuft",
+    name: "Bụi cỏ",
+    license: "Tự tạo trong app",
+    footprint: 0.5,
+    parts: [
+      { shape: "cone", size: [0.3, 0.7, 4], offset: [0, 0.35, 0], color: "#5d9150" },
+      { shape: "cone", size: [0.24, 0.55, 4], offset: [0.25, 0.27, 0.15], color: "#6fae5e" },
+      { shape: "cone", size: [0.24, 0.5, 4], offset: [-0.22, 0.25, -0.12], color: "#4e7d3a" },
+    ],
+  },
+  {
+    id: "bench",
+    name: "Ghế đá",
+    license: "Tự tạo trong app",
+    footprint: 1,
+    parts: [
+      { shape: "box", size: [1.6, 0.15, 0.5], offset: [0, 0.55, 0], color: "#8a8a8a" },
+      { shape: "box", size: [0.15, 0.55, 0.45], offset: [-0.65, 0.27, 0], color: "#6b6b6b" },
+      { shape: "box", size: [0.15, 0.55, 0.45], offset: [0.65, 0.27, 0], color: "#6b6b6b" },
+    ],
+  },
+  {
+    id: "wall",
+    name: "Tường thành",
+    license: "Tự tạo trong app",
+    footprint: 2,
+    parts: [
+      { shape: "box", size: [4, 2.4, 0.8], offset: [0, 1.2, 0], color: "#9a9a9a" },
+      { shape: "box", size: [4.2, 0.4, 1], offset: [0, 2.6, 0], color: "#8a8a8a" },
+    ],
+  },
+  {
+    id: "tower",
+    name: "Tháp canh",
+    license: "Tự tạo trong app",
+    footprint: 2,
+    parts: [
+      { shape: "cylinder", size: [1.4, 4.5, 0], offset: [0, 2.25, 0], color: "#9a9a9a" },
+      { shape: "cone", size: [1.9, 1.8, 8], offset: [0, 5.4, 0], color: "#a8442c" },
+    ],
+  },
+  {
+    id: "stall",
+    name: "Sạp chợ",
+    license: "Tự tạo trong app",
+    footprint: 1.4,
+    parts: [
+      { shape: "box", size: [1.8, 0.9, 1], offset: [0, 0.45, 0], color: "#7c4a2d" },
+      { shape: "box", size: [2.2, 0.15, 1.6], offset: [0, 2.1, 0], color: "#d9c07a", rotationY: 0.2 },
+      { shape: "box", size: [0.12, 2.1, 0.12], offset: [-1, 1.05, -0.6], color: "#6b3f22" },
+      { shape: "box", size: [0.12, 2.1, 0.12], offset: [1, 1.05, -0.6], color: "#6b3f22" },
+    ],
+  },
+  {
     id: "character",
     name: "Nhân vật",
     license: "Tự tạo trong app",
@@ -350,6 +422,8 @@ export interface DioramaState {
   /** Địa hình thế giới theo chunk (W8) — không còn 1 ô đất cố định. */
   terrain: WorldTerrain;
   paths: import("./terrain").TerrainPath[];
+  /** Sông/suối (W9): đường + rộng + sâu — dải nước vẽ riêng. */
+  rivers: import("./terrain").River[];
   customModels: CustomModel[];
   factions: Faction[];
   sky: SkySettings;
@@ -441,9 +515,14 @@ export function createPlacement(
   storyEntityId: string | null = null,
   name?: string,
   glbAssetId?: string | null,
+  bounds?: { minX: number; maxX: number; minZ: number; maxZ: number },
 ): DioramaPlacement {
   const def = modelDef(modelId);
   const footprint = glbAssetId ? 2 : def.footprint;
+  const minX = bounds?.minX ?? -20;
+  const maxX = bounds?.maxX ?? 20;
+  const minZ = bounds?.minZ ?? -20;
+  const maxZ = bounds?.maxZ ?? 20;
   return {
     id: newPlacementId(),
     modelId,
@@ -451,8 +530,8 @@ export function createPlacement(
     assetStatus: glbAssetId ? "rough" : "rough",
     storyEntityId,
     name: name ?? def.name,
-    x: snapToGrid(clampGround(x, footprint)),
-    z: snapToGrid(clampGround(z, footprint)),
+    x: snapToGrid(clampGround(x, footprint, minX, maxX)),
+    z: snapToGrid(clampGround(z, footprint, minZ, maxZ)),
     rotationY: 0,
     scale: 1,
     visible: true,
@@ -526,6 +605,7 @@ export function migrateLegacyWorld(
     events: [],
     terrain: createFlatWorld(),
     paths: [],
+    rivers: [],
     customModels: [],
     factions: [],
     sky: { time: 10, weather: "clear", season: "summer" },

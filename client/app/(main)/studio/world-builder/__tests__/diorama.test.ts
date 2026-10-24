@@ -233,6 +233,70 @@ describe("W3: địa hình", () => {
   });
 });
 
+describe("W9: sinh cảnh quan theo vùng", () => {
+  it("núi nâng tâm cao, hồ hạ tâm + có nước, đảo có vành cát", async () => {
+    const t = await import("../lib/terrain");
+    const g = await import("../lib/worldGen");
+    let wt = t.createFlatWorld();
+    wt = g.generateTerrain(wt, "mountain", 0, 0, 10, 7, 3);
+    expect(t.heightAt(wt, 0, 0)).toBeGreaterThan(4);
+    wt = t.createFlatWorld();
+    wt = g.generateTerrain(wt, "lake", 0, 0, 8, 2, 3);
+    expect(t.heightAt(wt, 0, 0)).toBeLessThan(0);
+    expect(wt.waterLevel).toBeGreaterThan(-1);
+    wt = t.createFlatWorld();
+    wt = g.generateTerrain(wt, "island", 0, 0, 10, 3, 3);
+    expect(t.heightAt(wt, 0, 0)).toBeGreaterThan(1);
+    // Ô (i=54, j=40) cách tâm ~7.3m: cao ~0.5m → vành cát.
+    expect(wt.chunks["0,0"].biomes[40][54]).toBe("sand");
+  });
+
+  it("rải rừng: trong vòng, tránh nước, cách nhau ≥2m", async () => {
+    const t = await import("../lib/terrain");
+    const g = await import("../lib/worldGen");
+    const wt = t.createFlatWorld();
+    const trees = g.scatterForest(wt, [], 0, 0, 8, 0.1, 5);
+    expect(trees.length).toBeGreaterThan(5);
+    for (const pl of trees) {
+      expect(Math.hypot(pl.x, pl.z)).toBeLessThanOrEqual(8.5);
+    }
+    for (let a = 0; a < trees.length; a += 1) {
+      for (let b = a + 1; b < trees.length; b += 1) {
+        expect(Math.hypot(trees[a].x - trees[b].x, trees[a].z - trees[b].z)).toBeGreaterThanOrEqual(1.99);
+      }
+    }
+  });
+
+  it("làng có nhà + đường, thị trấn có 2 đường, đào sông hạ lòng", async () => {
+    const t = await import("../lib/terrain");
+    const g = await import("../lib/worldGen");
+    const wt = t.createFlatWorld();
+    const v = g.generateVillage(wt, [], 0, 0, 5);
+    expect(v.placements.length).toBeGreaterThanOrEqual(8);
+    expect(v.paths).toHaveLength(1);
+    const town = g.generateTown(wt, [], 0, 0, 5);
+    expect(town.paths).toHaveLength(2);
+    expect(town.placements.length).toBeGreaterThan(0);
+    const carved = g.carveRiver(wt, [{ x: -10, z: 0 }, { x: 10, z: 0 }], 3, 1.5);
+    expect(t.heightAt(carved, 0, 0)).toBeCloseTo(-1.5, 5);
+    expect(t.heightAt(carved, 0, 5)).toBe(0);
+  });
+
+  it("preset theo thể loại: fantasy có núi + cổng hang, adventure có đảo trên nước", async () => {
+    const presets = await import("../lib/worldPresets");
+    const t = await import("../lib/terrain");
+    const fantasy = presets.buildPresetWorld("fantasy");
+    expect(Math.max(...fantasy.terrain.chunks["0,0"].heights.flat())).toBeGreaterThan(5);
+    expect(fantasy.placements.some((pl) => pl.modelId === "cave-gate")).toBe(true);
+    const adventure = presets.buildPresetWorld("adventure");
+    expect(adventure.terrain.waterLevel).toBeGreaterThan(-1);
+    expect(t.heightAt(adventure.terrain, 0, 0)).toBeGreaterThan(adventure.terrain.waterLevel);
+    const horror = presets.buildPresetWorld("horror");
+    expect(horror.sky.weather).toBe("fog");
+    expect(horror.sky.time).toBe(22);
+  });
+});
+
 describe("W8: thế giới mở rộng theo chunk", () => {
   it("migrate: ô đất cũ thành chunk (0,0) nguyên vẹn, tọa độ không đổi", async () => {
     const t = await import("../lib/terrain");
@@ -396,6 +460,6 @@ describe("W7: mẫu world khởi điểm", () => {
     expect(Math.max(...snow.terrain.chunks["0,0"].heights.flat())).toBeGreaterThan(3);
     const blank = presets.buildPresetWorld("blank");
     expect(blank.placements).toEqual([]);
-    expect(presets.WORLD_PRESETS).toHaveLength(4);
+    expect(presets.WORLD_PRESETS).toHaveLength(8);
   });
 });
