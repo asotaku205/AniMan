@@ -158,6 +158,9 @@ function buildPlacementMesh(
     mesh.position.set(...part.offset);
     if (part.rotationY) mesh.rotation.y = part.rotationY;
     mesh.userData.placementId = p.id;
+    // Bóng đèn đường: ban đêm tự phát sáng (Phase 2, chỉ phát sáng nhìn
+    // thấy, chưa hắt sáng xuống đất — cần đèn điểm riêng mới hắt được).
+    if (p.modelId === "lamp" && part.shape === "sphere") mesh.userData.lampBulb = true;
     group.add(mesh);
   }
   return group;
@@ -1189,6 +1192,21 @@ export function DioramaCanvas({
       lights.sun.intensity = 0.3;
     }
   }, [sky]);
+
+  // Đèn đường phát sáng khi trời tối (Phase 2): chạy lại mỗi khi giờ
+  // hoặc vật đổi, vì vật mới đặt cũng cần được gắn phát sáng.
+  useEffect(() => {
+    const t = threeRef.current;
+    if (!t) return;
+    const night = !(sky.time >= 6 && sky.time <= 18);
+    t.scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.userData?.lampBulb) return;
+      const m = mesh.material as THREE.MeshStandardMaterial;
+      m.emissive.set("#ffca5e");
+      m.emissiveIntensity = night ? 1.5 : 0;
+    });
+  }, [sky, placements]);
 
   // Bay tới góc nhìn đã lưu khi workspace yêu cầu.
   useEffect(() => {
