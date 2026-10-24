@@ -7,7 +7,21 @@
  * không lưu scene Three.js. Khôi phục = dựng lại mô hình từ records.
  */
 
+import { clampGround } from "./diorama";
+import { migrateTerrainToWorld } from "./terrain";
 import type { DioramaState } from "./diorama";
+
+/** Chuẩn hoá state khi đọc (W8): địa hình cũ 1 ô → thế giới chunk,
+ * vật ngoài chunk (0,0) (world 60m cũ) kẹp vào trong biên mới. */
+export function normalizeState(state: DioramaState): DioramaState {
+  const terrain = migrateTerrainToWorld((state as unknown as { terrain: unknown }).terrain);
+  const placements = (state.placements ?? []).map((pl) => ({
+    ...pl,
+    x: clampGround(pl.x, 0),
+    z: clampGround(pl.z, 0),
+  }));
+  return { ...state, terrain, placements };
+}
 
 const DB_NAME = "animan_world_builder_db";
 const DB_VERSION = 1;
@@ -69,15 +83,12 @@ export async function loadDiorama(): Promise<DioramaState | null> {
     if (!rec || !Array.isArray(rec.state?.placements)) return null;
     // Bản lưu cũ (W1/W2 sớm) thiếu trường mới — chuẩn hoá để UI mới
     // không vỡ, dữ liệu cũ giữ nguyên.
-    return {
+    const normalized = normalizeState({
       ...rec.state,
       events: rec.state.events ?? [],
-      groundSize: rec.state.groundSize ?? 40,
-      terrain: rec.state.terrain ?? {
-        heights: Array.from({ length: 81 }, () => new Array(81).fill(0)),
-        biomes: Array.from({ length: 80 }, () => new Array(80).fill("grass")),
-        waterLevel: -1,
-      },
+    } as DioramaState);
+    return {
+      ...normalized,
       paths: rec.state.paths ?? [],
       customModels: rec.state.customModels ?? [],
       factions: rec.state.factions ?? [],
@@ -155,7 +166,9 @@ export async function listWorlds(): Promise<WorldRecord[]> {
   if (!isBrowser) return [];
   const db = await openDbV2();
   const all = await tx<WorldRecord[]>(db, WORLDS_STORE, "readonly", (s) => s.getAll());
-  return (all ?? []).sort((a, b) => b.updatedAt - a.updatedAt);
+  return (all ?? [])
+    .map((rec) => ({ ...rec, state: normalizeState(rec.state) }))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function saveWorld(rec: WorldRecord): Promise<void> {

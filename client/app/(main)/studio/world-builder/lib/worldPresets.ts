@@ -1,5 +1,4 @@
 import {
-  GROUND_SIZE,
   createPlacement,
   createFaction,
   type DioramaState,
@@ -7,7 +6,7 @@ import {
 } from "./diorama";
 import {
   brushTerrain,
-  createFlatTerrain,
+  createFlatWorld,
   paintBiome,
 } from "./terrain";
 
@@ -39,8 +38,7 @@ function blankState(): DioramaState {
     entities: [],
     placements: [],
     events: [],
-    groundSize: GROUND_SIZE,
-    terrain: createFlatTerrain(),
+    terrain: createFlatWorld(),
     paths: [],
     customModels: [],
     factions: [],
@@ -103,11 +101,11 @@ export function buildPresetWorld(preset: WorldPresetId): DioramaState {
     return s;
   }
   if (preset === "port") {
-    let terrain = createFlatTerrain();
-    terrain = brushTerrain(terrain, GROUND_SIZE, -8, 0, "lower", 12, 2.5);
+    let terrain = createFlatWorld();
+    terrain = brushTerrain(terrain, -8, 0, "lower", 12, 2.5);
     terrain = { ...terrain, waterLevel: 0.2 };
-    terrain = paintBiome(terrain, GROUND_SIZE, -8, 0, 12, "sand");
-    terrain = paintBiome(terrain, GROUND_SIZE, 6, 6, 8, "field");
+    terrain = paintBiome(terrain, -8, 0, 12, "sand");
+    terrain = paintBiome(terrain, 6, 6, 8, "field");
     s.terrain = terrain;
     s.placements = [
       createPlacement("bridge", -4, 0),
@@ -120,10 +118,10 @@ export function buildPresetWorld(preset: WorldPresetId): DioramaState {
     return s;
   }
   // snow
-  let terrain = createFlatTerrain();
-  terrain = brushTerrain(terrain, GROUND_SIZE, 0, -6, "raise", 14, 5);
-  terrain = paintBiome(terrain, GROUND_SIZE, 0, -6, 14, "snow");
-  terrain = paintBiome(terrain, GROUND_SIZE, -10, 8, 7, "forest");
+  let terrain = createFlatWorld();
+  terrain = brushTerrain(terrain, 0, -6, "raise", 14, 5);
+  terrain = paintBiome(terrain, 0, -6, 14, "snow");
+  terrain = paintBiome(terrain, -10, 8, 7, "forest");
   s.terrain = terrain;
   s.placements = [
     createPlacement("shrine", 0, -6),

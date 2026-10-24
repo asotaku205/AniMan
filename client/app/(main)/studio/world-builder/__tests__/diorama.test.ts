@@ -187,48 +187,103 @@ describe("gói bàn giao ZIP (STORE, không nén)", () => {
 describe("W3: địa hình", () => {
   it("heightAt: phẳng = 0, nội suy đúng giữa 2 đỉnh", async () => {
     const t = await import("../lib/terrain");
-    const flat = t.createFlatTerrain();
-    expect(t.heightAt(flat, 40, 0, 0)).toBe(0);
-    const raised = t.brushTerrain(flat, 40, 0, 0, "raise", 1, 1);
+    const flat = t.createFlatWorld();
+    expect(t.heightAt(flat, 0, 0)).toBe(0);
+    const raised = t.brushTerrain(flat, 0, 0, "raise", 1, 1);
     // Tâm cọ (0,0) là đỉnh lưới (i=40,j=40) nên cao đúng 1 * falloff(0)=1
-    expect(t.heightAt(raised, 40, 0, 0)).toBeCloseTo(1, 5);
+    expect(t.heightAt(raised, 0, 0)).toBeCloseTo(1, 5);
     // Xa hơn bán kính thì không đổi
-    expect(t.heightAt(raised, 40, 10, 10)).toBe(0);
+    expect(t.heightAt(raised, 10, 10)).toBe(0);
   });
 
   it("cọ hạ/san phẳng: hạ xuống âm, san phẳng kéo về cao độ tâm", async () => {
     const t = await import("../lib/terrain");
-    const flat = t.createFlatTerrain();
-    const pit = t.brushTerrain(flat, 40, 0, 0, "lower", 2, 0.8);
-    expect(t.heightAt(pit, 40, 0, 0)).toBeLessThan(0);
-    const levelled = t.brushTerrain(pit, 40, 0, 0, "flatten", 2, 1);
-    expect(Math.abs(t.heightAt(levelled, 40, 0, 0) - t.heightAt(pit, 40, 0, 0))).toBeLessThan(0.01);
+    const flat = t.createFlatWorld();
+    const pit = t.brushTerrain(flat, 0, 0, "lower", 2, 0.8);
+    expect(t.heightAt(pit, 0, 0)).toBeLessThan(0);
+    const levelled = t.brushTerrain(pit, 0, 0, "flatten", 2, 1);
+    expect(Math.abs(t.heightAt(levelled, 0, 0) - t.heightAt(pit, 0, 0))).toBeLessThan(0.01);
   });
 
   it("tô biome: trong bán kính đổi, ngoài bán kính giữ nguyên", async () => {
     const t = await import("../lib/terrain");
-    const flat = t.createFlatTerrain();
-    const painted = t.paintBiome(flat, 40, 0, 0, 1, "sand");
-    expect(painted.biomes[40][40]).toBe("sand");
-    expect(painted.biomes[0][0]).toBe("grass");
+    const flat = t.createFlatWorld();
+    const painted = t.paintBiome(flat, 0, 0, 1, "sand");
+    expect(painted.chunks["0,0"].biomes[40][40]).toBe("sand");
+    expect(painted.chunks["0,0"].biomes[0][0]).toBe("grass");
   });
 
   it("màu đỉnh: cao thì ngả đá/tuyết, thấp gần nước thì ngả cát", async () => {
     const t = await import("../lib/terrain");
-    const wet = { ...t.createFlatTerrain(), waterLevel: 0 };
-    const low = t.terrainVertexColor(wet, 40, 40);
+    const chunk = t.createFlatTerrain();
+    const low = t.terrainVertexColor(chunk, 40, 40, 0);
     const high = t.terrainVertexColor(
-      { ...wet, heights: wet.heights.map((row, j) => row.map((_, i) => (i === 40 && j === 40 ? 8 : 0))) },
-      40, 40,
+      { ...chunk, heights: chunk.heights.map((row, j) => row.map((_, i) => (i === 40 && j === 40 ? 8 : 0))) },
+      40, 40, 0,
     );
     // Đỉnh cao 8m phải sáng hơn (tuyết) so với đỉnh thấp gần nước
     expect(high[0] + high[1] + high[2]).toBeGreaterThan(low[0] + low[1] + low[2]);
   });
 
-  it("clampGround theo cỡ sa bàn mới", async () => {
+  it("clampGround theo biên thế giới (min/max)", async () => {
     const mod = await import("../lib/diorama");
-    expect(mod.clampGround(30, 0, 20)).toBeLessThan(10);
-    expect(mod.clampGround(30, 0, 60)).toBe(29.5);
+    expect(mod.clampGround(30, 0, -20, 20)).toBe(19.5);
+    expect(mod.clampGround(30, 0, -30, 30)).toBe(29.5);
+    expect(mod.clampGround(-99)).toBe(-19.5);
+  });
+});
+
+describe("W8: thế giới mở rộng theo chunk", () => {
+  it("migrate: ô đất cũ thành chunk (0,0) nguyên vẹn, tọa độ không đổi", async () => {
+    const t = await import("../lib/terrain");
+    const old = t.createFlatTerrain();
+    old.heights[10][20] = 3;
+    const wt = t.migrateTerrainToWorld({ ...old, waterLevel: 0.5 });
+    expect(Object.keys(wt.chunks)).toEqual(["0,0"]);
+    expect(wt.chunks["0,0"].heights[10][20]).toBe(3);
+    expect(wt.waterLevel).toBe(0.5);
+    expect(t.heightAt(wt, 0, 0)).toBe(0);
+    // World mới đi qua giữ nguyên nội dung.
+    expect(t.migrateTerrainToWorld(wt)).toEqual(wt);
+  });
+
+  it("chunk mới kẹp mép theo chunk kề — mặt đất liền mạch qua biên", async () => {
+    const t = await import("../lib/terrain");
+    let wt = t.createFlatWorld();
+    wt = t.brushTerrain(wt, 19, 0, "raise", 3, 2);
+    const before = wt.chunks["0,0"].heights.map((row) => [...row]);
+    wt = t.addChunk(wt, 1, 0);
+    const added = wt.chunks["1,0"];
+    for (let j = 0; j <= 80; j += 1) {
+      expect(added.heights[j][0]).toBe(before[j][80]);
+    }
+    // Cao độ liền mạch qua biên (19.9 trong chunk cũ ≈ 20.1 trong chunk mới).
+    expect(Math.abs(t.heightAt(wt, 19.9, 0) - t.heightAt(wt, 20.1, 0))).toBeLessThan(0.6);
+    // Thêm lại chunk đã có thì giữ nguyên.
+    expect(t.addChunk(wt, 1, 0)).toBe(wt);
+  });
+
+  it("cọ tràn biên: quét ở mép đổi cả 2 chunk kề", async () => {
+    const t = await import("../lib/terrain");
+    let wt = t.createFlatWorld();
+    wt = t.addChunk(wt, 1, 0);
+    wt = t.brushTerrain(wt, 19.5, 0, "raise", 3, 1);
+    const anyRaised = (c: { heights: number[][] }) => c.heights.some((row) => row.some((h) => h > 0));
+    expect(anyRaised(wt.chunks["0,0"])).toBe(true);
+    expect(anyRaised(wt.chunks["1,0"])).toBe(true);
+  });
+
+  it("worldBounds + clampToWorld theo số chunk thực tế", async () => {
+    const t = await import("../lib/terrain");
+    let wt = t.createFlatWorld();
+    wt = t.addChunk(wt, 1, 0);
+    wt = t.addChunk(wt, 0, -1);
+    const b = t.worldBounds(wt);
+    expect([b.minX, b.maxX, b.minZ, b.maxZ]).toEqual([-20, 60, -60, 20]);
+    expect(t.clampToWorld(wt, 99, true, 0)).toBe(59.5);
+    expect(t.clampToWorld(wt, -99, false, 0)).toBe(-59.5);
+    // Ngoài thế giới (chunk chưa có) cao độ = 0.
+    expect(t.heightAt(wt, 100, 100)).toBe(0);
   });
 });
 
@@ -320,10 +375,10 @@ describe("W7: mẫu world khởi điểm", () => {
     const presets = await import("../lib/worldPresets");
     const port = presets.buildPresetWorld("port");
     expect(port.terrain.waterLevel).toBeGreaterThan(-1);
-    expect(port.terrain.biomes.flat()).toContain("sand");
+    expect(port.terrain.chunks["0,0"].biomes.flat()).toContain("sand");
     const snow = presets.buildPresetWorld("snow");
-    expect(snow.terrain.biomes.flat()).toContain("snow");
-    expect(Math.max(...snow.terrain.heights.flat())).toBeGreaterThan(3);
+    expect(snow.terrain.chunks["0,0"].biomes.flat()).toContain("snow");
+    expect(Math.max(...snow.terrain.chunks["0,0"].heights.flat())).toBeGreaterThan(3);
     const blank = presets.buildPresetWorld("blank");
     expect(blank.placements).toEqual([]);
     expect(presets.WORLD_PRESETS).toHaveLength(4);

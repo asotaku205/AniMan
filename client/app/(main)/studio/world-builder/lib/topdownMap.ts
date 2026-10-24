@@ -1,4 +1,4 @@
-import { TERRAIN_CELLS, seasonTint, terrainVertexColor } from "./terrain";
+import { CHUNK_SIZE, TERRAIN_CELLS, seasonTint, terrainVertexColor, worldBounds } from "./terrain";
 import type { DioramaState } from "./diorama";
 
 /**
@@ -12,26 +12,45 @@ export function drawTopDownMap(state: DioramaState, px = 1024): string {
   canvas.height = px;
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
-  const size = state.groundSize;
-  const cell = px / TERRAIN_CELLS;
+  // Bản đồ phủ toàn bộ biên thế giới (mọi chunk), giữ tỉ lệ thật.
+  const b = worldBounds(state.terrain);
+  const worldW = b.maxX - b.minX;
+  const worldD = b.maxZ - b.minZ;
+  const span = Math.max(worldW, worldD);
+  const cell = px / (span / (CHUNK_SIZE / TERRAIN_CELLS));
   const toPx = (x: number, z: number): [number, number] => [
-    ((x + size / 2) / size) * px,
-    ((z + size / 2) / size) * px,
+    ((x - b.minX) / span) * px,
+    ((z - b.minZ) / span) * px,
   ];
-  for (let j = 0; j < TERRAIN_CELLS; j += 1) {
-    for (let i = 0; i < TERRAIN_CELLS; i += 1) {
-      const c = seasonTint(terrainVertexColor(state.terrain, i, j), state.sky.season);
-      ctx.fillStyle = `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
-      ctx.fillRect(i * cell, j * cell, cell + 0.5, cell + 0.5);
+  for (const key of Object.keys(state.terrain.chunks)) {
+    const chunk = state.terrain.chunks[key];
+    const [cx, cz] = key.split(",").map(Number);
+    const ox = cx * CHUNK_SIZE - CHUNK_SIZE / 2;
+    const oz = cz * CHUNK_SIZE - CHUNK_SIZE / 2;
+    for (let j = 0; j < TERRAIN_CELLS; j += 1) {
+      for (let i = 0; i < TERRAIN_CELLS; i += 1) {
+        const c = seasonTint(terrainVertexColor(chunk, i, j, state.terrain.waterLevel), state.sky.season);
+        ctx.fillStyle = `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
+        const [pxx, pzz] = toPx(ox + (i / TERRAIN_CELLS) * CHUNK_SIZE, oz + (j / TERRAIN_CELLS) * CHUNK_SIZE);
+        ctx.fillRect(pxx, pzz, cell + 0.5, cell + 0.5);
+      }
     }
   }
   // Nước: ô thấp hơn mực nước phủ xanh mờ.
   if (state.terrain.waterLevel > -1) {
     ctx.fillStyle = "rgba(64,120,200,0.55)";
-    for (let j = 0; j < TERRAIN_CELLS; j += 1) {
-      for (let i = 0; i < TERRAIN_CELLS; i += 1) {
-        const h = state.terrain.heights[Math.min(TERRAIN_CELLS, j + 1)]?.[Math.min(TERRAIN_CELLS, i + 1)] ?? 0;
-        if (h < state.terrain.waterLevel) ctx.fillRect(i * cell, j * cell, cell + 0.5, cell + 0.5);
+    for (const key of Object.keys(state.terrain.chunks)) {
+      const chunk = state.terrain.chunks[key];
+      const [cx, cz] = key.split(",").map(Number);
+      const ox = cx * CHUNK_SIZE - CHUNK_SIZE / 2;
+      const oz = cz * CHUNK_SIZE - CHUNK_SIZE / 2;
+      for (let j = 0; j < TERRAIN_CELLS; j += 1) {
+        for (let i = 0; i < TERRAIN_CELLS; i += 1) {
+          const h = chunk.heights[Math.min(TERRAIN_CELLS, j + 1)]?.[Math.min(TERRAIN_CELLS, i + 1)] ?? 0;
+          if (h >= state.terrain.waterLevel) continue;
+          const [pxx, pzz] = toPx(ox + (i / TERRAIN_CELLS) * CHUNK_SIZE, oz + (j / TERRAIN_CELLS) * CHUNK_SIZE);
+          ctx.fillRect(pxx, pzz, cell + 0.5, cell + 0.5);
+        }
       }
     }
   }

@@ -15,7 +15,6 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import {
-  GROUND_SIZE,
   clampGround,
   modelDef,
   placementFootprint,
@@ -31,13 +30,16 @@ import {
   type StoryEntity,
 } from "../lib/diorama";
 import {
+  CHUNK_SIZE,
   TERRAIN_CELLS,
+  chunkKey,
   heightAt,
   seasonTint,
   terrainVertexColor,
-  type Terrain,
+  worldBounds,
   type TerrainBrushMode,
   type TerrainPath,
+  type WorldTerrain,
 } from "../lib/terrain";
 
 interface Props {
@@ -57,8 +59,7 @@ interface Props {
     capture: () => string | null;
     getCamera: () => { position: [number, number, number]; target: [number, number, number] } | null;
   } | null>;
-  terrain: Terrain;
-  groundSize: number;
+  terrain: WorldTerrain;
   paths: TerrainPath[];
   draftPath: Array<{ x: number; z: number }>;
   /** Cọ địa hình đang cầm (null = không vẽ địa hình). */
@@ -164,7 +165,6 @@ export function DioramaCanvas({
   flyTo,
   canvasApiRef,
   terrain,
-  groundSize,
   paths,
   draftPath,
   terrainTool,
@@ -197,7 +197,7 @@ export function DioramaCanvas({
   // tránh parse lại base64 khi gõ hồ sơ; clone CHIA SẺ geometry nên
   // khi dọn KHÔNG được dispose clone (xem rebuild effect).
   const terrainRef = useRef<{
-    mesh: THREE.Mesh;
+    meshes: THREE.Group;
     water: THREE.Mesh;
     pathsGroup: THREE.Group;
     base: THREE.Mesh;
@@ -216,8 +216,8 @@ export function DioramaCanvas({
     onSelect, onPlace, onMove, placing, terrainTool, pathMode,
     onTerrainBrush, onPathPoint,
   };
-  const terrainDataRef = useRef({ terrain, groundSize });
-  terrainDataRef.current = { terrain, groundSize };
+  const terrainDataRef = useRef({ terrain });
+  terrainDataRef.current = { terrain };
   // Chữ ký màu thực thể: đổi màu mới dựng lại mesh (mẫu Nhân vật lấy
   // màu từ entity); gõ tên/mô tả trong hồ sơ KHÔNG được dựng lại cả
   // sa bàn — đó là một nguồn giật khi sửa hồ sơ.
@@ -316,21 +316,19 @@ export function DioramaCanvas({
     // hình thấp nhất (-3) để không bao giờ đồng phẳng với mặt đất
     // (đồng phẳng = nhấp nháy z-fighting ở vùng đất phẳng y=0).
     // Mặt địa hình dựng lại ở effect riêng khi terrain đổi.
+    // Đế + mặt nước dùng hình đơn vị, co giãn theo biên thế giới ở
+    // terrain effect (world nhiều chunk thì đế phủ toàn bộ biên).
     const base = new THREE.Mesh(
-      new THREE.BoxGeometry(GROUND_SIZE + 2, 6, GROUND_SIZE + 2),
+      new THREE.BoxGeometry(1, 6, 1),
       new THREE.MeshStandardMaterial({ color: "#3c2c17", roughness: 1 }),
     );
     base.position.y = -6.05; // mặt trên ở -3.05, dưới đáy địa hình -3
     base.receiveShadow = true;
     scene.add(base);
-    const terrainMesh = new THREE.Mesh(
-      new THREE.BufferGeometry(),
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
-    );
-    terrainMesh.receiveShadow = true;
-    scene.add(terrainMesh);
+    const terrainMeshes = new THREE.Group();
+    scene.add(terrainMeshes);
     const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
+      new THREE.PlaneGeometry(1, 1),
       new THREE.MeshStandardMaterial({
         color: "#2f6fb3",
         transparent: true,
@@ -348,11 +346,13 @@ export function DioramaCanvas({
     // đất và khối đế (mặt đất trông như "bị cao hơn" / lơ lửng).
     const skirt = new THREE.Mesh(
       new THREE.BufferGeometry(),
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
+      // DoubleSide: váy dựng theo 4 hướng mép chunk, không lo chiều
+      // pháp tuyến từng đoạn.
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }),
     );
     skirt.receiveShadow = true;
     scene.add(skirt);
-    terrainRef.current = { mesh: terrainMesh, water, pathsGroup, base, skirt };
+    terrainRef.current = { meshes: terrainMeshes, water, pathsGroup, base, skirt };
 
     const objects = new THREE.Group();
     scene.add(objects);
@@ -426,7 +426,7 @@ export function DioramaCanvas({
       for (let k = 0; k < 3; k += 1) {
         plane.constant = -y;
         if (!raycaster.ray.intersectPlane(plane, hit)) return null;
-        const h = heightAt(td.terrain, td.groundSize, hit.x, hit.z);
+        const h = heightAt(td.terrain, hit.x, hit.z);
         if (Math.abs(h - y) < 0.02) break;
         y = h;
       }
@@ -509,12 +509,13 @@ export function DioramaCanvas({
         drag.moved = true;
       }
       const td = terrainDataRef.current;
+      const b = worldBounds(td.terrain);
       const fp =
         placementsRef.current.find((pp) => pp.id === drag.id) ?
           placementFootprint(placementsRef.current.find((pp) => pp.id === drag.id)!, customModelsRef.current) : 0;
-      drag.group.position.x = clampGround(pt.x, fp, td.groundSize);
-      drag.group.position.z = clampGround(pt.z, fp, td.groundSize);
-      drag.group.position.y = heightAt(td.terrain, td.groundSize, drag.group.position.x, drag.group.position.z);
+      drag.group.position.x = clampGround(pt.x, fp, b.minX, b.maxX);
+      drag.group.position.z = clampGround(pt.z, fp, b.minZ, b.maxZ);
+      drag.group.position.y = heightAt(td.terrain, drag.group.position.x, drag.group.position.z);
       // Vòng chọn bám theo vật đang kéo — trước đây vòng đứng yên ở
       // vị trí cũ suốt lúc kéo, thả mới nhảy tới, nhìn rất giật.
       ring.position.set(
@@ -544,12 +545,13 @@ export function DioramaCanvas({
       const found = placementsRef.current.find((p) => p.id === drag.id);
       const fp = found ? placementFootprint(found, customModelsRef.current) : 0;
       const td = terrainDataRef.current;
-      const sx = snapToGrid(clampGround(drag.group.position.x, fp, td.groundSize));
-      const sz = snapToGrid(clampGround(drag.group.position.z, fp, td.groundSize));
+      const b = worldBounds(td.terrain);
+      const sx = snapToGrid(clampGround(drag.group.position.x, fp, b.minX, b.maxX));
+      const sz = snapToGrid(clampGround(drag.group.position.z, fp, b.minZ, b.maxZ));
       settle = {
         group: drag.group,
         from: drag.group.position.clone(),
-        to: new THREE.Vector3(sx, heightAt(td.terrain, td.groundSize, sx, sz), sz),
+        to: new THREE.Vector3(sx, heightAt(td.terrain, sx, sz), sz),
         sx,
         sz,
         id: drag.id,
@@ -688,8 +690,7 @@ export function DioramaCanvas({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       controls.dispose();
-      terrainRef.current?.mesh.geometry.dispose();
-      (terrainRef.current?.mesh.material as THREE.Material).dispose();
+      if (terrainRef.current) disposeObject(terrainRef.current.meshes);
       terrainRef.current?.water.geometry.dispose();
       (terrainRef.current?.water.material as THREE.Material).dispose();
       if (terrainRef.current) disposeObject(terrainRef.current.pathsGroup);
@@ -735,7 +736,7 @@ export function DioramaCanvas({
         const cached = glbCacheRef.current.get(p.glbAssetId);
         if (cached) {
           const clone = cached.clone(true);
-          clone.position.set(p.x, heightAt(terrain, groundSize, p.x, p.z), p.z);
+          clone.position.set(p.x, heightAt(terrain, p.x, p.z), p.z);
           clone.rotation.set(p.rotationX ?? 0, p.rotationY, p.rotationZ ?? 0);
           clone.scale.set(
             p.scale * (p.scaleX ?? 1),
@@ -796,7 +797,7 @@ export function DioramaCanvas({
         p.storyEntityId ? (entityById.get(p.storyEntityId) ?? null) : null,
         placementParts(p, customModelsRef.current),
       );
-      group.position.y = heightAt(terrain, groundSize, p.x, p.z);
+      group.position.y = heightAt(terrain, p.x, p.z);
       t.objects.add(group);
     }
     // Vòng màu phe dưới chân vật: nhìn là biết vật thuộc phe nào.
@@ -811,68 +812,113 @@ export function DioramaCanvas({
         new THREE.MeshBasicMaterial({ color: fac.color, transparent: true, opacity: 0.35, side: THREE.DoubleSide }),
       );
       circle.rotation.x = -Math.PI / 2;
-      circle.position.set(p.x, heightAt(terrain, groundSize, p.x, p.z) + 0.03, p.z);
+      circle.position.set(p.x, heightAt(terrain, p.x, p.z) + 0.03, p.z);
       t.objects.add(circle);
     }
   }, [placements, glbDataUrls, entityColorSig, glbTick, factions]);
 
-  // Dựng mặt địa hình khi terrain/size/đường đổi: mesh cao độ +
+  // Dựng mặt địa hình khi terrain/đường đổi: 1 mesh mỗi chunk +
   // màu đỉnh (smooth normals — hướng realistic, không faceted) + mặt
   // nước + dải đường đi bám theo cao độ.
   useEffect(() => {
     const t = terrainRef.current;
     if (!t) return;
-    const size = groundSize;
-    const geo = new THREE.PlaneGeometry(size, size, TERRAIN_CELLS, TERRAIN_CELLS);
-    geo.rotateX(-Math.PI / 2);
-    const pos = geo.attributes.position as THREE.BufferAttribute;
-    const colors = new Float32Array(pos.count * 3);
-    for (let v = 0; v < pos.count; v += 1) {
-      // PlaneGeometry sau rotateX(-90°): hàng j ↔ z = -size/2 + j*cell
-      // (xem ghi chú mapping ở terrain.ts), cột i ↔ x tương ứng.
-      const j = Math.floor(v / (TERRAIN_CELLS + 1));
-      const i = v % (TERRAIN_CELLS + 1);
-      pos.setY(v, terrain.heights[j][i]);
-      const c = seasonTint(terrainVertexColor(terrain, i, j), sky.season);
-      colors[v * 3] = c[0];
-      colors[v * 3 + 1] = c[1];
-      colors[v * 3 + 2] = c[2];
+    const b = worldBounds(terrain);
+    // Dọn mesh chunk cũ, dựng lại theo từng chunk (mesh đặt tại tâm
+    // chunk; mapping đỉnh PlaneGeometry sau rotateX giống bản 1 ô).
+    for (const child of [...t.meshes.children]) {
+      t.meshes.remove(child);
+      disposeObject(child);
     }
-    pos.needsUpdate = true;
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    geo.computeVertexNormals();
-    const old = t.mesh.geometry;
-    t.mesh.geometry = geo;
-    old.dispose();
-    // Dựng váy nối quanh mép: vòng khép kín 320 điểm (mỗi cạnh 80),
-    // mỗi điểm kéo thẳng đứng xuống SKIRT_BOTTOM = mặt trên đế.
+    for (const key of Object.keys(terrain.chunks)) {
+      const chunk = terrain.chunks[key];
+      const [cx, cz] = key.split(",").map(Number);
+      const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, TERRAIN_CELLS, TERRAIN_CELLS);
+      geo.rotateX(-Math.PI / 2);
+      const pos = geo.attributes.position as THREE.BufferAttribute;
+      const colors = new Float32Array(pos.count * 3);
+      for (let v = 0; v < pos.count; v += 1) {
+        const j = Math.floor(v / (TERRAIN_CELLS + 1));
+        const i = v % (TERRAIN_CELLS + 1);
+        pos.setY(v, chunk.heights[j][i]);
+        const c = seasonTint(terrainVertexColor(chunk, i, j, terrain.waterLevel), sky.season);
+        colors[v * 3] = c[0];
+        colors[v * 3 + 1] = c[1];
+        colors[v * 3 + 2] = c[2];
+      }
+      pos.needsUpdate = true;
+      geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(
+        geo,
+        new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
+      );
+      mesh.receiveShadow = true;
+      mesh.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
+      t.meshes.add(mesh);
+    }
+    // Váy nối CHỈ ở chu vi ngoài thế giới: mỗi chunk chỉ dựng váy ở
+    // cạnh nào không có chunk kề — giữa 2 chunk kề nhau mặt đất đã
+    // liền (mép kẹp bằng nhau), dựng váy ở đó sẽ thành tường chắn.
     {
-      const cell = size / TERRAIN_CELLS;
-      const loop: Array<{ x: number; z: number; i: number; j: number }> = [];
-      for (let i = 0; i <= TERRAIN_CELLS; i += 1)
-        loop.push({ x: -size / 2 + i * cell, z: -size / 2, i, j: 0 });
-      for (let j = 1; j <= TERRAIN_CELLS; j += 1)
-        loop.push({ x: size / 2, z: -size / 2 + j * cell, i: TERRAIN_CELLS, j });
-      for (let i = TERRAIN_CELLS - 1; i >= 0; i -= 1)
-        loop.push({ x: -size / 2 + i * cell, z: size / 2, i, j: TERRAIN_CELLS });
-      for (let j = TERRAIN_CELLS - 1; j >= 1; j -= 1)
-        loop.push({ x: -size / 2, z: -size / 2 + j * cell, i: 0, j });
       const SKIRT_BOTTOM = -3.05;
       const spos: number[] = [];
       const scol: number[] = [];
-      const pushV = (pt: { x: number; z: number; i: number; j: number }, y: number) => {
-        spos.push(pt.x, y, pt.z);
-        const c = seasonTint(terrainVertexColor(terrain, pt.i, pt.j), sky.season);
+      const has = (cx: number, cz: number) => !!terrain.chunks[chunkKey(cx, cz)];
+      const pushV = (x: number, z: number, y: number, c: [number, number, number]) => {
+        spos.push(x, y, z);
         scol.push(c[0] * 0.72, c[1] * 0.72, c[2] * 0.72);
       };
-      for (let k = 0; k < loop.length; k += 1) {
-        const a = loop[k];
-        const b = loop[(k + 1) % loop.length];
-        const ay = terrain.heights[a.j][a.i];
-        const by = terrain.heights[b.j][b.i];
-        // 2 tam giác, thứ tự cho pháp tuyến hướng ra ngoài.
-        pushV(a, ay); pushV(b, by); pushV(b, SKIRT_BOTTOM);
-        pushV(a, ay); pushV(b, SKIRT_BOTTOM); pushV(a, SKIRT_BOTTOM);
+      const strip = (
+        pts: Array<{ x: number; z: number; y: number; c: [number, number, number] }>,
+      ) => {
+        for (let k = 0; k < pts.length - 1; k += 1) {
+          const a = pts[k];
+          const bb = pts[k + 1];
+          pushV(a.x, a.z, a.y, a.c); pushV(bb.x, bb.z, bb.y, bb.c); pushV(bb.x, bb.z, SKIRT_BOTTOM, bb.c);
+          pushV(a.x, a.z, a.y, a.c); pushV(bb.x, bb.z, SKIRT_BOTTOM, bb.c); pushV(a.x, a.z, SKIRT_BOTTOM, a.c);
+        }
+      };
+      for (const key of Object.keys(terrain.chunks)) {
+        const chunk = terrain.chunks[key];
+        const [cx, cz] = key.split(",").map(Number);
+        const ox = cx * CHUNK_SIZE - CHUNK_SIZE / 2;
+        const oz = cz * CHUNK_SIZE - CHUNK_SIZE / 2;
+        const col = (i: number, j: number) =>
+          seasonTint(terrainVertexColor(chunk, i, j, terrain.waterLevel), sky.season);
+        if (!has(cx, cz - 1)) {
+          // Mép -z (j=0).
+          strip(Array.from({ length: TERRAIN_CELLS + 1 }, (_, i) => ({
+            x: ox + (i / TERRAIN_CELLS) * CHUNK_SIZE,
+            z: oz,
+            y: chunk.heights[0][i],
+            c: col(i, 0),
+          })));
+        }
+        if (!has(cx, cz + 1)) {
+          strip(Array.from({ length: TERRAIN_CELLS + 1 }, (_, i) => ({
+            x: ox + (i / TERRAIN_CELLS) * CHUNK_SIZE,
+            z: oz + CHUNK_SIZE,
+            y: chunk.heights[TERRAIN_CELLS][i],
+            c: col(i, TERRAIN_CELLS),
+          })));
+        }
+        if (!has(cx - 1, cz)) {
+          strip(Array.from({ length: TERRAIN_CELLS + 1 }, (_, j) => ({
+            x: ox,
+            z: oz + (j / TERRAIN_CELLS) * CHUNK_SIZE,
+            y: chunk.heights[j][0],
+            c: col(0, j),
+          })));
+        }
+        if (!has(cx + 1, cz)) {
+          strip(Array.from({ length: TERRAIN_CELLS + 1 }, (_, j) => ({
+            x: ox + CHUNK_SIZE,
+            z: oz + (j / TERRAIN_CELLS) * CHUNK_SIZE,
+            y: chunk.heights[j][TERRAIN_CELLS],
+            c: col(TERRAIN_CELLS, j),
+          })));
+        }
       }
       const sgeo = new THREE.BufferGeometry();
       sgeo.setAttribute("position", new THREE.Float32BufferAttribute(spos, 3));
@@ -882,11 +928,11 @@ export function DioramaCanvas({
       t.skirt.geometry = sgeo;
       sold.dispose();
     }
-    // Đế + mặt nước co giãn theo cỡ sa bàn (chiều cao đế giữ nguyên).
-    const k = size / GROUND_SIZE;
-    t.base.scale.set(k, 1, k);
-    t.water.scale.set(k, k, 1);
-    t.water.position.y = terrain.waterLevel + 0.02;
+    // Đế + mặt nước phủ toàn bộ biên thế giới (chiều cao đế giữ nguyên).
+    t.base.scale.set(b.maxX - b.minX + 2, 1, b.maxZ - b.minZ + 2);
+    t.base.position.set(b.centerX, -6.05, b.centerZ);
+    t.water.scale.set(b.maxX - b.minX, b.maxZ - b.minZ, 1);
+    t.water.position.set(b.centerX, terrain.waterLevel + 0.02, b.centerZ);
     t.water.visible = terrain.waterLevel > -1;
     // Đường đi: dải ribbon bám cao độ + chấm tròn ở mỗi điểm.
     for (const child of [...t.pathsGroup.children]) {
@@ -907,7 +953,7 @@ export function DioramaCanvas({
         dot.rotation.x = -Math.PI / 2;
         dot.position.set(
           points[0].x,
-          heightAt(terrain, size, points[0].x, points[0].z) + 0.07,
+          heightAt(terrain, points[0].x, points[0].z) + 0.07,
           points[0].z,
         );
         group.add(dot);
@@ -923,8 +969,8 @@ export function DioramaCanvas({
         const len = Math.hypot(dx, dz) || 1;
         const px = (-dz / len) * width;
         const pz = (dx / len) * width;
-        const yA = heightAt(terrain, size, a.x, a.z) + 0.06;
-        const yB = heightAt(terrain, size, b.x, b.z) + 0.06;
+        const yA = heightAt(terrain, a.x, a.z) + 0.06;
+        const yB = heightAt(terrain, b.x, b.z) + 0.06;
         const baseIdx = verts.length / 3;
         verts.push(a.x + px, yA, a.z + pz, a.x - px, yA, a.z - pz);
         verts.push(b.x + px, yB, b.z + pz, b.x - px, yB, b.z - pz);
@@ -954,7 +1000,7 @@ export function DioramaCanvas({
     if (draftPath.length > 0) {
       t.pathsGroup.add(buildRibbon(draftPath, "#c4a06a", 0.5));
     }
-  }, [terrain, groundSize, paths, draftPath, sky.season]);
+  }, [terrain, paths, draftPath, sky.season]);
 
   // Vòng chọn: effect riêng, chỉ di chuyển vòng (không dựng lại mesh).
   // Trong lúc kéo/settle, vòng được cập nhật trực tiếp từ handler nên
@@ -968,14 +1014,14 @@ export function DioramaCanvas({
       t.ring.visible = true;
       t.ring.position.set(
         sel.x,
-        heightAt(terrain, groundSize, sel.x, sel.z) + 0.04,
+        heightAt(terrain, sel.x, sel.z) + 0.04,
         sel.z,
       );
       t.ring.scale.setScalar(placementFootprint(sel, customModels));
     } else {
       t.ring.visible = false;
     }
-  }, [placements, selectedId, terrain, groundSize, customModels]);
+  }, [placements, selectedId, terrain, customModels]);
 
   // Bầu trời: mặt trời, nền, sương theo giờ + thời tiết.
   useEffect(() => {

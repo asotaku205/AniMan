@@ -11,9 +11,13 @@
  *   chữ riêng.
  */
 
-import { createFlatTerrain } from "./terrain";
+import {
+  CHUNK_SIZE,
+  createFlatWorld,
+  type WorldTerrain,
+} from "./terrain";
 
-export const GROUND_SIZE = 40;
+export const GROUND_SIZE = CHUNK_SIZE; // 1 chunk = 40m (giữ tên cũ cho code ngoài)
 export const SNAP_STEP = 0.5;
 
 export type DioramaModelId =
@@ -343,9 +347,8 @@ export interface DioramaState {
   placements: DioramaPlacement[];
   entities: StoryEntity[];
   events: WorldEvent[];
-  /** Cỡ sa bàn (mét) — đổi size chỉ co giãn lưới địa hình. */
-  groundSize: number;
-  terrain: import("./terrain").Terrain;
+  /** Địa hình thế giới theo chunk (W8) — không còn 1 ô đất cố định. */
+  terrain: WorldTerrain;
   paths: import("./terrain").TerrainPath[];
   customModels: CustomModel[];
   factions: Faction[];
@@ -425,10 +428,10 @@ export function snapToGrid(v: number): number {
   return Math.round(v / SNAP_STEP) * SNAP_STEP;
 }
 
-/** Kẹp trong mặt đất (chừa lề theo footprint). */
-export function clampGround(v: number, footprint = 0, size = GROUND_SIZE): number {
-  const limit = size / 2 - 0.5 - footprint;
-  return Math.min(limit, Math.max(-limit, v));
+/** Kẹp trong biên thế giới (chừa lề 0.5m + footprint). Mặc định là
+ * chunk (0,0) ±20 — world nhiều chunk truyền min/max từ worldBounds. */
+export function clampGround(v: number, footprint = 0, min = -20, max = 20): number {
+  return Math.min(max - 0.5 - footprint, Math.max(min + 0.5 + footprint, v));
 }
 
 export function createPlacement(
@@ -521,8 +524,7 @@ export function migrateLegacyWorld(
     entities,
     placements,
     events: [],
-    groundSize: GROUND_SIZE,
-    terrain: createFlatTerrain(),
+    terrain: createFlatWorld(),
     paths: [],
     customModels: [],
     factions: [],

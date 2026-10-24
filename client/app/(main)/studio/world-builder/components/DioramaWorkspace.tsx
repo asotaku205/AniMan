@@ -70,9 +70,12 @@ import {
 import { listAnimAssets } from "../../animation/lib/animStorage";
 import {
   BIOMES,
+  addChunk,
   brushTerrain,
-  createFlatTerrain,
+  createFlatWorld,
+  migrateTerrainToWorld,
   paintBiome,
+  worldBounds,
   type TerrainBrushMode,
 } from "../lib/terrain";
 import type { Model3DAsset } from "../../animation/lib/animAssets";
@@ -227,8 +230,7 @@ export function DioramaWorkspace() {
         entities: migrated.entities,
         placements: [...starterPlacements(), ...migrated.placements],
         events: [],
-        groundSize: 40,
-        terrain: createFlatTerrain(),
+        terrain: createFlatWorld(),
         paths: [],
         customModels: [],
         factions: [],
@@ -342,13 +344,11 @@ export function DioramaWorkspace() {
     (x: number, z: number) => {
       setState((prev) => {
         if (!prev || !terrainTool) return prev;
-        const size = prev.groundSize ?? 40;
         if (terrainTool.kind === "brush") {
           return {
             ...prev,
             terrain: brushTerrain(
               prev.terrain,
-              size,
               x,
               z,
               terrainTool.mode,
@@ -359,7 +359,7 @@ export function DioramaWorkspace() {
         }
         return {
           ...prev,
-          terrain: paintBiome(prev.terrain, size, x, z, terrainTool.radius, terrainTool.biomeId),
+          terrain: paintBiome(prev.terrain, x, z, terrainTool.radius, terrainTool.biomeId),
         };
       });
     },
@@ -616,7 +616,6 @@ export function DioramaWorkspace() {
           flyTo={flyTo}
           canvasApiRef={canvasApiRef}
           terrain={state.terrain}
-          groundSize={state.groundSize ?? 40}
           paths={state.paths ?? []}
           draftPath={draftPath}
           terrainTool={terrainTool}
@@ -665,6 +664,58 @@ export function DioramaWorkspace() {
             + Mới
           </button>
         </div>
+        {/* Bản đồ thế giới (W8): ô có đất bấm để bay tới, ô + kề bên
+            bấm để mở rộng thế giới thêm 1 chunk 40m (mép kẹp theo chunk cũ). */}
+        {state && (() => {
+          const b = worldBounds(state.terrain);
+          const cells: React.ReactNode[] = [];
+          for (let cz = b.minCz - 1; cz <= b.maxCz + 1; cz += 1) {
+            for (let cx = b.minCx - 1; cx <= b.maxCx + 1; cx += 1) {
+              const has = !!state.terrain.chunks[`${cx},${cz}`];
+              cells.push(
+                <button
+                  key={`${cx},${cz}`}
+                  title={has ? `Chunk (${cx}, ${cz}) — bấm để bay tới` : `Mở rộng thêm chunk (${cx}, ${cz})`}
+                  onClick={() => {
+                    if (has) {
+                      setFlyTo({
+                        position: [cx * 40, 30, cz * 40 + 30],
+                        target: [cx * 40, 0, cz * 40],
+                        nonce: Date.now(),
+                      });
+                    } else {
+                      setState((prev) => {
+                        if (!prev) return prev;
+                        return { ...prev, terrain: addChunk(prev.terrain, cx, cz) };
+                      });
+                    }
+                  }}
+                  className={`aspect-square rounded-[4px] text-[11px] flex items-center justify-center ${
+                    has
+                      ? "bg-violet-500/40 border border-violet-300/50 text-violet-50 hover:bg-violet-500/60"
+                      : "bg-white/5 border border-dashed border-white/20 text-white/50 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {has ? "" : "+"}
+                </button>,
+              );
+            }
+          }
+          const cols = b.maxCx - b.minCx + 3;
+          return (
+            <div className="mt-2.5">
+              <div className="flex justify-between items-baseline mb-1">
+                <span className="text-[11px] text-white/40">Bản đồ thế giới</span>
+                <span className="text-[11px] text-white/40">
+                  {Object.keys(state.terrain.chunks).length} chunk · Bắc ↑ · Tây ←
+                </span>
+              </div>
+              <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                {cells}
+              </div>
+            </div>
+          );
+        })()}
         {showPresetPicker && (
           <div className="mt-2 rounded-xl border border-white/10 bg-black/30 p-2.5 space-y-2">
             <input
@@ -747,8 +798,7 @@ export function DioramaWorkspace() {
                     entities: st.entities,
                     placements: st.placements,
                     events: st.events ?? [],
-                    groundSize: st.groundSize ?? 40,
-                    terrain: st.terrain ?? createFlatTerrain(),
+                    terrain: st.terrain ? migrateTerrainToWorld(st.terrain) : createFlatWorld(),
                     paths: st.paths ?? [],
                     customModels: st.customModels ?? [],
                     factions: st.factions ?? [],
@@ -1474,32 +1524,10 @@ export function DioramaWorkspace() {
               </div>
             ))}
           </div>
-          <label className="block text-[11px] text-white/40">
-            Cỡ sa bàn
-            <select
-              value={state.groundSize ?? 40}
-              onChange={(e) => {
-                const size = Number(e.target.value);
-                setState((prev) => {
-                  if (!prev) return prev;
-                  return {
-                    ...prev,
-                    groundSize: size,
-                    placements: prev.placements.map((pl) => ({
-                      ...pl,
-                      x: clampGround(pl.x, placementFootprint(pl, prev.customModels ?? []), size),
-                      z: clampGround(pl.z, placementFootprint(pl, prev.customModels ?? []), size),
-                    })),
-                  };
-                });
-              }}
-              className="mt-1 w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
-            >
-              <option value={20}>20 × 20m (nhỏ, chi tiết)</option>
-              <option value={40}>40 × 40m (mặc định)</option>
-              <option value={60}>60 × 60m (rộng, toàn cảnh)</option>
-            </select>
-          </label>
+          <p className="text-[11px] text-white/40 leading-relaxed">
+            Thế giới giờ mở rộng bằng chunk 40m — xem bản đồ ở thẻ World
+            phía trên, bấm ô + để thêm đất kề bên.
+          </p>
         </>
       ) : (
         <>
@@ -1633,7 +1661,7 @@ export function DioramaWorkspace() {
                 value={selected.x}
                 onChange={(e) =>
                   updatePlacement(selected.id, {
-                    x: snapToGrid(clampGround(Number(e.target.value) || 0, placementFootprint(selected, state.customModels ?? []))),
+                    x: snapToGrid(clampGround(Number(e.target.value) || 0, placementFootprint(selected, state.customModels ?? []), worldBounds(state.terrain).minX, worldBounds(state.terrain).maxX)),
                   })
                 }
                 className="mt-1 w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
@@ -1647,7 +1675,7 @@ export function DioramaWorkspace() {
                 value={selected.z}
                 onChange={(e) =>
                   updatePlacement(selected.id, {
-                    z: snapToGrid(clampGround(Number(e.target.value) || 0, placementFootprint(selected, state.customModels ?? []))),
+                    z: snapToGrid(clampGround(Number(e.target.value) || 0, placementFootprint(selected, state.customModels ?? []), worldBounds(state.terrain).minZ, worldBounds(state.terrain).maxZ)),
                   })
                 }
                 className="mt-1 w-full h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
@@ -1745,7 +1773,7 @@ export function DioramaWorkspace() {
                   ...selected,
                   id: `pl-${Date.now().toString(36)}`,
                   name: `${selected.name} (bản sao)`,
-                  x: snapToGrid(clampGround(selected.x + 1.5, placementFootprint(selected, state.customModels ?? []), state.groundSize ?? 40)),
+                  x: snapToGrid(clampGround(selected.x + 1.5, placementFootprint(selected, state.customModels ?? []), worldBounds(state.terrain).minX, worldBounds(state.terrain).maxX)),
                 };
                 setState({ ...state, placements: [...state.placements, copy] });
                 setSelectedId(copy.id);
