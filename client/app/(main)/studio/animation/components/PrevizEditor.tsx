@@ -39,6 +39,10 @@ import { createMixerState, updateMixerState, type MixerState } from "../lib/clip
 import { createPoseKey, eulerDegToQuat, expandPoseTemplate, quatToEulerDeg, samplePoseKeys, type BoneQuat } from "../lib/poseTrack";
 import { applyPoseToBones, capturePose } from "../lib/posePlayer";
 import { TEST_POSES } from "../lib/rig";
+import { EffectPoints } from "../lib/effectPlayer";
+import { formulaMaxLife, type EffectFormula } from "../lib/effectFormula";
+import { listAnimAssets } from "../lib/animStorage";
+import { EffectStudioPanel } from "./EffectStudioPanel";
 import {
   createWeatherPoints,
   updateWeatherPoints,
@@ -346,11 +350,83 @@ export function PrevizEditor({
     characters: Map<string, CharacterParts>;
     /** Mixer phát clip xương cho từng vật thể model (Phase 4). */
     mixers: Map<string, MixerState>;
+    /** Nhóm hạt cho từng sự kiện hiệu ứng (Phase 5). */
+    effectGroups: Map<string, { points: EffectPoints; formula: EffectFormula }>;
+    /** Nhóm hạt xem thử hiệu ứng (Phase 5). */
+    previewPoints: EffectPoints | null;
+    /** Mặt phẳng chớp sáng trước camera (Phase 5) — vẽ trong canvas
+     * nên phim xuất cũng có chớp như preview. */
+    flashMesh: THREE.Mesh;
     weatherPoints: THREE.Points | null;
     particlePoints: THREE.Points | null;
   } | null>(null);
 
+  /** Công thức hiệu ứng đã lưu + xem thử (Phase 5). */
+  const [effectFormulas, setEffectFormulas] = useState<EffectFormula[]>([]);
+  const [previewFormula, setPreviewFormula] = useState<EffectFormula | null>(null);
+  const [previewStartSec, setPreviewStartSec] = useState(0);
+  const [previewPos, setPreviewPos] = useState({ x: 0, y: 0.5, z: 0 });
+
   const selected = previz.objects.find((o) => o.id === selectedId) ?? null;
+
+  const refreshEffectFormulas = useCallback(async () => {
+    const assets = await listAnimAssets().catch(() => []);
+    const formulas: EffectFormula[] = [];
+    for (const a of assets) {
+      if (a.kind === "effect") formulas.push(a.formula);
+    }
+    setEffectFormulas(formulas);
+  }, []);
+  useEffect(() => {
+    void refreshEffectFormulas();
+  }, [refreshEffectFormulas]);
+
+  // Đồng bộ nhóm hạt theo sự kiện hiệu ứng (Phase 5).
+  useEffect(() => {
+    const ctx = threeRef.current;
+    if (!ctx) return;
+    const wanted = new Map<string, { event: NonNullable<PrevizScene["effectEvents"]>[number]; formula: EffectFormula }>();
+    for (const ev of previz.effectEvents ?? []) {
+      const f = effectFormulas.find((x) => x.id === ev.effectId);
+      if (f) wanted.set(ev.id, { event: ev, formula: f });
+    }
+    for (const [id, g] of [...ctx.effectGroups.entries()]) {
+      const w = wanted.get(id);
+      if (!w || w.formula !== g.formula) {
+        ctx.scene.remove(g.points.group);
+        g.points.dispose();
+        ctx.effectGroups.delete(id);
+      }
+    }
+    for (const [id, w] of wanted) {
+      const existing = ctx.effectGroups.get(id);
+      if (existing) {
+        existing.points.group.position.set(w.event.position.x, w.event.position.y, w.event.position.z);
+      } else {
+        const points = new EffectPoints(w.formula);
+        points.group.position.set(w.event.position.x, w.event.position.y, w.event.position.z);
+        ctx.scene.add(points.group);
+        ctx.effectGroups.set(id, { points, formula: w.formula });
+      }
+    }
+  }, [previz.effectEvents, effectFormulas]);
+
+  // Nhóm hạt xem thử hiệu ứng (Phase 5).
+  useEffect(() => {
+    const ctx = threeRef.current;
+    if (!ctx) return;
+    if (ctx.previewPoints) {
+      ctx.scene.remove(ctx.previewPoints.group);
+      ctx.previewPoints.dispose();
+      ctx.previewPoints = null;
+    }
+    if (previewFormula) {
+      const points = new EffectPoints(previewFormula);
+      points.group.position.set(previewPos.x, previewPos.y, previewPos.z);
+      ctx.scene.add(points.group);
+      ctx.previewPoints = points;
+    }
+  }, [previewFormula, previewPos]);
 
   // Tương tác trực tiếp trên khung 3D (S3): bấm chọn vật thể, kéo trên mặt đất
   const stageInteractRef = useRef<{
@@ -378,6 +454,7 @@ export function PrevizEditor({
   const [draftActLoop, setDraftActLoop] = useState(true);
   const [draftActSpeed, setDraftActSpeed] = useState(1);
   const [draftPoseKeyId, setDraftPoseKeyId] = useState<string | null>(null);
+
   const [draftTemplatePose, setDraftTemplatePose] = useState("bind");
   const [poseMsg, setPoseMsg] = useState<string | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
@@ -453,6 +530,19 @@ export function PrevizEditor({
       groups: new Map(),
       characters: new Map(),
       mixers: new Map(),
+      effectGroups: new Map(),
+      previewPoints: null,
+      flashMesh: (() => {
+        const m = new THREE.Mesh(
+          new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthTest: false, side: THREE.DoubleSide }),
+        );
+        m.renderOrder = 999;
+        m.frustumCulled = false;
+        m.visible = false;
+        threeScene.add(m);
+        return m;
+      })(),
       weatherPoints: null,
       particlePoints: null,
     };
@@ -645,8 +735,8 @@ export function PrevizEditor({
   }, [previz]);
 
   // ── Vòng render ─────────────────────────────────────────────────────────────
-  const stateRef = useRef({ previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget });
-  stateRef.current = { previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget };
+  const stateRef = useRef({ previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec });
+  stateRef.current = { previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec };
   useEffect(() => {
     let raf = 0;
     const loop = () => {
@@ -713,6 +803,57 @@ export function PrevizEditor({
       ctx.shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
       if (ctx.weatherPoints) updateWeatherPoints(ctx.weatherPoints, st.timeSec);
       if (ctx.particlePoints) updateParticlePoints(ctx.particlePoints, st.timeSec);
+      // Hiệu ứng 3D (Phase 5): hạt + rung camera + chớp sáng theo timeline.
+      for (const [id, g] of ctx.effectGroups) {
+        const ev = st.previz.effectEvents?.find((e) => e.id === id);
+        if (!ev) {
+          g.points.group.visible = false;
+          continue;
+        }
+        const local = st.timeSec - ev.startSec;
+        if (local < -0.05 || local > ev.durationSec + formulaMaxLife(g.formula)) {
+          g.points.group.visible = false;
+          continue;
+        }
+        g.points.group.visible = true;
+        g.points.update(local, ev.burst, ev.durationSec);
+      }
+      if (ctx.previewPoints && st.previewFormula) {
+        const period = formulaMaxLife(st.previewFormula) + 1;
+        const local = (((st.timeSec - st.previewStartSec) % period) + period) % period;
+        ctx.previewPoints.update(local, true, 0);
+      }
+      let shake = 0;
+      let flash = 0;
+      for (const ev of st.previz.effectEvents ?? []) {
+        const local = st.timeSec - ev.startSec;
+        if (local >= 0 && local <= ev.durationSec) {
+          shake = Math.max(shake, ev.shake * (1 - local / Math.max(0.1, ev.durationSec)));
+        }
+        if (ev.flash > 0 && local >= 0 && local <= 0.3) {
+          flash = Math.max(flash, ev.flash * (1 - local / 0.3));
+        }
+      }
+      const activeCam = st.viewMode === "shot" ? ctx.shotCam : ctx.orbitCam;
+      if (st.viewMode === "shot" && shake > 0) {
+        const t = st.timeSec;
+        ctx.shotCam.position.x += (Math.sin(t * 47.3) + Math.sin(t * 31.7) * 0.6) * 0.12 * shake;
+        ctx.shotCam.position.y += (Math.sin(t * 39.1 + 2) + Math.sin(t * 27.9) * 0.6) * 0.12 * shake;
+      }
+      if (flash > 0.01) {
+        const dir = activeCam.getWorldDirection(new THREE.Vector3());
+        const fov = (activeCam as THREE.PerspectiveCamera).fov;
+        const w = ctx.renderer.domElement.clientWidth || 1;
+        const h = ctx.renderer.domElement.clientHeight || 1;
+        const height = 2 * Math.tan((fov * Math.PI) / 360) * 0.5;
+        ctx.flashMesh.position.copy(activeCam.position).addScaledVector(dir, 0.5);
+        ctx.flashMesh.quaternion.copy(activeCam.quaternion);
+        ctx.flashMesh.scale.set(height * (w / h), height, 1);
+        (ctx.flashMesh.material as THREE.MeshBasicMaterial).opacity = flash * 0.85;
+        ctx.flashMesh.visible = true;
+      } else {
+        ctx.flashMesh.visible = false;
+      }
       ctx.controls.enabled = st.viewMode === "orbit";
       ctx.renderer.render(
         ctx.scene,
@@ -1448,6 +1589,27 @@ export function PrevizEditor({
               )}
             </section>
           )}
+
+          <EffectStudioPanel
+            previz={previz}
+            onChange={onChange}
+            timeSec={timeSec}
+            selectedPosition={selected ? samplePrevizObject(selected, timeSec).position : null}
+            formulas={effectFormulas}
+            onFormulasChange={() => void refreshEffectFormulas()}
+            previewing={previewFormula !== null}
+            onPreview={(f) => {
+              if (!f) {
+                setPreviewFormula(null);
+              } else {
+                setPreviewFormula(f);
+                setPreviewStartSec(timeSec);
+                setPreviewPos(
+                  selected ? samplePrevizObject(selected, timeSec).position : { x: 0, y: 0.5, z: 0 },
+                );
+              }
+            }}
+          />
 
           <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2.5">
             <h3 className="text-[12px] font-semibold text-white/70 flex items-center gap-1.5">

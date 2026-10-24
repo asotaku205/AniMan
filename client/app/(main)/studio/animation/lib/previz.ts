@@ -128,6 +128,8 @@ export interface PrevizCameraKey {
 export interface PrevizScene {
   objects: PrevizObject[];
   cameraKeys: PrevizCameraKey[];
+  /** Sự kiện hiệu ứng 3D gắn timeline (Phase 5). */
+  effectEvents?: import("./effectFormula").EffectEvent[];
   /** Màu nền trời/sân khấu của cảnh. */
   backdrop: string;
 }

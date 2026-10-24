@@ -76,12 +76,23 @@ export interface Character2DAsset {
   createdAt: number;
 }
 
+/** Hiệu ứng hạt 3D người dùng tự dựng (Phase 5): công thức lưu
+ * riêng, dùng chung cho mọi cảnh. */
+export interface EffectAsset {
+  kind: "effect";
+  id: string;
+  name: string;
+  formula: import("./effectFormula").EffectFormula;
+  createdAt: number;
+}
+
 export type AnimAsset =
   | Character3DAsset
   | SceneryAsset
   | ImageAsset
   | Model3DAsset
-  | Character2DAsset;
+  | Character2DAsset
+  | EffectAsset;
 
 let assetCounter = 0;
 export function newAssetId(prefix: string): string {
