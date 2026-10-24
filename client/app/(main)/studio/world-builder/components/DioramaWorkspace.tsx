@@ -244,7 +244,7 @@ export function DioramaWorkspace() {
 
   if (!state) {
     return (
-      <div className="h-screen grid place-items-center bg-[#0b0612] text-white/50 text-sm">
+      <div className="h-[calc(100dvh-76px)] grid place-items-center bg-[#0b0612] text-white/50 text-sm">
         Đang mở sa bàn…
       </div>
     );
@@ -690,7 +690,7 @@ export function DioramaWorkspace() {
   );
 
   return (
-    <div className="h-screen bg-[#0b0612] text-white overflow-hidden">
+    <div className="h-[calc(100dvh-76px)] bg-[#0b0612] text-white overflow-hidden">
       <div className="flex h-full">
         {left}
         {expanded ? (
