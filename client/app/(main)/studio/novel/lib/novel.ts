@@ -46,6 +46,8 @@ export interface Scene {
   title: string;
   /** Tóm tắt 1-2 câu hiện trên thẻ Corkboard (N2). */
   synopsis: string;
+  /** Bản nháp tóm tắt do AI tạo (N3) — không ghi đè synopsis tay. */
+  aiSummary: string;
   /** Trạng thái viết (N2). */
   status: SceneStatus;
   /** Nội dung trang trái / trang phải của trải giấy. */
@@ -128,6 +130,7 @@ export function createScene(
     order,
     title,
     synopsis: "",
+    aiSummary: "",
     status: "draft",
     contentLeft,
     contentRight,
@@ -202,6 +205,8 @@ export interface CharacterArc {
   novelId: string;
   /** N2 dùng tên gõ tay; N3 map sang thực thể sổ tay. */
   characterName: string;
+  /** Thực thể sổ tay tương ứng (N3); null = chưa gắn. */
+  entityId: string | null;
   startState: string;
   endState: string;
   milestones: ArcMilestone[];
@@ -227,7 +232,7 @@ export function createBeat(plotlineId: string, order: number, title: string, kin
 }
 
 export function createArc(novelId: string, order: number, characterName: string): CharacterArc {
-  return { id: newNovelId("arc"), novelId, characterName, startState: "", endState: "", milestones: [], order, createdAt: Date.now() };
+  return { id: newNovelId("arc"), novelId, characterName, entityId: null, startState: "", endState: "", milestones: [], order, createdAt: Date.now() };
 }
 
 export function createQuestion(novelId: string, question: string): OpenQuestion {
@@ -310,6 +315,128 @@ export function reorderScenesForMove(
   }
   if (reassigned.size === 0) return [...allScenes];
   return allScenes.map((s) => reassigned.get(s.id) ?? s);
+}
+
+// ── N3: sổ tay truyện + nhắc tới (@mention) ─────────────────────────────
+
+export type BibleEntityKind = "character" | "place" | "item";
+
+export const BIBLE_KIND_LABEL: Record<BibleEntityKind, string> = {
+  character: "Nhân vật",
+  place: "Địa điểm",
+  item: "Vật phẩm",
+};
+
+export interface WorldRef {
+  worldId: string;
+  worldName: string;
+  entityId: string;
+  entityName: string;
+}
+
+export interface BibleEntity {
+  id: string;
+  novelId: string;
+  kind: BibleEntityKind;
+  name: string;
+  role: string;
+  description: string;
+  traits: string;
+  notes: string;
+  /** Liên kết tới thực thể StoryEntity trên sa bàn (N3, 1 chiều). */
+  worldRef: WorldRef | null;
+  order: number;
+  createdAt: number;
+}
+
+export function createBibleEntity(novelId: string, order: number, kind: BibleEntityKind, name: string): BibleEntity {
+  return {
+    id: newNovelId("bible"), novelId, kind, name,
+    role: "", description: "", traits: "", notes: "",
+    worldRef: null, order, createdAt: Date.now(),
+  };
+}
+
+const NAME_CHAR = /[\p{L}\p{N}_]/u;
+
+function readWord(text: string, from: number): { word: string; end: number } | null {
+  let end = from;
+  while (end < text.length && NAME_CHAR.test(text[end])) end += 1;
+  if (end === from) return null;
+  return { word: text.slice(from, end), end };
+}
+
+/**
+ * Tách các token nhắc tới sau dấu @. Từ đầu lấy nguyên từ; các từ tiếp
+ * theo chỉ lấy khi bắt đầu bằng chữ hoa (tên riêng nhiều từ, VD
+ * "@Nguyễn Văn A"). Token dừng ở dấu câu/ký tự không phải tên.
+ */
+export function extractMentionTokens(text: string): string[] {
+  const tokens: string[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] !== "@") continue;
+    // @ dính vào từ trước (VD: email a@b) không phải nhắc tới.
+    if (i > 0 && NAME_CHAR.test(text[i - 1])) continue;
+    const first = readWord(text, i + 1);
+    if (!first) continue;
+    let token = first.word;
+    let j = first.end;
+    while (text[j] === " ") {
+      const next = readWord(text, j + 1);
+      if (!next || !/^\p{Lu}/u.test(next.word)) break;
+      token += ` ${next.word}`;
+      j = next.end;
+    }
+    tokens.push(token);
+    i = j - 1;
+  }
+  return tokens;
+}
+
+/** Cảnh có nhắc tới thực thể không (khớp "@Tên" + biên sau tên). */
+export function sceneMentionsEntity(scene: Scene, name: string): boolean {
+  const haystack = `${scene.contentLeft}\n${scene.contentRight}`;
+  const needle = `@${name}`;
+  let at = haystack.indexOf(needle);
+  while (at !== -1) {
+    const after = haystack[at + needle.length];
+    if (after === undefined || !NAME_CHAR.test(after)) return true;
+    at = haystack.indexOf(needle, at + 1);
+  }
+  return false;
+}
+
+/** Map entityId → id các cảnh nhắc tới nó. */
+export function mentionSceneIds(entities: readonly BibleEntity[], scenes: readonly Scene[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const e of entities) {
+    map.set(e.id, scenes.filter((sc) => sceneMentionsEntity(sc, e.name)).map((sc) => sc.id));
+  }
+  return map;
+}
+
+/**
+ * Nhắc tới chưa có trong sổ tay: token @... không khớp tên thực thể nào
+ * (khớp tuyệt đối, không phân biệt hoa/thường, hoặc là tiền tố theo từ
+ * của tên thực thể — "@Nguyễn Văn" vẫn tính là nhắc Nguyễn Văn A).
+ */
+export function unknownMentions(
+  scenes: readonly Scene[],
+  entities: readonly BibleEntity[],
+): Array<{ token: string; sceneIds: string[] }> {
+  const names = entities.map((e) => e.name.toLowerCase());
+  const byToken = new Map<string, { token: string; sceneIds: Set<string> }>();
+  for (const sc of scenes) {
+    for (const token of extractMentionTokens(`${sc.contentLeft}\n${sc.contentRight}`)) {
+      const lower = token.toLowerCase();
+      const known = names.some((n) => n === lower || n.startsWith(`${lower} `));
+      if (known) continue;
+      const entry = byToken.get(lower) ?? { token, sceneIds: new Set<string>() };
+      entry.sceneIds.add(sc.id);
+      byToken.set(lower, entry);
+    }
+  }
+  return [...byToken.values()].map((e) => ({ token: e.token, sceneIds: [...e.sceneIds] }));
 }
 
 /** Nội dung demo cũ (đang hardcode trong WashiBookPage) → seed lần đầu. */

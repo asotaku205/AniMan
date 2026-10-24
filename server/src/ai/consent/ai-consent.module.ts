@@ -12,6 +12,8 @@ import { AiDrawingConsentController } from "./ai-drawing-consent.controller.js";
 import { AiDrawingConsentService } from "./ai-drawing-consent.service.js";
 import { TranslationController } from "../translation/translation.controller.js";
 import { TranslationService } from "../translation/translation.service.js";
+import { NovelAiController } from "../novel/novel-ai.controller.js";
+import { NovelAiService } from "../novel/novel-ai.service.js";
 
 @Module({
   imports: [
@@ -34,7 +36,7 @@ import { TranslationService } from "../translation/translation.service.js";
       },
     }),
   ],
-  controllers: [AiDrawingConsentController, AiDrawingController, TranslationController],
+  controllers: [AiDrawingConsentController, AiDrawingController, TranslationController, NovelAiController],
   providers: [
     AiDrawingConsentService,
     AiDrawingRateLimiter,
@@ -43,6 +45,15 @@ import { TranslationService } from "../translation/translation.service.js";
       inject: [ConfigService],
       useFactory: (config: ConfigService) =>
         new TranslationService(
+          config.getOrThrow<string>("GEMINI_API_KEY"),
+          config.get<string>("GEMINI_MODEL_ID"),
+        ),
+    },
+    {
+      provide: NovelAiService,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        new NovelAiService(
           config.getOrThrow<string>("GEMINI_API_KEY"),
           config.get<string>("GEMINI_MODEL_ID"),
         ),

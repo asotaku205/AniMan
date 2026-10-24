@@ -1,18 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   arcGapWarnings,
   BEAT_KIND_LABEL,
+  BIBLE_KIND_LABEL,
+  mentionSceneIds,
   SCENE_STATUS_LABEL,
   sceneWords,
   sortBeatsByScene,
+  unknownMentions,
   type BeatKind,
+  type BibleEntityKind,
   type SceneStatus,
 } from "../lib/novel";
 import type { NovelStudioState } from "../hooks/useNovelStudio";
+import { listWorlds, type WorldRecord } from "../../world-builder/lib/dioramaStorage";
+import { checkSceneConsistency, summarizeScene } from "../../../../../lib/novel-ai";
+import type { AuthenticatedFetch } from "../../../../../lib/auth-api";
 
-type OutlineTab = "cards" | "plotlines" | "arcs";
+type OutlineTab = "cards" | "plotlines" | "arcs" | "bible";
 
 const KIND_BG: Record<BeatKind, string> = {
   goal: "bg-sky-100 text-sky-800",
@@ -74,9 +81,20 @@ function SnowflakeStrip({ s }: { s: NovelStudioState }) {
   );
 }
 
-export default function OutlineView({ s, onOpenScene }: { s: NovelStudioState; onOpenScene: (sceneId: string) => void }) {
+export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s: NovelStudioState; onOpenScene: (sceneId: string) => void; authenticatedFetch: AuthenticatedFetch }) {
   const [tab, setTab] = useState<OutlineTab>("cards");
   const [dragId, setDragId] = useState<string | null>(null);
+  // N3: sổ tay + AI
+  const [bibleKindFilter, setBibleKindFilter] = useState<"all" | BibleEntityKind>("all");
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [newEntityName, setNewEntityName] = useState("");
+  const [newEntityKind, setNewEntityKind] = useState<BibleEntityKind>("character");
+  const [worlds, setWorlds] = useState<WorldRecord[] | null>(null);
+  const [pickWorldId, setPickWorldId] = useState("");
+  const [pickEntityId, setPickEntityId] = useState("");
+  const [aiBusy, setAiBusy] = useState<Record<string, "summary" | "check" | null>>({});
+  const [aiError, setAiError] = useState<Record<string, string>>({});
+  const [aiIssues, setAiIssues] = useState<Record<string, string[]>>({});
   const [newPlotTitle, setNewPlotTitle] = useState("");
   const [newArcName, setNewArcName] = useState("");
   const [newQuestion, setNewQuestion] = useState("");
@@ -84,10 +102,68 @@ export default function OutlineView({ s, onOpenScene }: { s: NovelStudioState; o
   const [newMilestone, setNewMilestone] = useState<Record<string, { sceneId: string; note: string }>>({});
 
   const positionByScene = useMemo(() => new Map(s.novelScenes.map((sc, i) => [sc.id, i])), [s.novelScenes]);
+  const mentionMap = useMemo(() => mentionSceneIds(s.entities, s.novelScenes), [s.entities, s.novelScenes]);
+  const unknownList = useMemo(() => unknownMentions(s.novelScenes, s.entities), [s.entities, s.novelScenes]);
+  const bibleText = useMemo(
+    () =>
+      s.entities
+        .map((e) => `${e.name} (${BIBLE_KIND_LABEL[e.kind]}): ${[e.role, e.description, e.traits, e.notes].filter(Boolean).join(" ")}`)
+        .join("\n"),
+    [s.entities],
+  );
+
+  useEffect(() => {
+    if (tab !== "bible" || worlds !== null) return;
+    void listWorlds().then(setWorlds).catch(() => setWorlds([]));
+  }, [tab, worlds]);
+
   const sceneLabel = useMemo(() => {
     const chapterTitle = new Map(s.chapters.map((c) => [c.id, c.title]));
     return new Map(s.novelScenes.map((sc) => [sc.id, `${chapterTitle.get(sc.chapterId) ?? "?"} · ${sc.title}`]));
   }, [s.chapters, s.novelScenes]);
+
+  const selectedEntity = s.entities.find((e) => e.id === selectedEntityId) ?? null;
+
+  useEffect(() => {
+    setPickWorldId(selectedEntity?.worldRef?.worldId ?? "");
+    setPickEntityId(selectedEntity?.worldRef?.entityId ?? "");
+  }, [selectedEntityId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runSummary = async (sc: { id: string; contentLeft: string; contentRight: string }) => {
+    const text = `${sc.contentLeft}\n${sc.contentRight}`.trim();
+    if (!text) {
+      setAiError((prev) => ({ ...prev, [sc.id]: "Cảnh chưa có nội dung." }));
+      return;
+    }
+    setAiBusy((prev) => ({ ...prev, [sc.id]: "summary" }));
+    setAiError((prev) => ({ ...prev, [sc.id]: "" }));
+    try {
+      const summary = await summarizeScene(authenticatedFetch, text);
+      await s.updateSceneMeta(sc.id, { aiSummary: summary });
+    } catch (e) {
+      setAiError((prev) => ({ ...prev, [sc.id]: e instanceof Error ? e.message : "AI thất bại." }));
+    } finally {
+      setAiBusy((prev) => ({ ...prev, [sc.id]: null }));
+    }
+  };
+
+  const runCheck = async (sc: { id: string; contentLeft: string; contentRight: string }) => {
+    const text = `${sc.contentLeft}\n${sc.contentRight}`.trim();
+    if (!text) {
+      setAiError((prev) => ({ ...prev, [sc.id]: "Cảnh chưa có nội dung." }));
+      return;
+    }
+    setAiBusy((prev) => ({ ...prev, [sc.id]: "check" }));
+    setAiError((prev) => ({ ...prev, [sc.id]: "" }));
+    try {
+      const issues = await checkSceneConsistency(authenticatedFetch, text, bibleText);
+      setAiIssues((prev) => ({ ...prev, [sc.id]: issues }));
+    } catch (e) {
+      setAiError((prev) => ({ ...prev, [sc.id]: e instanceof Error ? e.message : "AI thất bại." }));
+    } finally {
+      setAiBusy((prev) => ({ ...prev, [sc.id]: null }));
+    }
+  };
 
   if (!s.selectedNovel) {
     return <p className="text-sm text-stone-500">Chưa có tiểu thuyết nào. Tạo tiểu thuyết ở view Viết trước.</p>;
@@ -126,6 +202,7 @@ export default function OutlineView({ s, onOpenScene }: { s: NovelStudioState; o
         {tabBtn("cards", "Thẻ cảnh")}
         {tabBtn("plotlines", "Tuyến truyện")}
         {tabBtn("arcs", "Cung & Câu hỏi")}
+        {tabBtn("bible", "Sổ tay")}
       </div>
 
       {tab === "cards" && (
@@ -191,6 +268,58 @@ export default function OutlineView({ s, onOpenScene }: { s: NovelStudioState; o
                           Mở để viết →
                         </button>
                       </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={aiBusy[sc.id] != null}
+                          className="rounded-md bg-violet-100 px-2 py-1 text-xs text-violet-800 disabled:opacity-50"
+                          onClick={() => void runSummary(sc)}
+                        >
+                          {aiBusy[sc.id] === "summary" ? "Đang tóm tắt…" : "Tóm tắt AI"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={aiBusy[sc.id] != null || s.entities.length === 0}
+                          title={s.entities.length === 0 ? "Cần có sổ tay trước" : undefined}
+                          className="rounded-md bg-violet-100 px-2 py-1 text-xs text-violet-800 disabled:opacity-50"
+                          onClick={() => void runCheck(sc)}
+                        >
+                          {aiBusy[sc.id] === "check" ? "Đang kiểm tra…" : "Kiểm tra nhất quán"}
+                        </button>
+                      </div>
+                      {aiError[sc.id] && <p className="mt-1 text-xs text-rose-600">{aiError[sc.id]}</p>}
+                      {sc.aiSummary && (
+                        <div className="mt-2 rounded-md border border-violet-200 bg-violet-50 p-2">
+                          <p className="text-xs font-medium text-violet-800">Nháp AI</p>
+                          <p className="mt-0.5 text-xs text-stone-700">{sc.aiSummary}</p>
+                          <div className="mt-1 flex gap-2">
+                            <button type="button" className="text-xs text-violet-700 hover:underline" onClick={() => void s.updateSceneMeta(sc.id, { synopsis: sc.aiSummary })}>
+                              Dùng làm tóm tắt
+                            </button>
+                            <button type="button" className="text-xs text-stone-500 hover:underline" onClick={() => void s.updateSceneMeta(sc.id, { aiSummary: "" })}>
+                              Xoá nháp
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {aiIssues[sc.id] !== undefined && (
+                        <div className="mt-2 rounded-md border border-stone-200 bg-stone-50 p-2">
+                          {aiIssues[sc.id].length === 0 ? (
+                            <p className="text-xs text-emerald-700">✓ Không phát hiện mâu thuẫn với sổ tay.</p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {aiIssues[sc.id].map((issue, i) => (
+                                <li key={i} className="flex items-start justify-between gap-2 text-xs text-stone-700">
+                                  <span>⚠ {issue}</span>
+                                  <button type="button" className="shrink-0 text-stone-400 hover:underline" onClick={() => setAiIssues((prev) => ({ ...prev, [sc.id]: (prev[sc.id] ?? []).filter((_, j) => j !== i) }))}>
+                                    Bỏ qua
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
                     </article>
                   ))}
                   {cards.length === 0 && <p className="text-xs text-stone-400">Chưa có cảnh. Kéo cảnh từ chương khác vào đây.</p>}
@@ -314,6 +443,19 @@ export default function OutlineView({ s, onOpenScene }: { s: NovelStudioState; o
                 <article key={arc.id} className="rounded-xl border border-stone-200 bg-white p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <input className="rounded-md border border-stone-200 px-2 py-1 text-sm font-semibold outline-none focus:border-amber-400" defaultValue={arc.characterName} onBlur={(e) => void s.updateArc(arc.id, { characterName: e.target.value })} />
+                    <select
+                      className="rounded-md border border-stone-300 bg-white px-1.5 py-1 text-xs"
+                      value={arc.entityId ?? ""}
+                      onChange={(e) => void s.updateArc(arc.id, { entityId: e.target.value || null })}
+                      title="Gắn cung này vào thực thể sổ tay"
+                    >
+                      <option value="">— chưa gắn sổ tay —</option>
+                      {s.entities.filter((e) => e.kind === "character").map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name}
+                        </option>
+                      ))}
+                    </select>
                     <DeleteButton onDelete={() => void s.deleteArc(arc.id)} />
                   </div>
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -396,6 +538,193 @@ export default function OutlineView({ s, onOpenScene }: { s: NovelStudioState; o
               })}
             </ul>
             {s.questions.length === 0 && <p className="text-sm text-stone-500">Chưa có câu hỏi mở nào.</p>}
+          </section>
+        </div>
+      )}
+
+      {tab === "bible" && (
+        <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+          <section className="space-y-4">
+            <div className="flex flex-wrap gap-1">
+              {(["all", "character", "place", "item"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setBibleKindFilter(k)}
+                  className={`rounded-full px-2.5 py-1 text-xs ${bibleKindFilter === k ? "bg-amber-700 text-white" : "bg-stone-100 text-stone-700"}`}
+                >
+                  {k === "all" ? "Tất cả" : BIBLE_KIND_LABEL[k]}
+                </button>
+              ))}
+            </div>
+            <ul className="space-y-2">
+              {s.entities.filter((e) => bibleKindFilter === "all" || e.kind === bibleKindFilter).map((e) => {
+                const count = (mentionMap.get(e.id) ?? []).length;
+                return (
+                  <li key={e.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEntityId(e.id)}
+                      className={`w-full rounded-lg border p-3 text-left ${selectedEntityId === e.id ? "border-amber-400 bg-amber-50" : "border-stone-200 bg-white"}`}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-stone-800">{e.name}</span>
+                        <span className="shrink-0 text-xs text-stone-400">{BIBLE_KIND_LABEL[e.kind]}</span>
+                      </span>
+                      <span className="mt-0.5 block text-xs text-stone-500">
+                        Nhắc ở {count} cảnh{e.worldRef ? ` · Sa bàn: ${e.worldRef.worldName}` : ""}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {s.entities.filter((e) => bibleKindFilter === "all" || e.kind === bibleKindFilter).length === 0 && (
+              <p className="text-sm text-stone-500">Chưa có thực thể nào.</p>
+            )}
+            <form
+              className="flex flex-wrap gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!newEntityName.trim()) return;
+                const created = await s.addEntity(newEntityKind, newEntityName);
+                setNewEntityName("");
+                if (created) setSelectedEntityId(created.id);
+              }}
+            >
+              <input className="min-w-32 flex-1 rounded-lg border border-stone-300 px-3 py-1.5 text-sm" value={newEntityName} onChange={(e) => setNewEntityName(e.target.value)} placeholder="Tên thực thể mới…" />
+              <select className="rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm" value={newEntityKind} onChange={(e) => setNewEntityKind(e.target.value as BibleEntityKind)}>
+                {(Object.keys(BIBLE_KIND_LABEL) as BibleEntityKind[]).map((k) => (
+                  <option key={k} value={k}>
+                    {BIBLE_KIND_LABEL[k]}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className="rounded-lg bg-amber-700 px-3 py-1.5 text-sm text-white">＋ Thêm</button>
+            </form>
+            {unknownList.length > 0 && (
+              <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-3">
+                <h4 className="text-sm font-semibold text-amber-900">Nhắc tới chưa có trong sổ tay</h4>
+                <ul className="mt-2 space-y-1.5">
+                  {unknownList.map((u) => (
+                    <li key={u.token} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-stone-700">
+                        @{u.token} <span className="text-xs text-stone-400">({u.sceneIds.length} cảnh)</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="shrink-0 rounded-md bg-amber-700 px-2 py-0.5 text-xs text-white"
+                        onClick={async () => {
+                          const created = await s.addEntity("character", u.token);
+                          if (created) setSelectedEntityId(created.id);
+                        }}
+                      >
+                        ＋ Thêm
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-stone-200 bg-white p-4">
+            {!selectedEntity ? (
+              <p className="text-sm text-stone-500">Chọn một thực thể bên trái để xem/sửa hồ sơ, hoặc thêm thực thể mới.</p>
+            ) : (
+              <div key={selectedEntity.id} className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input className="rounded-md border border-stone-200 px-2 py-1 text-sm font-semibold outline-none focus:border-amber-400" defaultValue={selectedEntity.name} onBlur={(e) => void s.updateEntity(selectedEntity.id, { name: e.target.value })} />
+                  <select className="rounded-md border border-stone-300 bg-white px-1.5 py-1 text-xs" defaultValue={selectedEntity.kind} onChange={(e) => void s.updateEntity(selectedEntity.id, { kind: e.target.value as BibleEntityKind })}>
+                    {(Object.keys(BIBLE_KIND_LABEL) as BibleEntityKind[]).map((k) => (
+                      <option key={k} value={k}>
+                        {BIBLE_KIND_LABEL[k]}
+                      </option>
+                    ))}
+                  </select>
+                  <DeleteButton onDelete={() => { void s.deleteEntity(selectedEntity.id); setSelectedEntityId(null); }} />
+                </div>
+                <label className="block text-xs text-stone-500">
+                  Vai trò
+                  <input className="mt-1 w-full rounded-md border border-stone-200 px-2 py-1 text-sm text-stone-800 outline-none focus:border-amber-400" defaultValue={selectedEntity.role} placeholder="VD: nhân vật chính, quán trọ ven đường…" onBlur={(e) => void s.updateEntity(selectedEntity.id, { role: e.target.value })} />
+                </label>
+                <label className="block text-xs text-stone-500">
+                  Mô tả
+                  <textarea className="mt-1 w-full rounded-md border border-stone-200 px-2 py-1 text-sm text-stone-800 outline-none focus:border-amber-400" rows={3} defaultValue={selectedEntity.description} onBlur={(e) => void s.updateEntity(selectedEntity.id, { description: e.target.value })} />
+                </label>
+                <label className="block text-xs text-stone-500">
+                  Tính cách / đặc điểm
+                  <input className="mt-1 w-full rounded-md border border-stone-200 px-2 py-1 text-sm text-stone-800 outline-none focus:border-amber-400" defaultValue={selectedEntity.traits} onBlur={(e) => void s.updateEntity(selectedEntity.id, { traits: e.target.value })} />
+                </label>
+                <label className="block text-xs text-stone-500">
+                  Ghi chú
+                  <textarea className="mt-1 w-full rounded-md border border-stone-200 px-2 py-1 text-sm text-stone-800 outline-none focus:border-amber-400" rows={2} defaultValue={selectedEntity.notes} onBlur={(e) => void s.updateEntity(selectedEntity.id, { notes: e.target.value })} />
+                </label>
+                <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
+                  <p className="text-xs font-medium text-stone-600">Liên kết tới vật trên sa bàn</p>
+                  {selectedEntity.worldRef ? (
+                    <p className="mt-1 text-sm text-stone-700">
+                      {selectedEntity.worldRef.worldName} · {selectedEntity.worldRef.entityName}
+                      <button type="button" className="ml-3 text-xs text-rose-600 hover:underline" onClick={() => void s.updateEntity(selectedEntity.id, { worldRef: null })}>
+                        Gỡ liên kết
+                      </button>
+                    </p>
+                  ) : worlds === null ? (
+                    <p className="mt-1 text-xs text-stone-400">Đang tải sa bàn…</p>
+                  ) : worlds.length === 0 ? (
+                    <p className="mt-1 text-xs text-stone-400">Chưa có world nào — tạo world ở World Builder trước.</p>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <select className="rounded-md border border-stone-300 bg-white px-1.5 py-1 text-xs" value={pickWorldId} onChange={(e) => { setPickWorldId(e.target.value); setPickEntityId(""); }}>
+                        <option value="">— chọn world —</option>
+                        {worlds.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select className="rounded-md border border-stone-300 bg-white px-1.5 py-1 text-xs" value={pickEntityId} onChange={(e) => setPickEntityId(e.target.value)}>
+                        <option value="">— chọn thực thể —</option>
+                        {(worlds.find((w) => w.id === pickWorldId)?.state.entities ?? []).map((we) => (
+                          <option key={we.id} value={we.id}>
+                            {we.name} ({we.kind === "character" ? "Nhân vật" : we.kind === "place" ? "Địa điểm" : we.kind === "event" ? "Sự kiện" : we.kind})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={!pickWorldId || !pickEntityId}
+                        className="rounded-md bg-amber-700 px-2 py-1 text-xs text-white disabled:opacity-50"
+                        onClick={() => {
+                          const w = worlds.find((x) => x.id === pickWorldId);
+                          const we = w?.state.entities.find((x) => x.id === pickEntityId);
+                          if (!w || !we) return;
+                          void s.updateEntity(selectedEntity.id, { worldRef: { worldId: w.id, worldName: w.name, entityId: we.id, entityName: we.name } });
+                        }}
+                      >
+                        Gắn
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-stone-600">Được nhắc tới ở</p>
+                  {(mentionMap.get(selectedEntity.id) ?? []).length === 0 ? (
+                    <p className="mt-1 text-xs text-stone-400">Chưa có cảnh nào nhắc tới thực thể này.</p>
+                  ) : (
+                    <ul className="mt-1 space-y-1">
+                      {(mentionMap.get(selectedEntity.id) ?? []).map((sceneId) => (
+                        <li key={sceneId}>
+                          <button type="button" className="text-xs text-amber-700 hover:underline" onClick={() => onOpenScene(sceneId)}>
+                            {sceneLabel.get(sceneId) ?? "Cảnh"} →
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
           </section>
         </div>
       )}

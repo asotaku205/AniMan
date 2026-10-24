@@ -1,9 +1,20 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Plus } from "lucide-react";
 import { StickyNotesMargin } from "./StickyNotesMargin";
+import { BIBLE_KIND_LABEL } from "../lib/novel";
 import type { NovelStudioState } from "../hooks/useNovelStudio";
+
+interface MentionState {
+  query: string;
+  node: Text;
+  start: number;
+  offset: number;
+  top: number;
+  left: number;
+}
 
 function Page({ children, right }: { children: React.ReactNode; right?: boolean }) {
   return (
@@ -21,6 +32,69 @@ function Page({ children, right }: { children: React.ReactNode; right?: boolean 
 }
 
 export function WashiBookPage({ s }: { s: NovelStudioState }) {
+  const [mention, setMention] = useState<MentionState | null>(null);
+
+  useEffect(() => {
+    setMention(null);
+  }, [s.selectedSceneId]);
+
+  const updateMention = (div: HTMLDivElement) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) {
+      setMention(null);
+      return;
+    }
+    const node = sel.anchorNode;
+    if (!node || node.nodeType !== Node.TEXT_NODE || !div.contains(node)) {
+      setMention(null);
+      return;
+    }
+    const textBefore = (node.textContent ?? "").slice(0, sel.anchorOffset);
+    const m = /@([\p{L}\p{N} ]*)$/u.exec(textBefore);
+    if (!m) {
+      setMention(null);
+      return;
+    }
+    const rect = sel.getRangeAt(0).cloneRange().getBoundingClientRect();
+    setMention({
+      query: m[1],
+      node: node as Text,
+      start: m.index,
+      offset: sel.anchorOffset,
+      top: rect.bottom + 4,
+      left: rect.left,
+    });
+  };
+
+  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    s.onSceneInput();
+    updateMention(e.currentTarget);
+  };
+
+  const insertMention = (name: string) => {
+    if (!mention) return;
+    const range = document.createRange();
+    range.setStart(mention.node, mention.start);
+    range.setEnd(mention.node, mention.offset);
+    range.deleteContents();
+    const textNode = document.createTextNode(`@${name} `);
+    range.insertNode(textNode);
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      const r = document.createRange();
+      r.setStart(textNode, textNode.length);
+      r.collapse(true);
+      sel.addRange(r);
+    }
+    setMention(null);
+    s.onSceneInput();
+  };
+
+  const suggestions = mention
+    ? s.entities.filter((e) => e.name.toLowerCase().includes(mention.query.trim().toLowerCase())).slice(0, 8)
+    : [];
+
   if (s.loading) {
     return (
       <div className="relative mx-auto w-full max-w-4xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 text-amber-100/70 text-sm">
@@ -73,7 +147,8 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               ref={s.leftRef}
               contentEditable
               suppressContentEditableWarning
-              onInput={s.onSceneInput}
+              onInput={handleInput}
+              onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
               style={{ fontFamily: s.font }}
               className="text-[#2a1a0a] text-2xl leading-[1.7] outline-none min-h-[280px] focus:bg-amber-50/20 rounded px-1"
             />
@@ -85,7 +160,8 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               ref={s.rightRef}
               contentEditable
               suppressContentEditableWarning
-              onInput={s.onSceneInput}
+              onInput={handleInput}
+              onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
               style={{ fontFamily: s.font }}
               className="text-[#2a1a0a] text-2xl leading-[1.7] outline-none min-h-[280px] focus:bg-amber-50/20 rounded px-1"
             />
@@ -105,6 +181,28 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
 
         <div className="absolute -bottom-6 left-10 w-56 h-3 rounded-full bg-gradient-to-r from-amber-700 via-yellow-600 to-amber-900 shadow-[0_10px_20px_rgba(0,0,0,0.6)] rotate-[-8deg]" />
       </motion.div>
+
+      {mention && suggestions.length > 0 && (
+        <div
+          className="fixed z-50 max-h-64 w-64 overflow-auto rounded-xl border border-amber-200 bg-white p-1 shadow-2xl"
+          style={{ top: mention.top, left: mention.left }}
+        >
+          {suggestions.map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-amber-50"
+              onMouseDown={(ev) => {
+                ev.preventDefault();
+                insertMention(e.name);
+              }}
+            >
+              <span>@{e.name}</span>
+              <span className="text-xs text-stone-400">{BIBLE_KIND_LABEL[e.kind]}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <button
         onClick={s.addNote}

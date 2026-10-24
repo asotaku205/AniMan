@@ -7,6 +7,7 @@ import {
   chapterWords,
   createArc,
   createBeat,
+  createBibleEntity,
   createChapter,
   createNovel,
   createPlotline,
@@ -23,6 +24,9 @@ import {
   todayKey,
   type Beat,
   type BeatKind,
+  type BibleEntity,
+  type BibleEntityKind,
+  type WorldRef,
   type Chapter,
   type CharacterArc,
   type Novel,
@@ -34,6 +38,9 @@ import {
 import {
   deleteArc,
   deleteBeat,
+  deleteEntity,
+  listEntities,
+  saveEntity,
   deleteChapterCascade,
   deleteNovelCascade,
   deletePlotlineCascade,
@@ -113,6 +120,7 @@ export function useNovelStudio() {
   const [beats, setBeats] = useState<Beat[]>([]);
   const [arcs, setArcs] = useState<CharacterArc[]>([]);
   const [questions, setQuestions] = useState<OpenQuestion[]>([]);
+  const [entities, setEntities] = useState<BibleEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -150,11 +158,13 @@ export function useNovelStudio() {
       // Chuẩn hoá bản ghi cũ (trước N2 chưa có synopsis/status/summary/outline).
       setNovels(ns.map((n) => ({ ...n, summary: n.summary ?? "", outline: n.outline ?? "" })));
       setChapters(chs);
-      setScenes(scs.map((sc) => ({ ...sc, synopsis: sc.synopsis ?? "", status: sc.status ?? "draft" as const })));
+      setScenes(scs.map((sc) => ({ ...sc, synopsis: sc.synopsis ?? "", aiSummary: sc.aiSummary ?? "", status: sc.status ?? "draft" as const })));
       setPlotlines(await listPlotlines());
       setBeats(await listBeats());
-      setArcs(await listArcs());
+      // Chuẩn hoá bản ghi cũ (trước N3 chưa có entityId/aiSummary).
+      setArcs((await listArcs()).map((a) => ({ ...a, entityId: a.entityId ?? null })));
       setQuestions(await listQuestions());
+      setEntities(await listEntities());
       const m = new Map<string, number>();
       for (const sc of scs) m.set(sc.id, sceneWords(sc));
       lastSavedWordsRef.current = m;
@@ -471,12 +481,13 @@ export function useNovelStudio() {
       setBeats(await listBeats());
       setArcs(await listArcs());
       setQuestions(await listQuestions());
+      setEntities(await listEntities());
     } catch {
       setSaveError("Không tải được dữ liệu dàn ý.");
     }
   }, []);
 
-  const updateSceneMeta = async (id: string, patch: { synopsis?: string; status?: SceneStatus }) => {
+  const updateSceneMeta = async (id: string, patch: { synopsis?: string; status?: SceneStatus; aiSummary?: string }) => {
     const scene = scenes.find((s) => s.id === id);
     if (!scene) return;
     const updated = { ...scene, ...patch };
@@ -625,7 +636,7 @@ export function useNovelStudio() {
     }
   };
 
-  const updateArc = async (id: string, patch: { characterName?: string; startState?: string; endState?: string }) => {
+  const updateArc = async (id: string, patch: { characterName?: string; startState?: string; endState?: string; entityId?: string | null }) => {
     const arc = arcs.find((a) => a.id === id);
     if (!arc) return;
     if (patch.characterName !== undefined && !patch.characterName.trim()) return;
@@ -686,6 +697,48 @@ export function useNovelStudio() {
       await saveArc(updated);
     } catch {
       setSaveError("Không xoá được mốc cung.");
+    }
+  };
+
+  const addEntity = async (kind: BibleEntityKind, name: string): Promise<BibleEntity | null> => {
+    if (!selectedNovelId || !name.trim()) return null;
+    const siblings = entities.filter((e) => e.novelId === selectedNovelId);
+    const entity = createBibleEntity(
+      selectedNovelId,
+      siblings.length === 0 ? 0 : Math.max(...siblings.map((e) => e.order)) + 1,
+      kind,
+      name.trim(),
+    );
+    try {
+      await saveEntity(entity);
+      setEntities((prev) => [...prev, entity]);
+      return entity;
+    } catch {
+      setSaveError("Không tạo được thực thể sổ tay.");
+      return null;
+    }
+  };
+
+  const updateEntity = async (id: string, patch: { name?: string; role?: string; description?: string; traits?: string; notes?: string; kind?: BibleEntityKind; worldRef?: WorldRef | null }) => {
+    const entity = entities.find((e) => e.id === id);
+    if (!entity) return;
+    if (patch.name !== undefined && !patch.name.trim()) return;
+    const updated = { ...entity, ...patch };
+    setEntities((prev) => prev.map((e) => (e.id === id ? updated : e)));
+    try {
+      await saveEntity(updated);
+    } catch {
+      setSaveError("Không lưu được thực thể sổ tay.");
+    }
+  };
+
+  const deleteEntityById = async (id: string) => {
+    try {
+      await deleteEntity(id);
+      setEntities((prev) => prev.filter((e) => e.id !== id));
+      setArcs((prev) => prev.map((a) => (a.entityId === id ? { ...a, entityId: null } : a)));
+    } catch {
+      setSaveError("Không xoá được thực thể sổ tay.");
     }
   };
 
@@ -767,6 +820,9 @@ export function useNovelStudio() {
     addBeat, updateBeat, deleteBeat: deleteBeatById,
     addArc, updateArc, deleteArc: deleteArcById, addMilestone, updateMilestoneNote, deleteMilestone,
     addQuestion, updateQuestion, deleteQuestion: deleteQuestionById,
+    // N3
+    entities: selectedNovelId ? sortByOrder(entities.filter((e) => e.novelId === selectedNovelId)) : [],
+    addEntity, updateEntity, deleteEntity: deleteEntityById,
   };
 }
 

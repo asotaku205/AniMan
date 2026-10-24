@@ -6,6 +6,7 @@
 
 import type {
   Beat,
+  BibleEntity,
   CharacterArc,
   Chapter,
   Novel,
@@ -15,7 +16,7 @@ import type {
 } from "./novel";
 
 const DB_NAME = "animan_novel_db";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NOVELS = "novels";
 const STORE_CHAPTERS = "chapters";
 const STORE_SCENES = "scenes";
@@ -23,6 +24,7 @@ const STORE_PLOTLINES = "plotlines";
 const STORE_BEATS = "beats";
 const STORE_ARCS = "arcs";
 const STORE_QUESTIONS = "questions";
+const STORE_ENTITIES = "entities";
 
 const isBrowser = typeof indexedDB !== "undefined";
 
@@ -51,6 +53,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_QUESTIONS)) {
         db.createObjectStore(STORE_QUESTIONS, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(STORE_ENTITIES)) {
+        db.createObjectStore(STORE_ENTITIES, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -204,6 +209,28 @@ async function unlinkSceneRefs(db: IDBDatabase, sceneIds: Set<string>): Promise<
   );
 }
 
+export async function listEntities(): Promise<BibleEntity[]> {
+  return getAll<BibleEntity>(STORE_ENTITIES);
+}
+
+export async function saveEntity(entity: BibleEntity): Promise<void> {
+  await put(STORE_ENTITIES, entity);
+}
+
+/** Xoá thực thể + gỡ liên kết entityId ở các cung trỏ tới nó. */
+export async function deleteEntity(id: string): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  const arcs = await request<CharacterArc[]>(db, STORE_ARCS, "readonly", ([s]) => s.getAll());
+  await request(db, [STORE_ENTITIES, STORE_ARCS], "readwrite", ([entitiesStore, arcsStore]) => {
+    entitiesStore.delete(id);
+    for (const a of arcs ?? []) {
+      if (a.entityId === id) arcsStore.put({ ...a, entityId: null });
+    }
+    return arcsStore.count();
+  });
+}
+
 export async function deleteScene(id: string): Promise<void> {
   if (!isBrowser) return;
   const db = await openDb();
@@ -237,11 +264,12 @@ export async function deleteNovelCascade(id: string): Promise<void> {
   const beats = await request<Beat[]>(db, STORE_BEATS, "readonly", ([s]) => s.getAll());
   const arcs = await request<CharacterArc[]>(db, STORE_ARCS, "readonly", ([s]) => s.getAll());
   const questions = await request<OpenQuestion[]>(db, STORE_QUESTIONS, "readonly", ([s]) => s.getAll());
+  const entities = await request<BibleEntity[]>(db, STORE_ENTITIES, "readonly", ([s]) => s.getAll());
   await request(
     db,
-    [STORE_NOVELS, STORE_CHAPTERS, STORE_SCENES, STORE_PLOTLINES, STORE_BEATS, STORE_ARCS, STORE_QUESTIONS],
+    [STORE_NOVELS, STORE_CHAPTERS, STORE_SCENES, STORE_PLOTLINES, STORE_BEATS, STORE_ARCS, STORE_QUESTIONS, STORE_ENTITIES],
     "readwrite",
-    ([novels, chaptersStore, scenesStore, plotlinesStore, beatsStore, arcsStore, questionsStore]) => {
+    ([novels, chaptersStore, scenesStore, plotlinesStore, beatsStore, arcsStore, questionsStore, entitiesStore]) => {
       novels.delete(id);
       for (const c of chapters ?? []) {
         if (c.novelId === id) chaptersStore.delete(c.id);
@@ -261,7 +289,10 @@ export async function deleteNovelCascade(id: string): Promise<void> {
       for (const q of questions ?? []) {
         if (q.novelId === id) questionsStore.delete(q.id);
       }
-      return questionsStore.count();
+      for (const e of entities ?? []) {
+        if (e.novelId === id) entitiesStore.delete(e.id);
+      }
+      return entitiesStore.count();
     },
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth } from "@/app/auth/AuthProvider";
 import { SectionEyebrow }  from "./components/SectionEyebrow";
 import { WashiBookPage }   from "./components/WashiBookPage";
 import { TabbedSidePanel } from "./components/TabbedSidePanel";
@@ -10,6 +11,7 @@ import { useNovelStudio }  from "./hooks/useNovelStudio";
 
 export function NovelStudio() {
   const s = useNovelStudio();
+  const { authenticatedFetch } = useAuth();
   const [view, setView] = useState<"write" | "outline">("write");
 
   return (
@@ -55,7 +57,7 @@ export function NovelStudio() {
 
         {view === "outline" ? (
           <div className="mt-12">
-            <OutlineView s={s} onOpenScene={(id) => { s.selectScene(id); setView("write"); }} />
+            <OutlineView s={s} onOpenScene={(id) => { s.selectScene(id); setView("write"); }} authenticatedFetch={authenticatedFetch} />
           </div>
         ) : (
         <div className="mt-12 grid gap-8 items-start xl:grid-cols-[260px_minmax(0,1fr)_320px]">

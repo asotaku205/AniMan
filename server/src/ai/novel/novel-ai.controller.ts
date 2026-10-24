@@ -1,0 +1,65 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
+import type { Request } from "express";
+import type { PublicUser } from "../../users/users.service.js";
+import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard.js";
+import { AiDrawingRateLimiter } from "../ai-drawing-rate-limiter.service.js";
+import {
+  NovelAiService,
+  type NovelAiResult,
+} from "./novel-ai.service.js";
+
+interface AuthenticatedRequest extends Request {
+  user: PublicUser;
+}
+
+const MAX_SCENE_TEXT_LENGTH = 8000;
+const MAX_BIBLE_LENGTH = 4000;
+
+function asString(value: unknown, max: number): string {
+  return typeof value === "string" ? value.slice(0, max) : "";
+}
+
+/**
+ * POST /ai/novel — tóm tắt cảnh / kiểm tra nhất quán với sổ tay (N3).
+ * Dùng CHUNG rate limiter với AI drawing + dịch (5/phút, 30/ngày) vì
+ * cùng một ngân sách Gemini free tier. Kết quả là bản nháp, client hiển
+ * thị để người dùng duyệt, không tự sửa văn bản.
+ */
+@Controller("ai/novel")
+@UseGuards(JwtAuthGuard)
+export class NovelAiController {
+  constructor(
+    private readonly rateLimiter: AiDrawingRateLimiter,
+    private readonly novelAi: NovelAiService,
+  ) {}
+
+  @Post()
+  async run(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<NovelAiResult> {
+    if (typeof body !== "object" || body === null) {
+      throw new BadRequestException("Body must be an object");
+    }
+    const b = body as Record<string, unknown>;
+    const task = b.task === "summarize" || b.task === "consistency" ? b.task : null;
+    if (!task) {
+      throw new BadRequestException("task must be summarize or consistency");
+    }
+    const text = asString(b.text, MAX_SCENE_TEXT_LENGTH);
+    if (!text.trim()) {
+      throw new BadRequestException("text must be non-empty");
+    }
+    const bible = asString(b.bible, MAX_BIBLE_LENGTH);
+
+    this.rateLimiter.assertCanRequest(request.user.id);
+    return this.novelAi.run({ task, text, bible });
+  }
+}

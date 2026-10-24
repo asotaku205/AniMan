@@ -6,6 +6,11 @@ import {
   arcGapWarnings,
   createArc,
   createBeat,
+  createBibleEntity,
+  extractMentionTokens,
+  mentionSceneIds,
+  sceneMentionsEntity,
+  unknownMentions,
   createChapter,
   createNovel,
   createPlotline,
@@ -132,5 +137,44 @@ describe("N2: dàn ý", () => {
     // Kéo trong cùng chương về cuối.
     const same = reorderScenesForMove(all, "a", "ch1", null);
     expect(new Map(same.map((x) => [x.id, x.order])).get("a")).toBe(1);
+  });
+});
+
+describe("N3: sổ tay + nhắc tới", () => {
+  it("tạo thực thể mặc định rỗng, chưa gắn sa bàn", () => {
+    const e = createBibleEntity("n1", 0, "character", "Aoi");
+    expect(e.worldRef).toBeNull();
+    expect(e.role).toBe("");
+  });
+
+  it("tách token @: tên nhiều từ hoa, dừng ở từ thường/dấu câu", () => {
+    expect(extractMentionTokens("Gặp @Nguyễn Văn A ở ga, rồi @Aoi đi tới.")).toEqual([
+      "Nguyễn Văn A",
+      "Aoi",
+    ]);
+    expect(extractMentionTokens("Không có nhắc tới.")).toEqual([]);
+    expect(extractMentionTokens("Email a@b không tính vì @ thiếu tên.")).toEqual([]);
+  });
+
+  it("nhắc tới khớp biên sau tên (@Aoi không khớp @AoiX)", () => {
+    const mk = (left: string) => ({ ...createScene("c1", 0, "C", left, ""), id: "s1" });
+    expect(sceneMentionsEntity(mk("Chào @Aoi nhé"), "Aoi")).toBe(true);
+    expect(sceneMentionsEntity(mk("Chào @AoiX nhé"), "Aoi")).toBe(false);
+    expect(sceneMentionsEntity(mk("Không nhắc ai"), "Aoi")).toBe(false);
+  });
+
+  it("map nhắc tới theo cảnh; nhắc lạ gom theo token, tiền tố tên không tính lạ", () => {
+    const e1 = createBibleEntity("n1", 0, "character", "Nguyễn Văn A");
+    const e2 = createBibleEntity("n1", 1, "place", "Ga tàu");
+    const mk = (id: string, left: string) => ({ ...createScene("c1", 0, id, left, ""), id });
+    const scenes = [mk("s1", "@Nguyễn Văn A đợi @Ga tàu"), mk("s2", "@Kẻ Lạ xuất hiện")];
+    const map = mentionSceneIds([e1, e2], scenes);
+    expect(map.get(e1.id)).toEqual(["s1"]);
+    expect(map.get(e2.id)).toEqual(["s1"]);
+    const unknown = unknownMentions(scenes, [e1, e2]);
+    expect(unknown.map((u) => u.token)).toEqual(["Kẻ Lạ"]);
+    expect(unknown[0].sceneIds).toEqual(["s2"]);
+    // "@Nguyễn Văn" là tiền tố theo từ của tên đầy đủ → không tính lạ.
+    expect(unknownMentions([mk("s3", "@Nguyễn Văn đi qua")], [e1])).toEqual([]);
   });
 });
