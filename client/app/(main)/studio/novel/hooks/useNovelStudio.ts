@@ -201,7 +201,11 @@ export function useNovelStudio() {
       let ns = await listNovels();
       let chs = await listChapters();
       let scs = await listScenes();
+      // Chỉ user hoàn toàn mới mới seed note mẫu: user cũ đã xoá note
+      // trước đây mà kho note trống thì KHÔNG hồi sinh note đã xoá.
+      let seededFresh = false;
       if (ns.length === 0) {
+        seededFresh = true;
         // Lần đầu: giữ lại nội dung demo cũ thành dữ liệu thật.
         const novel = createNovel("Tiểu thuyết mới");
         const c1 = createChapter(novel.id, 0, "Mưa xuân");
@@ -233,9 +237,11 @@ export function useNovelStudio() {
       const storedNotes = await listNotes();
       if (storedNotes.length > 0) {
         setNotesState(storedNotes);
-      } else {
+      } else if (seededFresh) {
         setNotesState(INITIAL_NOTES);
         await replaceNotes(INITIAL_NOTES);
+      } else {
+        setNotesState([]);
       }
       const m = new Map<string, number>();
       for (const sc of scs) m.set(sc.id, sceneWords(sc));
