@@ -84,6 +84,12 @@ type Props = {
   /** Áp nét AI vào lớp người dùng đang chọn = một bước hoàn tác (5C.2) */
   applyAiToActiveLayer?: () => void;
   canApplyAiToLayer?: boolean;
+  /** Chế độ chọn từng nét ma trên lớp phủ */
+  ghostSelectMode?: boolean;
+  setGhostSelectMode?: (v: boolean) => void;
+  selectedGhostStrokes?: ReadonlySet<string>;
+  toggleGhostStrokeSelection?: (layerId: string, strokeIndex: number) => void;
+  applySelectedGhostStrokes?: () => void;
   ghostStrokesSummary?: string | null;
   drawingPlaceholder?: DrawingPlaceholderId | null;
   setDrawingPlaceholder?: (v: DrawingPlaceholderId | null) => void;
@@ -153,6 +159,11 @@ export function CanvasArea({
   clearPanelAiOverlay,
   applyAiToActiveLayer,
   canApplyAiToLayer,
+  ghostSelectMode,
+  setGhostSelectMode,
+  selectedGhostStrokes,
+  toggleGhostStrokeSelection,
+  applySelectedGhostStrokes,
   ghostStrokesSummary,
   drawingPlaceholder,
   setDrawingPlaceholder,
@@ -956,6 +967,11 @@ export function CanvasArea({
                 onClear={() => clearPanelAiOverlay?.()}
                 onApplyToLayer={applyAiToActiveLayer}
                 canApplyToLayer={canApplyAiToLayer}
+                selectMode={ghostSelectMode}
+                setSelectMode={setGhostSelectMode}
+                selectedStrokeKeys={selectedGhostStrokes}
+                onToggleStroke={toggleGhostStrokeSelection}
+                onApplySelected={applySelectedGhostStrokes}
               />
             )}
 

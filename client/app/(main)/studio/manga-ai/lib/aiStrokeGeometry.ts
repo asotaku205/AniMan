@@ -236,10 +236,12 @@ export function aiStrokeAlpha(
 /**
  * Sắp nét theo **thứ tự vẽ của nhóm nội dung** (nền trước, hiệu ứng sau) rồi theo
  * thứ tự gốc — nhờ vậy lớp trước không bị lớp sau vẽ đè lộn xộn.
+ * Bản giữ chỉ số gốc để overlay chọn từng nét: key chọn nét là chỉ số gốc
+ * trong mảng strokes của lớp, không phải vị trí sau khi sắp.
  */
-export function orderStrokesByGroup(
+export function orderStrokesWithIndex(
   strokes: readonly AiStrokePath[],
-): AiStrokePath[] {
+): Array<{ stroke: AiStrokePath; index: number }> {
   const rank = new Map<string, number>();
   AI_STROKE_GROUPS.forEach((group, index) => rank.set(group, index));
   return [...strokes]
@@ -249,8 +251,77 @@ export function orderStrokesByGroup(
       const rb = rank.get(b.stroke.group) ?? AI_STROKE_GROUPS.length;
       if (ra !== rb) return ra - rb;
       return a.index - b.index;
-    })
-    .map((item) => item.stroke);
+    });
+}
+
+export function orderStrokesByGroup(
+  strokes: readonly AiStrokePath[],
+): AiStrokePath[] {
+  return orderStrokesWithIndex(strokes).map((item) => item.stroke);
+}
+
+/**
+ * Nét AI có vẽ được không — phòng thủ cuối phía client trước khi phủ/xuống lớp.
+ * Server đã lọc, nhưng model vẫn có thể lọt nét thiếu hình học, tọa độ NaN
+ * (chuỗi path "NaN" vẽ ra rác) hoặc kind lạ. Nét không đạt thì bỏ, không vẽ bừa.
+ */
+function isFinitePoint(point: unknown): boolean {
+  if (typeof point !== "object" || point === null) return false;
+  const p = point as Record<string, unknown>;
+  return (
+    typeof p.x === "number" &&
+    Number.isFinite(p.x) &&
+    typeof p.y === "number" &&
+    Number.isFinite(p.y)
+  );
+}
+
+function isFiniteRegion(region: unknown): boolean {
+  if (typeof region !== "object" || region === null) return false;
+  const r = region as Record<string, unknown>;
+  return (
+    typeof r.x === "number" &&
+    Number.isFinite(r.x) &&
+    typeof r.y === "number" &&
+    Number.isFinite(r.y) &&
+    typeof r.width === "number" &&
+    Number.isFinite(r.width) &&
+    (r.width as number) > 0 &&
+    typeof r.height === "number" &&
+    Number.isFinite(r.height) &&
+    (r.height as number) > 0
+  );
+}
+
+export function isDrawableAiStroke(stroke: AiStrokePath): boolean {
+  if (
+    typeof stroke.strokeWidth !== "number" ||
+    !Number.isFinite(stroke.strokeWidth)
+  ) {
+    return false;
+  }
+  switch (stroke.kind) {
+    case "path":
+      return (
+        !!stroke.points &&
+        stroke.points.length > 0 &&
+        stroke.points.every(isFinitePoint)
+      );
+    case "line":
+      return isFinitePoint(stroke.from) && isFinitePoint(stroke.to);
+    case "ellipse":
+    case "rectangle":
+      return isFiniteRegion(stroke.region);
+    default:
+      return false;
+  }
+}
+
+/** Lọc mảng nét AI, chỉ giữ nét vẽ được (giữ nguyên thứ tự gốc). */
+export function sanitizeAiStrokes(
+  strokes: readonly AiStrokePath[],
+): AiStrokePath[] {
+  return strokes.filter(isDrawableAiStroke);
 }
 
 /** Nhãn nhóm nội dung bằng tiếng Việt cho UI (chip, lớp AI). */

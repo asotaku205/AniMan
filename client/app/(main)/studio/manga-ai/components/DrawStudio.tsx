@@ -168,6 +168,11 @@ export function DrawStudio({
           clearPanelAiOverlay={s.clearPanelAiOverlay}
           applyAiToActiveLayer={s.applyAiToActiveLayer}
           canApplyAiToLayer={s.canApplyAiToLayer}
+          ghostSelectMode={s.ghostSelectMode}
+          setGhostSelectMode={s.setGhostSelectMode}
+          selectedGhostStrokes={s.selectedGhostStrokes}
+          toggleGhostStrokeSelection={s.toggleGhostStrokeSelection}
+          applySelectedGhostStrokes={s.applySelectedGhostStrokes}
           ghostStrokesSummary={s.ghostStrokesSummary}
           drawingPlaceholder={s.drawingPlaceholder}
           setDrawingPlaceholder={s.setDrawingPlaceholder}

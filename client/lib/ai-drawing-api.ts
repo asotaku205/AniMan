@@ -250,6 +250,20 @@ const AI_DRAWING_ERROR_MESSAGES: Record<AiDrawingErrorCode, string> = {
     "Thời gian phân tích của AI quá lâu. Vui lòng thử lại.",
 };
 
+/**
+ * Mã lỗi hết lượt mà server trả kèm `retryAfterSeconds` (không nằm trong
+ * `AI_DRAWING_ERROR_CODES` vì test hợp đồng đếm đúng sáu mã kia — mã này có
+ * thêm số giây chờ nên xử lý riêng trong `extractErrorMessage`).
+ */
+export const AI_DRAWING_RATE_LIMIT_CODE = "ai_rate_limited";
+
+/** Diễn giải số giây chờ thành câu tiếng Việt ("45 giây" / "3 phút"). */
+export function formatRetryWait(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "ít phút nữa";
+  if (seconds < 60) return `${Math.ceil(seconds)} giây nữa`;
+  return `${Math.ceil(seconds / 60)} phút nữa`;
+}
+
 function isKnownErrorCode(value: unknown): value is AiDrawingErrorCode {
   return (
     typeof value === "string" &&
@@ -333,6 +347,89 @@ export function createCanvasSnapshot(
 }
 
 /**
+ * Gọi API AI qua `authenticatedFetch`, dịch lỗi mạng thành câu tiếng Việt.
+ *
+ * - Mất mạng/server chưa chạy: fetch ném `TypeError` ("Failed to fetch") —
+ *   dịch thành câu hướng dẫn kiểm tra server, thay vì để lộ chuỗi tiếng Anh.
+ * - Hủy (AbortError): ném lại nguyên để caller nhận biết qua `signal.aborted`
+ *   mà không hiện toast lỗi giả.
+ */
+async function callAiDrawing(
+  authenticatedFetch: AuthenticatedFetch,
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  try {
+    return await authenticatedFetch(url, init);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
+    if (error instanceof Error && error.name === "TypeError") {
+      throw new AiDrawingApiError(
+        "Không kết nối được máy chủ AI. Hãy kiểm tra server AniMan đã chạy (cổng 8080) rồi thử lại.",
+        0,
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Ghép ngữ cảnh mẫu (bố cục/tư thế người dùng vừa chọn) với ý tưởng tự gõ
+ * thành một prompt duy nhất cho AI. Trước đây mẫu chọn không hề đi vào prompt
+ * nên bấm mẫu nào AI cũng trả như nhau — giờ mẫu nào cũng đổi được kết quả.
+ * Trả `undefined` khi cả hai đều rỗng để caller bỏ hẳn field `prompt`.
+ */
+export function buildAiToolPrompt(
+  userPrompt: string,
+  templateContext?: string,
+): string | undefined {
+  const parts = [templateContext?.trim(), userPrompt.trim()].filter(
+    (part): part is string => !!part && part.length > 0,
+  );
+  return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+/** Lượt AI còn lại của user — đọc từ `GET /ai/drawing/quota` (không tốn lượt). */
+export interface AiDrawingQuota {
+  minuteUsed: number;
+  minuteLimit: number;
+  dayUsed: number;
+  dayLimit: number;
+  retryAfterSeconds: number | null;
+}
+
+export async function requestAiDrawingQuota(
+  authenticatedFetch: AuthenticatedFetch,
+  signal?: AbortSignal,
+): Promise<AiDrawingQuota> {
+  const response = await callAiDrawing(authenticatedFetch, "/ai/drawing/quota", {
+    method: "GET",
+    signal,
+  });
+  const data: unknown = await readPayload(response);
+  if (!response.ok) {
+    throw new AiDrawingApiError(extractErrorMessage(data, response.status), response.status);
+  }
+  if (typeof data !== "object" || data === null) {
+    throw new Error("Phản hồi quota AI không đúng cấu trúc yêu cầu.");
+  }
+  const rec = data as Record<string, unknown>;
+  const nums = ["minuteUsed", "minuteLimit", "dayUsed", "dayLimit"].map((k) => rec[k]);
+  if (!nums.every((v) => typeof v === "number" && Number.isFinite(v))) {
+    throw new Error("Phản hồi quota AI không đúng cấu trúc yêu cầu.");
+  }
+  const retry = rec.retryAfterSeconds;
+  return {
+    minuteUsed: rec.minuteUsed as number,
+    minuteLimit: rec.minuteLimit as number,
+    dayUsed: rec.dayUsed as number,
+    dayLimit: rec.dayLimit as number,
+    retryAfterSeconds:
+      typeof retry === "number" && Number.isFinite(retry) ? retry : null,
+  };
+}
+
+/**
  * Requests an AI drawing review for the currently active panel snapshot.
  */
 export async function requestAiDrawingReview(
@@ -347,7 +444,7 @@ export async function requestAiDrawingReview(
     ...(prompt ? { prompt } : {}),
   };
 
-  const response = await authenticatedFetch("/ai/drawing", {
+  const response = await callAiDrawing(authenticatedFetch, "/ai/drawing", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -393,7 +490,7 @@ export async function requestAiGhostStrokes(
     ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
   };
 
-  const response = await authenticatedFetch("/ai/drawing", {
+  const response = await callAiDrawing(authenticatedFetch, "/ai/drawing", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -434,7 +531,7 @@ export async function requestAiPageStoryFlow(
     ...(input.image ? { image: input.image } : {}),
   };
 
-  const response = await authenticatedFetch("/ai/drawing", {
+  const response = await callAiDrawing(authenticatedFetch, "/ai/drawing", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -474,7 +571,7 @@ export async function requestAiSceneBlueprint(
     image: input.image,
   };
 
-  const response = await authenticatedFetch("/ai/drawing", {
+  const response = await callAiDrawing(authenticatedFetch, "/ai/drawing", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -554,17 +651,30 @@ async function readPayload(response: Response): Promise<unknown> {
  */
 export function extractErrorMessage(payload: unknown, status: number): string {
   if (typeof payload === "object" && payload !== null) {
-    const code = (payload as Record<string, unknown>).code;
+    const record = payload as Record<string, unknown>;
+    const code = record.code;
     if (isKnownErrorCode(code)) {
       return AI_DRAWING_ERROR_MESSAGES[code];
+    }
+    // Hết lượt kèm số giây chờ từ server (rate limiter) — nói rõ chờ bao lâu
+    // thay vì câu chung chung "thử lại sau".
+    if (code === AI_DRAWING_RATE_LIMIT_CODE) {
+      const retry = record.retryAfterSeconds;
+      if (typeof retry === "number" && Number.isFinite(retry) && retry > 0) {
+        return `Bạn đã dùng hết lượt AI cho phép. Vui lòng thử lại sau khoảng ${formatRetryWait(retry)}.`;
+      }
+      return "Bạn đã dùng hết lượt AI cho phép (tối đa 5 lượt/phút và 30 lượt/ngày). Vui lòng thử lại sau.";
     }
   }
 
   if (status === 429) {
     return "Bạn đã gửi quá số lượt yêu cầu cho phép (tối đa 5 lượt/phút và 30 lượt/ngày). Vui lòng thử lại sau.";
   }
-  if (status === 403) {
+  if (status === 401 || status === 403) {
     return "Bạn cần đăng nhập để sử dụng tính năng AI.";
+  }
+  if (status === 413) {
+    return "Ảnh gửi lên AI quá lớn (tối đa 4MB). Hãy thu nhỏ khung vẽ hoặc giảm chi tiết rồi thử lại.";
   }
   if (status === 503) {
     return "Mô hình AI hỗ trợ vẽ đang tạm thời chờ kích hoạt hoặc bảo trì.";

@@ -8,7 +8,7 @@ import {
   aiStrokeColor,
   aiStrokePixelWidth,
   aiStrokeShape,
-  orderStrokesByGroup,
+  orderStrokesWithIndex,
   type AiStrokeShape,
 } from "../lib/aiStrokeGeometry";
 
@@ -38,6 +38,18 @@ interface Props {
   canApplyToLayer?: boolean;
   /** Hiển thị thanh điều khiển */
   showControls?: boolean;
+  /**
+   * Chế độ chọn từng nét: bật thì SVG nhận click để chọn nét (mặc định tắt
+   * để giữ bất biến "lớp phủ không chặn vẽ" — chỉ bật khi user chủ động bấm
+   * "Chọn nét").
+   */
+  selectMode?: boolean;
+  setSelectMode?: (v: boolean) => void;
+  /** Key nét đang chọn: `${layerId}:${indexGốc}` */
+  selectedStrokeKeys?: ReadonlySet<string>;
+  onToggleStroke?: (layerId: string, strokeIndex: number) => void;
+  /** Áp các nét đang chọn xuống lớp người dùng */
+  onApplySelected?: () => void;
 }
 
 /** Vẽ nét lên SVG: viền trắng mảnh phía dưới để nét đọc được trên mọi hình. */
@@ -51,10 +63,11 @@ function renderShape(
     dashArray?: string;
   },
   key: string,
+  opts?: { selected?: boolean; onClick?: () => void },
 ): React.ReactNode {
   const outline = {
-    stroke: "#ffffff",
-    strokeWidth: style.width + 2,
+    stroke: opts?.selected ? "#fde047" : "#ffffff",
+    strokeWidth: style.width + (opts?.selected ? 4 : 2),
     fill: "none",
     opacity: Math.min(1, style.alpha + 0.25),
     strokeLinecap: "round" as const,
@@ -123,7 +136,11 @@ function renderShape(
   };
 
   return (
-    <g key={key}>
+    <g
+      key={key}
+      onClick={opts?.onClick}
+      style={opts?.onClick ? { cursor: "pointer" } : undefined}
+    >
       {element({}, true)}
       {element({}, false)}
     </g>
@@ -151,6 +168,11 @@ export function AiGhostStrokeOverlay({
   onApplyToLayer,
   canApplyToLayer = true,
   showControls = true,
+  selectMode = false,
+  setSelectMode,
+  selectedStrokeKeys,
+  onToggleStroke,
+  onApplySelected,
 }: Props) {
   const w = canvasWidth > 0 ? canvasWidth : 400;
   const h = canvasHeight > 0 ? canvasHeight : 300;
@@ -160,13 +182,15 @@ export function AiGhostStrokeOverlay({
     () =>
       layers.map((layer) => ({
         id: layer.id,
-        shapes: orderStrokesByGroup(layer.strokes)
-          .map((stroke, index) => {
+        shapes: orderStrokesWithIndex(layer.strokes)
+          .map(({ stroke, index }) => {
             const shape = aiStrokeShape(stroke, w, h);
             if (!shape) return null;
             const width = aiStrokePixelWidth(stroke, w, h);
             return {
               key: `${layer.id}-${index}`,
+              layerId: layer.id,
+              strokeIndex: index,
               shape,
               color: aiStrokeColor(stroke),
               width,
@@ -186,19 +210,26 @@ export function AiGhostStrokeOverlay({
     (total, layer) => total + layer.shapes.length,
     0,
   );
+  const selectedCount = selectedStrokeKeys?.size ?? 0;
   if (totalStrokes === 0) return null;
 
   return (
     <>
       <svg
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        style={{ zIndex: above ? 35 : 25 }}
+        className="absolute inset-0 w-full h-full"
+        style={{
+          zIndex: above ? 35 : 25,
+          // Mặc định không nhận sự kiện để không chặn vẽ; chỉ chế độ chọn nét
+          // mới bật pointer-events để bấm chọn từng nét.
+          pointerEvents: selectMode ? "auto" : "none",
+        }}
         viewBox={`0 0 ${w} ${h}`}
         aria-hidden="true"
       >
         {rendered.map((layer) =>
-          layer.shapes.map((item) =>
-            renderShape(
+          layer.shapes.map((item) => {
+            const selected = selectedStrokeKeys?.has(item.key) ?? false;
+            return renderShape(
               item.shape,
               {
                 color: item.color,
@@ -208,8 +239,15 @@ export function AiGhostStrokeOverlay({
                 dashArray: item.dashArray,
               },
               item.key,
-            ),
-          ),
+              {
+                selected,
+                onClick:
+                  selectMode && onToggleStroke
+                    ? () => onToggleStroke(item.layerId, item.strokeIndex)
+                    : undefined,
+              },
+            );
+          }),
         )}
       </svg>
 
@@ -255,6 +293,33 @@ export function AiGhostStrokeOverlay({
               title="Vẽ nét AI vào lớp đang chọn bằng một bước hoàn tác"
             >
               Áp về lớp tôi
+            </button>
+          )}
+          {setSelectMode && (
+            <button
+              onClick={() => setSelectMode(!selectMode)}
+              className={`px-1.5 py-0.5 rounded-md border text-[9px] font-semibold flex-shrink-0 ${
+                selectMode
+                  ? "bg-yellow-500/25 border-yellow-400/50 text-yellow-200"
+                  : "bg-white/5 border-white/10 text-white/60 hover:text-white"
+              }`}
+              title={
+                selectMode
+                  ? "Đang chọn nét — bấm vào nét để chọn/bỏ chọn, bấm lại để tắt"
+                  : "Bật để bấm chọn từng nét AI rồi chỉ áp các nét đã chọn"
+              }
+            >
+              Chọn nét
+            </button>
+          )}
+          {selectMode && selectedCount > 0 && onApplySelected && (
+            <button
+              onClick={onApplySelected}
+              disabled={!canApplyToLayer}
+              className="px-1.5 py-0.5 rounded-md bg-yellow-500/25 border border-yellow-400/50 text-yellow-100 text-[9px] font-semibold flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Chỉ vẽ các nét đang chọn (viền vàng) vào lớp đang chọn"
+            >
+              Áp {selectedCount} nét đã chọn
             </button>
           )}
           <button

@@ -163,6 +163,9 @@ export function RightPanel({ s }: Props) {
           aiStrokeLayers={s.aiStrokeLayers}
           aiStrokeCount={s.aiStrokeCount}
           clearPanelAiOverlay={s.clearPanelAiOverlay}
+          applyAiLayerToActiveLayer={s.applyAiLayerToActiveLayer}
+          canApplyAiToLayer={s.canApplyAiToLayer}
+          aiQuota={s.aiQuota}
           ghostStrokesSummary={s.ghostStrokesSummary}
           ghostAt={s.ghostAt}
           ghostSourceIds={s.ghostSourceIds}

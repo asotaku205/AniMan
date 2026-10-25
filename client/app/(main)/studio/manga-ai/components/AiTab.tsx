@@ -42,6 +42,7 @@ import {
 import {
   AI_DRAWING_MODEL_LABEL,
   AI_SCENE_BLUEPRINT_ENABLED,
+  type AiDrawingQuota,
   type AiPageStoryFlowPanelHint,
   type AiPageStoryFlowResponse,
   type AiSceneBlueprintResponse,
@@ -91,6 +92,11 @@ type Props = {
   aiStrokeCount?: number;
   /** Xoá nét AI + lớp AI của khung đang mở (không đụng nét người dùng) */
   clearPanelAiOverlay?: () => void;
+  /** Áp riêng một lớp AI xuống lớp đang chọn (từng phần, không cần áp hết) */
+  applyAiLayerToActiveLayer?: (layerId: string) => void;
+  canApplyAiToLayer?: boolean;
+  /** Lượt AI còn lại (null = chưa lấy được thì ẩn dòng quota) */
+  aiQuota?: AiDrawingQuota | null;
   ghostStrokesSummary?: string | null;
   /** Thời điểm + nguồn của nét gợi ý đang hiện (AC-D2.2) */
   ghostAt?: number | null;
@@ -289,6 +295,9 @@ export function AiTab({
   aiStrokeLayers,
   aiStrokeCount,
   clearPanelAiOverlay,
+  applyAiLayerToActiveLayer,
+  canApplyAiToLayer,
+  aiQuota,
   ghostStrokesSummary,
   ghostAt,
   ghostSourceIds,
@@ -409,6 +418,16 @@ export function AiTab({
               ))}
             </div>
           </div>
+
+          {/* Lượt AI còn lại — chỉ hiện khi lấy được từ server */}
+          {aiQuota && (
+            <p className="text-[9px] text-white/40">
+              Giới hạn AI: còn {Math.max(0, aiQuota.minuteLimit - aiQuota.minuteUsed)}/
+              {aiQuota.minuteLimit} lượt trong phút này ·{" "}
+              {Math.max(0, aiQuota.dayLimit - aiQuota.dayUsed)}/{aiQuota.dayLimit} lượt
+              hôm nay
+            </p>
+          )}
 
           {/* Trạng thái nhắc nhở nếu chưa chọn panel */}
           {!activePanel && (
@@ -577,6 +596,16 @@ export function AiTab({
                   <span className="text-white/40 text-[9px] font-mono flex-shrink-0">
                     {layer.strokes.length} nét
                   </span>
+                  {applyAiLayerToActiveLayer && (
+                    <button
+                      onClick={() => applyAiLayerToActiveLayer(layer.id)}
+                      disabled={canApplyAiToLayer === false}
+                      className="text-purple-200/80 hover:text-purple-100 text-[9px] px-1.5 py-0.5 rounded-md bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/25 flex-shrink-0 disabled:opacity-40"
+                      title="Chỉ vẽ các nét của lớp này vào lớp đang chọn"
+                    >
+                      Áp lớp này
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
