@@ -49,9 +49,12 @@ import {
 import { applyBrushStroke, normalizeWeights, type BrushMode } from "../lib/weightPaint";
 import { mirrorPose, newPoseId, type SavedPose } from "../lib/poseLibrary";
 import {
+  addJoint,
   applySingleJointEdit,
   descendantsOf,
+  mirrorBoneName,
   mirrorSubtreeEdit,
+  removeJoint,
   translateSubtree,
 } from "../lib/jointEdit";
 import {
@@ -187,6 +190,12 @@ export function RigStudioModal({
   const previewRef = useRef<HTMLDivElement | null>(null);
   const liveRef = useRef<LivePreview | null>(null);
   const paintRef = useRef<PaintSnapshot>(new Map());
+  // Giữ góc camera xem trước qua các lần dựng lại (chốt khớp xong
+  // không bị quăng về góc mặc định).
+  const previewCamRef = useRef<{
+    pos: [number, number, number];
+    target: [number, number, number];
+  } | null>(null);
 
   // IK: mục tiêu kéo bằng chuột trong khung xem trước hoặc nhập số.
   const [ikEnabled, setIkEnabled] = useState<Record<IkLimbId, boolean>>(emptyIkEnabled);
@@ -333,9 +342,16 @@ export function RigStudioModal({
       100,
     );
     const H = loaded.heightM;
-    camera.position.set(H * 1.1, H * 0.75, H * 1.5);
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, H * 0.5, 0);
+    const savedCam = previewCamRef.current;
+    if (savedCam) {
+      camera.position.set(...savedCam.pos);
+      controls.target.set(...savedCam.target);
+    } else {
+      camera.position.set(H * 1.1, H * 0.75, H * 1.5);
+      controls.target.set(0, H * 0.5, 0);
+    }
+    controls.update();
     scene.add(new THREE.AmbientLight(0xffffff, 0.9));
     const dir = new THREE.DirectionalLight(0xffffff, 1.2);
     dir.position.set(3, 6, 4);
@@ -362,16 +378,28 @@ export function RigStudioModal({
       raycaster.setFromCamera(pointer, camera);
     };
 
-    try {
+    if (joints.length === 0) {
+      // Bộ xương trống: hiện model gốc, chưa gắn xương.
+      scene.add(loaded.scene);
+      liveRef.current = null;
+      setMorphList([]);
+      setMaterialList([]);
+      setMaterialDefaults([]);
+    } else try {
       built = buildRiggedRoot(loaded.scene, joints);
       root = built.root;
       rest = captureRest(built.boneByName);
-      const activePose = libraryPose ?? TEST_POSES[poseId]?.pose ?? {};
+      // Đang sửa khớp thì hiện tư thế gốc, không áp dáng thử/IK:
+      // kéo khớp phải thấy đúng chỗ sẽ lưu.
+      const editingJoints = toolModeRef.current === "joints";
+      const activePose = editingJoints
+        ? {}
+        : (libraryPose ?? TEST_POSES[poseId]?.pose ?? {});
       for (const [name, e] of Object.entries(activePose)) {
         built.boneByName.get(name)?.rotation.set(e[0], e[1], e[2]);
       }
       for (const def of IK_LIMB_DEFS) {
-        if (!ikEnabled[def.id]) continue;
+        if (!ikEnabled[def.id] || editingJoints) continue;
         const endRest = rest.positions.get(def.chain.end);
         if (!endRest) continue;
         let t = ikTargets[def.id] ?? [endRest.x, endRest.y, endRest.z];
@@ -383,8 +411,10 @@ export function RigStudioModal({
       applyMaterialEdits(root, materialEdits);
       applyPaintSnapshots(root, paintRef.current);
       scene.add(root);
-      const helper = new THREE.SkeletonHelper(built.boneByName.get("Hips")!);
-      scene.add(helper);
+      const helperRoot =
+        built.boneByName.get("Hips") ??
+        [...built.boneByName.values()][0];
+      if (helperRoot) scene.add(new THREE.SkeletonHelper(helperRoot));
       // Quả cầu khớp kéo được (đủ 52 khớp), đặt đúng vị trí thế giới
       // hiện tại của xương (đã áp dáng thử/IK).
       jointGroup = new THREE.Group();
@@ -415,7 +445,7 @@ export function RigStudioModal({
       ikGroup.visible = toolModeRef.current === "ik";
       applyJointHighlight();
       for (const def of IK_LIMB_DEFS) {
-        if (!ikEnabled[def.id]) continue;
+        if (!ikEnabled[def.id] || editingJoints) continue;
         const endRest = rest.positions.get(def.chain.end);
         if (!endRest) continue;
         let t = ikTargets[def.id] ?? [endRest.x, endRest.y, endRest.z];
@@ -630,7 +660,9 @@ export function RigStudioModal({
         if (Math.hypot(...delta) > 1e-9) {
           const moved = translateSubtree(joints, current.name, delta);
           let next = moved;
-          if (mirrorRef.current) {
+          // Khớp giữa không có đối tác nên không mirror (nhánh của nó
+          // vốn đã chứa cả hai bên — mirror sẽ ghi đè nhánh phải lệch).
+          if (mirrorRef.current && mirrorBoneName(current.name)) {
             const sub = [current.name, ...descendantsOf(joints, current.name)];
             const updated = new Map(
               moved
@@ -665,6 +697,10 @@ export function RigStudioModal({
       container.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      previewCamRef.current = {
+        pos: [camera.position.x, camera.position.y, camera.position.z],
+        target: [controls.target.x, controls.target.y, controls.target.z],
+      };
       controls.dispose();
       for (const g of [jointGroup, ikGroup]) {
         g?.traverse((obj) => {
@@ -684,7 +720,7 @@ export function RigStudioModal({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [loaded, joints, poseId, libraryPose, ikEnabled, ikTargets, ikLockGround, morphValues, materialEdits]);
+  }, [loaded, joints, poseId, libraryPose, ikEnabled, ikTargets, ikLockGround, morphValues, materialEdits, toolMode]);
 
   /**
    * Nhận joints mới sau một lần sửa tay (kéo chuột / ô số): ngón nào bị
@@ -727,6 +763,37 @@ export function RigStudioModal({
     const pos: [number, number, number] = [...cur.pos];
     pos[axis] = value;
     applyJointStateUpdate(joints, applySingleJointEdit(joints, name, pos, mirrorRef.current));
+  };
+
+  /** Thêm khớp tự do cho vật không phải người (nhà, đồ vật...). */
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const addNewJoint = () => {
+    if (!joints) return;
+    const parent =
+      selectedJoint && joints.some((j) => j.name === selectedJoint)
+        ? selectedJoint
+        : null;
+    const { joints: next, name } = addJoint(joints, parent);
+    applyJointStateUpdate(joints, next);
+    setSelectedJoint(name);
+  };
+  const deleteJoint = (name: string) => {
+    if (!joints) return;
+    const removed = joints.find((j) => j.name === name);
+    applyJointStateUpdate(joints, removeJoint(joints, name));
+    if (selectedJoint === name) setSelectedJoint(removed?.parent ?? null);
+    const parsed = parseFingerJoint(name);
+    if (parsed) {
+      const key = fingerKey(parsed.side, parsed.finger);
+      setFingerPose((prev) => ({ ...prev, [key]: { curl: 0, spread: 0 } }));
+      fingerBaseRef.current.delete(key);
+    }
+  };
+  const emptySkeleton = () => {
+    if (!joints) return;
+    applyJointStateUpdate(joints, []);
+    setSelectedJoint(null);
+    setConfirmEmpty(false);
   };
 
   /** Gập/xòe một ngón: tính từ chuỗi thẳng gốc, không cộng dồn theo lần kéo. */
@@ -799,7 +866,15 @@ export function RigStudioModal({
 
   const jointByName = new Map((joints ?? []).map((j) => [j.name, j]));
 
-  const JointRows = ({ names, labels }: { names: string[]; labels?: string[] }) => (
+  const JointRows = ({
+    names,
+    labels,
+    onDelete,
+  }: {
+    names: string[];
+    labels?: string[];
+    onDelete?: (name: string) => void;
+  }) => (
     <div className="space-y-1.5">
       {names.map((name, i) => {
         const joint = jointByName.get(name);
@@ -813,7 +888,7 @@ export function RigStudioModal({
               else rowRefs.current.delete(name);
             }}
             onClick={() => setSelectedJoint(name)}
-            className={`grid grid-cols-[110px_1fr_1fr_1fr] gap-1.5 items-center rounded-lg px-1 py-0.5 ${selected ? "bg-amber-400/15 ring-1 ring-amber-300/50" : ""}`}
+            className={`grid grid-cols-[110px_1fr_1fr_1fr_28px] gap-1.5 items-center rounded-lg px-1 py-0.5 ${selected ? "bg-amber-400/15 ring-1 ring-amber-300/50" : ""}`}
           >
             <span className="text-[11px] text-white/60">{labels?.[i] ?? name}</span>
             {joint.pos.map((v, axis) => (
@@ -829,6 +904,18 @@ export function RigStudioModal({
                 />
               </label>
             ))}
+            {onDelete && (
+              <button
+                title="Xoá khớp (con gắn lại về cha của khớp này)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(name);
+                }}
+                className="h-7 w-7 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-red-300 hover:border-red-400/40 text-[14px] leading-none"
+              >
+                ×
+              </button>
+            )}
           </div>
         );
       })}
@@ -1046,6 +1133,49 @@ export function RigStudioModal({
                 Tự căn lại
               </button>
             </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                onClick={addNewJoint}
+                className="h-8 px-3 rounded-lg bg-violet-500/20 border border-violet-400/40 text-[12px] font-medium hover:bg-violet-500/30"
+              >
+                Thêm khớp
+              </button>
+              {confirmEmpty ? (
+                <>
+                  <button
+                    onClick={emptySkeleton}
+                    className="h-8 px-3 rounded-lg bg-red-500/25 border border-red-400/50 text-[12px] font-medium hover:bg-red-500/35"
+                  >
+                    Xoá hết khớp — chắc chắn?
+                  </button>
+                  <button
+                    onClick={() => setConfirmEmpty(false)}
+                    className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px]"
+                  >
+                    Giữ lại
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setConfirmEmpty(true)}
+                  className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-white/70 text-[12px]"
+                >
+                  Bắt đầu với bộ xương trống
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-white/40 leading-relaxed">
+              Thêm khớp làm con của khớp đang chọn (không chọn khớp nào thì
+              làm khớp gốc) — dùng để gắn xương cho vật không phải người
+              như nhà, đồ vật. Xoá khớp thì các khớp con gắn lại về cha
+              của khớp bị xoá.
+            </p>
+            {joints && joints.length === 0 && (
+              <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                Chưa có khớp nào — bấm “Thêm khớp” để bắt đầu, rồi lưu
+                file khi đã đủ khớp.
+              </p>
+            )}
             <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
               <details className={sectionClass}>
                 <summary className="text-[12px] text-white/70 cursor-pointer">Khớp chính</summary>
@@ -1053,9 +1183,28 @@ export function RigStudioModal({
                   {JOINT_GROUPS.map((group) => (
                     <div key={group.name}>
                       <p className="text-[11px] text-white/50 mb-1">{group.name}</p>
-                      <JointRows names={group.joints} />
+                      <JointRows names={group.joints} onDelete={deleteJoint} />
                     </div>
                   ))}
+                  {(() => {
+                    const standard = new Set(
+                      JOINT_GROUPS.flatMap((g) => g.joints),
+                    );
+                    standard.add("LeftToeBase");
+                    standard.add("RightToeBase");
+                    const custom = (joints ?? [])
+                      .map((j) => j.name)
+                      .filter(
+                        (n) => !standard.has(n) && !parseFingerJoint(n),
+                      );
+                    if (custom.length === 0) return null;
+                    return (
+                      <div>
+                        <p className="text-[11px] text-white/50 mb-1">Khớp tự thêm</p>
+                        <JointRows names={custom} onDelete={deleteJoint} />
+                      </div>
+                    );
+                  })()}
                 </div>
               </details>
 
@@ -1158,6 +1307,7 @@ export function RigStudioModal({
                             <JointRows
                               names={[1, 2, 3].map((k) => `${side}Hand${finger}${k}`)}
                               labels={FINGER_DOTS}
+                              onDelete={deleteJoint}
                             />
                           </div>
                         ))}
@@ -1169,6 +1319,7 @@ export function RigStudioModal({
                     <JointRows
                       names={["LeftToeBase", "RightToeBase"]}
                       labels={["Chân trái", "Chân phải"]}
+                      onDelete={deleteJoint}
                     />
                   </div>
                 </div>

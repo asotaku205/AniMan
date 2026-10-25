@@ -67,8 +67,10 @@ export function translateSubtree(
 }
 
 /**
- * Sửa vị trí một khớp duy nhất (ô số). Khi bật đối xứng, khớp đối tác
- * nhận vị trí mirror; khớp giữa không có đối tác nên đứng yên.
+ * Sửa vị trí một khớp bằng ô số: dời cả nhánh con theo cùng delta như
+ * kéo chuột (giữ nguyên độ dài đoạn xương, không đứt chuỗi). Khi bật
+ * đối xứng, cả nhánh đối tác mirror theo nhánh đã dời; khớp giữa hoặc
+ * khớp tự thêm (không có tên Left/Right) thì không mirror.
  */
 export function applySingleJointEdit(
   joints: RigJoint[],
@@ -76,14 +78,74 @@ export function applySingleJointEdit(
   pos: Vec3,
   mirror: boolean,
 ): RigJoint[] {
-  const counterpart = mirror ? mirrorBoneName(name) : null;
-  return joints.map((j) => {
-    if (j.name === name) return { ...j, pos: [...pos] as Vec3 };
-    if (counterpart && j.name === counterpart) {
-      return { ...j, pos: mirrorPosition(pos) };
-    }
-    return j;
-  });
+  const cur = joints.find((j) => j.name === name);
+  if (!cur) return joints;
+  const delta: Vec3 = [
+    pos[0] - cur.pos[0],
+    pos[1] - cur.pos[1],
+    pos[2] - cur.pos[2],
+  ];
+  let next = translateSubtree(joints, name, delta);
+  // Khớp giữa (Hips, cột sống...) không có đối tác nên không mirror:
+  // nhánh của nó vốn đã chứa cả hai bên, mirror sẽ ghi đè nhánh phải
+  // lệch khỏi nhánh trái.
+  if (mirror && mirrorBoneName(name)) {
+    const subtree = [name, ...descendantsOf(joints, name)];
+    const updated = new Map<string, Vec3>(
+      subtree.map((n) => {
+        const moved = next.find((j) => j.name === n)!;
+        return [n, [...moved.pos] as Vec3];
+      }),
+    );
+    next = mirrorSubtreeEdit(next, subtree, updated);
+  }
+  return next;
+}
+
+/** Đoạn khớp mới nhô lên trên khớp cha khi tự thêm khớp (mét). */
+export const CUSTOM_JOINT_STEP_M = 0.1;
+
+/**
+ * Thêm một khớp mới cho vật không phải người (nhà, đồ vật...): làm con
+ * của khớp đang chọn, không chọn khớp nào thì làm khớp gốc ở gốc tọa
+ * độ. Tên tự sinh không trùng ("Khớp 1", "Khớp 2"...).
+ */
+export function addJoint(
+  joints: RigJoint[],
+  parentName: string | null,
+): { joints: RigJoint[]; name: string } {
+  const names = new Set(joints.map((j) => j.name));
+  let n = 1;
+  while (names.has(`Khớp ${n}`)) n += 1;
+  const name = `Khớp ${n}`;
+  const parent =
+    parentName != null ? joints.find((j) => j.name === parentName) : undefined;
+  const pos: Vec3 =
+    parent != null
+      ? [parent.pos[0], parent.pos[1] + CUSTOM_JOINT_STEP_M, parent.pos[2]]
+      : [0, 0, 0];
+  return {
+    joints: [
+      ...joints,
+      { name, parent: parent != null ? parent.name : null, pos },
+    ],
+    name,
+  };
+}
+
+/**
+ * Xoá một khớp: các khớp con được gắn lại về khớp cha của khớp bị xoá
+ * (giữ chuỗi liền mạch), không xoá cả nhánh. Xoá khớp gốc thì con
+ * thành khớp gốc.
+ */
+export function removeJoint(joints: RigJoint[], name: string): RigJoint[] {
+  const target = joints.find((j) => j.name === name);
+  if (!target) return joints;
+  return joints
+    .filter((j) => j.name !== name)
+    .map((j) =>
+      j.parent === name ? { ...j, parent: target.parent } : j,
+    );
 }
 
 /**

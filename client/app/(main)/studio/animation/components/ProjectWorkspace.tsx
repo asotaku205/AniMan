@@ -20,6 +20,7 @@ import {
   duplicateScene,
   formatDuration,
   moveScene,
+  postSettingsOf,
   projectDurationSec,
   removeScene,
   sceneSpeed,
@@ -28,6 +29,7 @@ import {
   type AnimProject,
   type AnimScene,
 } from "../lib/animProject";
+import { previewTimeline } from "../lib/animatic";
 import { getAnimProject, saveAnimProject } from "../lib/animStorage";
 import { AnimaticPlayer } from "./AnimaticPlayer";
 import DrawStudioModal from "./DrawStudioModal";
@@ -69,6 +71,23 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<AnimProject | null>(null);
   const [missing, setMissing] = useState(false);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  // Nhảy xem thử tới cảnh đang sửa (đổi nonce để bấm lại cùng cảnh).
+  const [previewJump, setPreviewJump] = useState<{
+    sec: number;
+    nonce: number;
+  } | null>(null);
+  const jumpPreviewToEditingScene = () => {
+    if (!project) return;
+    const idx = project.scenes.findIndex((s) => s.id === selectedSceneId);
+    if (idx < 0) return;
+    const tl = previewTimeline({
+      scenes: project.scenes,
+      post: postSettingsOf(project),
+    });
+    const sec = tl.segments[idx]?.startSec ?? 0;
+    setPreviewJump({ sec, nonce: Date.now() });
+    previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -539,7 +558,19 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
 
       {/* Phát thử toàn phim — xem lại nhịp + tiếng + phụ đề đồng bộ */}
       <div ref={previewRef} className="scroll-mt-4">
-        <AnimaticPlayer project={project} />
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <button
+            onClick={jumpPreviewToEditingScene}
+            disabled={selectedSceneId == null}
+            className="h-8 px-3 rounded-lg bg-sky-500/20 border border-sky-400/40 text-[12px] font-medium hover:bg-sky-500/30 disabled:opacity-50"
+          >
+            Xem từ cảnh đang sửa
+          </button>
+          <span className="text-[11px] text-white/40">
+            Nhảy xem thử tới đúng mốc bắt đầu của cảnh đang mở trong trình dựng.
+          </span>
+        </div>
+        <AnimaticPlayer project={project} jumpRequest={previewJump} />
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-4">

@@ -58,6 +58,7 @@ import {
   frustumLineSegments,
   rayPlanePoint,
 } from "../lib/cameraRigModel";
+import { resolveShotCamera } from "../lib/cameraDraft";
 import { videoGenStatus } from "../lib/videoGen";
 import { newDialogueId, type DialogueLine } from "../lib/dialogue";
 import { loadModelForSceneWithClips, loadClipSourceAsset } from "../lib/modelLoader";
@@ -652,6 +653,18 @@ export function PrevizEditor({
   const [shotFocusFrom, setShotFocusFrom] = useState(3);
   const [shotFocusTo, setShotFocusTo] = useState(9);
   const [draftCamDirty, setDraftCamDirty] = useState(false);
+  // Giây lúc sửa camera lần cuối — bản nháp chỉ áp tại giây này.
+  const [draftCamTimeSec, setDraftCamTimeSec] = useState(0);
+  // Camera phim đang hiển thị: bản nháp chỉ tại giây đã sửa, còn lại
+  // dùng key đã lưu — kéo camera không kéo theo mọi khung hình.
+  const shownCam = resolveShotCamera({
+    draftDirty: draftCamDirty,
+    draftTimeSec: draftCamTimeSec,
+    draftPos: draftCamPos,
+    draftTarget: draftCamTarget,
+    keys: previz.cameraKeys,
+    timeSec,
+  });
   // Mô hình máy quay kéo được: chế độ dời máy + công tắc hiện mô hình.
   const [camMoveMode, setCamMoveMode] = useState(false);
   const [showCamModel, setShowCamModel] = useState(true);
@@ -941,9 +954,14 @@ export function PrevizEditor({
           }
           if (part === "body" || part === "target") {
             const st = stateRef.current;
-            const cam = st.draftCamDirty
-              ? { position: st.draftCamPos, target: st.draftCamTarget }
-              : samplePrevizCamera(st.previz.cameraKeys, st.timeSec);
+            const cam = resolveShotCamera({
+              draftDirty: st.draftCamDirty,
+              draftTimeSec: st.draftCamTimeSec,
+              draftPos: st.draftCamPos,
+              draftTarget: st.draftCamTarget,
+              keys: st.previz.cameraKeys,
+              timeSec: st.timeSec,
+            });
             const anchor = part === "body" ? cam.position : cam.target;
             const normal = new THREE.Vector3();
             ctxNow.orbitCam.getWorldDirection(normal);
@@ -982,6 +1000,7 @@ export function PrevizEditor({
         if (camDrag.kind === "pos") setDraftCamPos(next);
         else setDraftCamTarget(next);
         setDraftCamDirty(true);
+        setDraftCamTimeSec(stateRef.current.timeSec);
         return;
       }
       if (paintingRef.current) {
@@ -1507,8 +1526,8 @@ export function PrevizEditor({
   }, [previz]);
 
   // ── Vòng render ─────────────────────────────────────────────────────────────
-  const stateRef = useRef({ previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec, environment, camMoveMode, showCamModel, exportAspect });
-  stateRef.current = { previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec, environment, camMoveMode, showCamModel, exportAspect };
+  const stateRef = useRef({ previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, draftCamTimeSec, previewFormula, previewStartSec, environment, camMoveMode, showCamModel, exportAspect });
+  stateRef.current = { previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, draftCamTimeSec, previewFormula, previewStartSec, environment, camMoveMode, showCamModel, exportAspect };
   useEffect(() => {
     let raf = 0;
     const loop = () => {
@@ -1568,9 +1587,15 @@ export function PrevizEditor({
           group.position.y = sampled.position.y - bend * obj.size * 0.26;
         }
       }
-      const cam = st.draftCamDirty
-        ? { position: st.draftCamPos, target: st.draftCamTarget }
-        : samplePrevizCamera(st.previz.cameraKeys, st.timeSec);
+      // Bản nháp chỉ áp tại giây đã sửa, còn lại dùng key đã lưu.
+      const cam = resolveShotCamera({
+        draftDirty: st.draftCamDirty,
+        draftTimeSec: st.draftCamTimeSec,
+        draftPos: st.draftCamPos,
+        draftTarget: st.draftCamTarget,
+        keys: st.previz.cameraKeys,
+        timeSec: st.timeSec,
+      });
       ctx.shotCam.position.set(cam.position.x, cam.position.y, cam.position.z);
       ctx.shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
       // Mô hình máy quay: chỉ hiện ở góc tự do, bám đúng vị trí/điểm nhìn.
@@ -2736,21 +2761,26 @@ export function PrevizEditor({
             <h3 className="text-[12px] font-semibold text-white/70 flex items-center gap-1.5">
               <Camera className="w-3.5 h-3.5" /> CAMERA PHIM
             </h3>
-            {vecSliders("Vị trí camera", draftCamPos, (v) => {
+            {vecSliders("Vị trí camera", shownCam.position, (v) => {
               setDraftCamPos(v);
               setDraftCamDirty(true);
+              setDraftCamTimeSec(timeSec);
             })}
-            {vecSliders("Điểm nhìn", draftCamTarget, (v) => {
+            {vecSliders("Điểm nhìn", shownCam.target, (v) => {
               setDraftCamTarget(v);
               setDraftCamDirty(true);
+              setDraftCamTimeSec(timeSec);
             })}
             <button
               onClick={() => {
+                // Lưu bản nháp đúng tại giây đã sửa, không phải giây
+                // playhead đang đứng (tránh lưu nháp vào sai thời điểm).
+                const keyTimeSec = draftCamDirty ? draftCamTimeSec : timeSec;
                 onChange({
                   ...previz,
                   cameraKeys: upsertPrevizCameraKey(previz.cameraKeys, {
                     id: newPrevizId("camkey"),
-                    timeSec: Math.round(timeSec * 100) / 100,
+                    timeSec: Math.round(keyTimeSec * 100) / 100,
                     position: draftCamPos,
                     target: draftCamTarget,
                     easing,
@@ -2760,7 +2790,7 @@ export function PrevizEditor({
               }}
               className="w-full h-8 rounded-lg bg-sky-500/20 border border-sky-400/40 text-[12px] font-medium hover:bg-sky-500/30 flex items-center justify-center gap-1.5"
             >
-              <KeyRound className="w-3.5 h-3.5" /> Đặt key camera tại {timeSec.toFixed(2)}s
+              <KeyRound className="w-3.5 h-3.5" /> Đặt key camera tại {(draftCamDirty ? draftCamTimeSec : timeSec).toFixed(2)}s
             </button>
             <div className="flex flex-wrap items-center gap-1.5">
               <button
@@ -2958,8 +2988,8 @@ export function PrevizEditor({
                   const built = buildShotKeys(shotPreset, {
                     startTimeSec: timeSec,
                     durationSec: shotDuration,
-                    fromPosition: draftCamPos,
-                    fromTarget: draftCamTarget,
+                    fromPosition: shownCam.position,
+                    fromTarget: shownCam.target,
                     targetPosition: targetPos,
                     moveDistance: shotDistance > 0 ? shotDistance : undefined,
                     height: shotHeight,

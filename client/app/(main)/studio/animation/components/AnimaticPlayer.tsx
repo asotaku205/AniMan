@@ -45,7 +45,14 @@ const H = 540;
  * đồng hồ chủ là AudioContext (hình bám tiếng); chưa có tiếng thì dùng
  * đồng hồ hiệu năng. Mốc thoại dùng chung bản kế hoạch với bản xuất.
  */
-export function AnimaticPlayer({ project }: { project: AnimProject }) {
+export function AnimaticPlayer({
+  project,
+  jumpRequest,
+}: {
+  project: AnimProject;
+  /** Nhảy xem thử tới mốc này (đổi nonce để nhảy lại cùng mốc). */
+  jumpRequest?: { sec: number; nonce: number } | null;
+}) {
   const post = postSettingsOf(project);
   // Timeline phát thử: tiêu đề đầu phim + cảnh theo thời gian chiếu
   // (đã áp tốc độ từng cảnh) + credit cuối phim.
@@ -66,6 +73,13 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
   const filmRef = useRef<ReturnType<typeof createPrevizFilmRenderer> | null>(null);
   const filmSceneRef = useRef<string | null>(null);
   const filmLoadingRef = useRef<string | null>(null);
+  // Renderer nạp trước cảnh 3D kế tiếp để chuyển đoạn không khựng hình.
+  const preloadRef = useRef<{
+    renderer: ReturnType<typeof createPrevizFilmRenderer>;
+    sceneId: string;
+    scene: (typeof project.scenes)[number];
+    ready: boolean;
+  } | null>(null);
   const imagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const [imagesTick, setImagesTick] = useState(0);
   // Ảnh chụp khung cuối của cảnh trước — dùng cho chuyển cảnh phát thử.
@@ -191,6 +205,19 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
       drawSceneFrame(ctx, scene, tInScene, W, H, (url) => imagesRef.current.get(url) ?? null);
     } else {
       if (!filmRef.current) filmRef.current = createPrevizFilmRenderer(W, H);
+      // Cảnh kế tiếp đã nạp trước xong thì đổi sang, khỏi chờ nạp lại.
+      const pre = preloadRef.current;
+      if (
+        filmSceneRef.current !== scene.id &&
+        pre &&
+        pre.sceneId === scene.id &&
+        pre.ready
+      ) {
+        filmRef.current.dispose();
+        filmRef.current = pre.renderer;
+        filmSceneRef.current = scene.id;
+        preloadRef.current = null;
+      }
       const film = filmRef.current;
       if (filmSceneRef.current !== scene.id && filmLoadingRef.current !== scene.id) {
         filmLoadingRef.current = scene.id;
@@ -267,11 +294,59 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, segments, project, imagesTick]);
 
+  // Nhảy tới cảnh đang sửa: dừng ở đúng mốc bắt đầu của cảnh đó.
+  useEffect(() => {
+    if (!jumpRequest) return;
+    audioRef.current?.stop();
+    perfBaseRef.current = null;
+    setPlaying(false);
+    const clamped = Math.max(0, Math.min(jumpRequest.sec, totalSec));
+    setTimeSec(clamped);
+    drawAt(clamped);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpRequest]);
+
+  // Nạp trước cảnh 3D kế tiếp (theo đoạn đang xem).
+  const currentSegIndex = segmentAtTime(segments, timeSec)?.index ?? -1;
+  useEffect(() => {
+    if (project.kind !== "3d" || currentSegIndex < 0) {
+      preloadRef.current?.renderer.dispose();
+      preloadRef.current = null;
+      return;
+    }
+    const next = project.scenes[currentSegIndex + 1];
+    if (!next) {
+      preloadRef.current?.renderer.dispose();
+      preloadRef.current = null;
+      return;
+    }
+    if (
+      preloadRef.current?.sceneId === next.id &&
+      preloadRef.current.scene === next
+    )
+      return;
+    preloadRef.current?.renderer.dispose();
+    const renderer = createPrevizFilmRenderer(W, H);
+    const entry = { renderer, sceneId: next.id, scene: next, ready: false };
+    preloadRef.current = entry;
+    void renderer
+      .loadScene(next)
+      .then(() => {
+        if (preloadRef.current === entry) entry.ready = true;
+      })
+      .catch(() => {
+        if (preloadRef.current === entry) preloadRef.current = null;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSegIndex, project]);
+
   // Huỷ renderer 3D khi rời trang
   useEffect(() => {
     return () => {
       filmRef.current?.dispose();
       filmRef.current = null;
+      preloadRef.current?.renderer.dispose();
+      preloadRef.current = null;
     };
   }, []);
 
