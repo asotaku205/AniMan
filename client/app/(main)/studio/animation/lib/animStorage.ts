@@ -10,16 +10,19 @@
  *   theo takeId, nhạc nền theo `bgm-<projectId>`).
  * - v3 (Đợt C): thêm store `assets` — thư viện tài sản dùng chung mọi dự
  *   án (nhân vật 3D, mẫu phong cảnh, hình 2D).
+ * - v4 (Rig Pro): thêm store `poses` — thư viện dáng tự tạo của Phòng Rig.
  */
 
 import type { AnimProject } from "./animProject";
 import type { AnimAsset } from "./animAssets";
+import type { SavedPose } from "./poseLibrary";
 
 const DB_NAME = "animan_animation_db";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_PROJECTS = "projects";
 const STORE_VOICE_BLOBS = "voiceBlobs";
 const STORE_ASSETS = "assets";
+const STORE_POSES = "poses";
 
 const isBrowser =
   typeof window !== "undefined" && "indexedDB" in window;
@@ -40,6 +43,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_ASSETS)) {
         db.createObjectStore(STORE_ASSETS, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(STORE_POSES)) {
+        db.createObjectStore(STORE_POSES, { keyPath: "id" });
       }
     };
     req.onsuccess = () => {
@@ -172,6 +178,30 @@ export async function deleteAnimAsset(id: string): Promise<void> {
   if (!isBrowser) return;
   const db = await openDb();
   await request(db, STORE_ASSETS, "readwrite", (s) => s.delete(id));
+}
+
+// ── Thư viện dáng tự tạo (Rig Pro) ────────────────────────────────────────
+
+export async function listSavedPoses(): Promise<SavedPose[]> {
+  if (!isBrowser) return [];
+  const db = await openDb();
+  const all =
+    (await request<SavedPose[]>(db, STORE_POSES, "readonly", (s) =>
+      s.getAll(),
+    )) ?? [];
+  return all.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function savePoseEntry(pose: SavedPose): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_POSES, "readwrite", (s) => s.put(pose));
+}
+
+export async function deletePoseEntry(id: string): Promise<void> {
+  if (!isBrowser) return;
+  const db = await openDb();
+  await request(db, STORE_POSES, "readwrite", (s) => s.delete(id));
 }
 
 /**

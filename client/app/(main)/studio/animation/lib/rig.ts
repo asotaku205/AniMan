@@ -103,21 +103,22 @@ export function autoFitRig(heightM: number): RigJoint[] {
 /** Đoạn xương của 1 khớp: từ vị trí cha tới vị trí khớp (khớp cuối kéo dài thêm). */
 export function boneSegment(
   joints: RigJoint[],
-  name: RigBoneName,
+  name: string,
+  leafExtensionM = 0.15,
 ): { a: [number, number, number]; b: [number, number, number] } {
   const joint = joints.find((j) => j.name === name)!;
   const parent = joint.parent ? joints.find((j) => j.name === joint.parent) : null;
   if (!parent) return { a: joint.pos, b: joint.pos };
   const hasChild = joints.some((j) => j.parent === name);
   if (hasChild) return { a: parent.pos, b: joint.pos };
-  // Khớp cuối: kéo dài theo hướng cha → khớp thêm 0.15m.
+  // Khớp cuối: kéo dài theo hướng cha → khớp thêm leafExtensionM.
   const d: [number, number, number] = [
     joint.pos[0] - parent.pos[0],
     joint.pos[1] - parent.pos[1],
     joint.pos[2] - parent.pos[2],
   ];
   const len = Math.hypot(...d) || 1;
-  const ext = 0.15 / len;
+  const ext = leafExtensionM / len;
   return {
     a: parent.pos,
     b: [joint.pos[0] + d[0] * ext, joint.pos[1] + d[1] * ext, joint.pos[2] + d[2] * ext],
@@ -148,13 +149,41 @@ export interface SkinWeights {
  * Tính trọng số da: mỗi đỉnh chịu ảnh hưởng của tối đa 4 xương gần
  * nhất, trọng số tỉ lệ nghịch bình phương khoảng cách tới đoạn xương,
  * chuẩn hoá tổng = 1. Đỉnh càng gần xương nào thì xương đó kéo càng mạnh.
+ * Index xương theo đúng thứ tự joints (khớp với thứ tự xương dựng trong
+ * buildRiggedRoot) nên dùng được cho cả bộ 20 khớp cũ lẫn 54 khớp Pro.
+ * Khớp cuối là ngón tay/ngón chân thì đoạn kéo dài bằng đúng độ dài đoạn
+ * của nó (ngón ngắn, không kéo 0.15m như bàn tay).
  */
 export function computeSkinWeights(
   positions: Float32Array | number[],
   joints: RigJoint[],
   maxInfluences = 4,
 ): SkinWeights {
-  const segments = RIG_BONE_NAMES.map((name) => boneSegment(joints, name));
+  const jointByName = new Map(joints.map((j) => [j.name, j]));
+  const segments = joints.map((joint) => {
+    const hasChild = joints.some((j) => j.parent === joint.name);
+    const isTipFingerOrToe =
+      !hasChild &&
+      (joint.name.includes("Thumb") ||
+        joint.name.includes("Index") ||
+        joint.name.includes("Middle") ||
+        joint.name.includes("Ring") ||
+        joint.name.includes("Pinky") ||
+        joint.name.includes("ToeBase"));
+    let ext = 0.15;
+    if (isTipFingerOrToe && joint.parent) {
+      const parent = jointByName.get(joint.parent)!;
+      ext = Math.max(
+        0.005,
+        Math.hypot(
+          joint.pos[0] - parent.pos[0],
+          joint.pos[1] - parent.pos[1],
+          joint.pos[2] - parent.pos[2],
+        ),
+      );
+    }
+    return boneSegment(joints, joint.name, ext);
+  });
   const skinIndex: number[][] = [];
   const skinWeight: number[][] = [];
   const count = Math.floor(positions.length / 3);

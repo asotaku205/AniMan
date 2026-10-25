@@ -154,6 +154,30 @@ export function buildRiggedRoot(
 }
 
 /**
+ * Xuất root đã rig thành GLB (root đã áp mọi chỉnh sửa: vết tô, khuôn mặt,
+ * chất liệu — và phải ở tư thế gốc khi gọi).
+ */
+export async function exportRiggedRootToGlb(
+  root: THREE.Group,
+): Promise<RiggedResult> {
+  let meshCount = 0;
+  let vertexCount = 0;
+  root.traverse((obj) => {
+    if ((obj as THREE.Mesh).isMesh) {
+      meshCount += 1;
+      const pos = (obj as THREE.Mesh).geometry.getAttribute("position");
+      if (pos) vertexCount += pos.count;
+    }
+  });
+  const outScene = new THREE.Scene();
+  outScene.add(root);
+  const exporter = new GLTFExporter();
+  const buf = await exporter.parseAsync(outScene, { binary: true });
+  const dataUrl = await bufferToDataUrl(buf as ArrayBuffer);
+  return { dataUrl, meshCount, vertexCount };
+}
+
+/**
  * Xuất model đã rig thành GLB. Clip chuyển động dạng vật thể của
  * model gốc không giữ lại (clip xương cần bộ xương mới này).
  */
@@ -161,11 +185,6 @@ export async function buildRiggedGlb(
   scene: THREE.Group,
   joints: RigJoint[],
 ): Promise<RiggedResult> {
-  const { root, meshCount, vertexCount } = buildRiggedRoot(scene, joints);
-  const outScene = new THREE.Scene();
-  outScene.add(root);
-  const exporter = new GLTFExporter();
-  const buf = await exporter.parseAsync(outScene, { binary: true });
-  const dataUrl = await bufferToDataUrl(buf as ArrayBuffer);
-  return { dataUrl, meshCount, vertexCount };
+  const { root } = buildRiggedRoot(scene, joints);
+  return exportRiggedRootToGlb(root);
 }
