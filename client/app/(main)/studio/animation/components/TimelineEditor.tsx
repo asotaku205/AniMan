@@ -19,6 +19,7 @@ import {
 import type { AnimScene } from "../lib/animProject";
 import {
   applyLayerMotions,
+  catmullRomPoint,
   createSceneLayer,
   createSceneTimeline,
   EASING_OPTIONS,
@@ -36,11 +37,29 @@ import {
   type CameraKey,
   type EasingId,
   type LayerMotionKind,
+  type MotionInstance,
+  type MotionParams,
   type SceneLayer,
   type SceneTimeline,
   type Transform,
 } from "../lib/timeline";
 import { CAMERA_PRESETS, LAYER_PRESETS } from "../lib/motionPresets";
+import {
+  applyMotionPreset,
+  bakeMotionInstance,
+  defaultMotionParams,
+  motionPresetById,
+  MOTION_DIRECTION_LABEL,
+  MOTION_GROUP_LABEL,
+  MOTION_LOOP_LABEL,
+  MOTION_PRESETS,
+} from "../lib/motionAttach";
+import type { Motion2DAsset } from "../lib/animAssets";
+import {
+  deleteAnimAsset,
+  listAnimAssets,
+  saveAnimAsset,
+} from "../lib/animStorage";
 import { layerAtPoint, stageToWorld } from "../lib/stageHitTest";
 import {
   layerEffectAt,
@@ -350,6 +369,35 @@ export function TimelineEditor({
   const [drawingStroke, setDrawingStroke] = useState<{ x: number; y: number }[] | null>(null);
   const drawingRef = useRef<{ startSec: number; wallStart: number } | null>(null);
   const [selectedFxKeyId, setSelectedFxKeyId] = useState<string | null>(null);
+  // Gắn chuyển động 2D: mẫu + tham số, mẫu đã lưu, đường vẽ tay
+  const [motionPresetId, setMotionPresetId] = useState("slide-in");
+  const [motionParams, setMotionParams] = useState<MotionParams>(() =>
+    defaultMotionParams(0),
+  );
+  const [motionMsg, setMotionMsg] = useState<string | null>(null);
+  const [savedMotions, setSavedMotions] = useState<Motion2DAsset[]>([]);
+  const [savedMotionName, setSavedMotionName] = useState("");
+  const [copyFromLayerId, setCopyFromLayerId] = useState("");
+  const [pathMode, setPathMode] = useState(false);
+  const [pathDraft, setPathDraft] = useState<Array<{ x: number; y: number }> | null>(null);
+  const [selectedPathPoint, setSelectedPathPoint] = useState<number | null>(null);
+  const [pathParams, setPathParams] = useState({
+    startSec: 0,
+    durationSec: 2,
+    orientToPath: true,
+    easing: "ease-in-out" as EasingId,
+  });
+  const pathDragRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    listAnimAssets()
+      .then((all) =>
+        setSavedMotions(
+          all.filter((a): a is Motion2DAsset => a.kind === "motion2d"),
+        ),
+      )
+      .catch(() => {});
+  }, []);
 
   const stagePointOf = (e: React.PointerEvent): { x: number; y: number } | null => {
     const canvas = canvasRef.current;
@@ -372,6 +420,22 @@ export function TimelineEditor({
   const onStagePointerDown = (e: React.PointerEvent) => {
     const point = stagePointOf(e);
     if (!point) return;
+    if (pathMode) {
+      const world = stageToWorld(timeline, timeSec, point);
+      const draft = pathDraft ?? [];
+      const hitIdx = draft.findIndex(
+        (p) => Math.hypot(p.x - world.x, p.y - world.y) < 0.04,
+      );
+      if (hitIdx >= 0) {
+        setSelectedPathPoint(hitIdx);
+        pathDragRef.current = hitIdx;
+      } else {
+        setPathDraft([...draft, world]);
+        setSelectedPathPoint(draft.length);
+      }
+      canvasRef.current?.setPointerCapture(e.pointerId);
+      return;
+    }
     if (strokeMode && onStrokesChange) {
       drawingRef.current = { startSec: timeSec, wallStart: performance.now() };
       setDrawingStroke([point]);
@@ -394,6 +458,16 @@ export function TimelineEditor({
   };
 
   const onStagePointerMove = (e: React.PointerEvent) => {
+    if (pathDragRef.current !== null) {
+      const point = stagePointOf(e);
+      if (!point) return;
+      const world = stageToWorld(timeline, timeSec, point);
+      const idx = pathDragRef.current;
+      setPathDraft((prev) =>
+        prev ? prev.map((p, i) => (i === idx ? world : p)) : prev,
+      );
+      return;
+    }
     if (drawingRef.current) {
       const point = stagePointOf(e);
       if (!point) return;
@@ -419,6 +493,10 @@ export function TimelineEditor({
   };
 
   const onStagePointerUp = () => {
+    if (pathDragRef.current !== null) {
+      pathDragRef.current = null;
+      return;
+    }
     if (drawingRef.current && onStrokesChange) {
       const info = drawingRef.current;
       drawingRef.current = null;
@@ -749,6 +827,42 @@ export function TimelineEditor({
     }
     if (drawingStroke) drawStrokePath(drawingStroke, strokeColor, strokeWidth);
 
+    // Đường đi của vật đang chọn (gắn chuyển động 2D): nét đứt qua các
+    // điểm cong Catmull-Rom, điểm kiểm soát là chấm tròn (điểm đang chọn
+    // màu vàng). Khi không ở chế độ vẽ thì vẽ mờ để thấy đường đã lưu.
+    const pathToDraw =
+      pathMode && pathDraft ? pathDraft : selectedLayer?.motionPath?.points;
+    if (pathToDraw && pathToDraw.length >= 1) {
+      const camDraw = draftCamDirty ? draftCam : sampleCamera(timeline.cameraKeys, timeSec);
+      const toStage = (w: { x: number; y: number }) => ({
+        x: ((w.x - camDraw.x) * camDraw.zoom + 0.5) * STAGE_W,
+        y: ((w.y - camDraw.y) * camDraw.zoom + 0.5) * STAGE_H,
+      });
+      ctx.save();
+      if (pathToDraw.length >= 2) {
+        ctx.strokeStyle = pathMode ? "#f472b6" : "rgba(244,114,182,0.45)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        for (let i = 0; i <= 60; i++) {
+          const pt = toStage(catmullRomPoint(pathToDraw, i / 60));
+          if (i === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      pathToDraw.forEach((p, i) => {
+        const s = toStage(p);
+        ctx.fillStyle =
+          i === selectedPathPoint && pathMode ? "#fbbf24" : "#f472b6";
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
     // Phụ đề: dòng thoại đang hiệu lực, vẽ ở đáy sân khấu (màn hình-space)
     const activeLine = dialogueLineAt(scene.dialogue ?? [], timeSec);
     if (activeLine) {
@@ -766,7 +880,7 @@ export function TimelineEditor({
       ctx.restore();
     }
 
-  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue, scene.weather, scene.particles, scene.strokes, drawingStroke, strokeColor, strokeWidth, scene.durationSec]);
+  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue, scene.weather, scene.particles, scene.strokes, drawingStroke, strokeColor, strokeWidth, scene.durationSec, pathMode, pathDraft, selectedPathPoint]);
 
   // ── Thao tác keyframe ──────────────────────────────────────────────────────
   const placeLayerKey = () => {
@@ -866,6 +980,169 @@ export function TimelineEditor({
   const curve = easingCurvePoints(draftEasing)
     .map((p) => `${(p.x * 56).toFixed(1)},${(30 - Math.max(-0.3, Math.min(1.3, p.y)) * 30).toFixed(1)}`)
     .join(" ");
+
+  // ── Gắn chuyển động 2D ──────────────────────────────────────────────────
+  const motionPreset = motionPresetById(motionPresetId);
+
+  const attachMotion = () => {
+    if (!selectedLayer || !motionPreset) return;
+    const rest = sampleTransform(selectedLayer.keys, motionParams.startSec);
+    const { keys, instance } = applyMotionPreset(
+      selectedLayer.keys,
+      motionPreset,
+      motionParams,
+      rest,
+    );
+    updateLayer(selectedLayer.id, {
+      keys,
+      ...(instance
+        ? { motionInstances: [...(selectedLayer.motionInstances ?? []), instance] }
+        : {}),
+    });
+    setMotionMsg(
+      instance
+        ? `Đã gắn “${motionPreset.name}” chạy ${MOTION_LOOP_LABEL[instance.params.loop].toLowerCase()} từ ${instance.params.startSec.toFixed(1)}s.`
+        : `Đã gắn “${motionPreset.name}” thành keys thật — sửa tay từng key được.`,
+    );
+  };
+
+  const bakeInstance = (inst: MotionInstance) => {
+    if (!selectedLayer) return;
+    updateLayer(selectedLayer.id, {
+      keys: bakeMotionInstance(selectedLayer.keys, inst),
+      motionInstances: (selectedLayer.motionInstances ?? []).filter(
+        (i) => i.id !== inst.id,
+      ),
+    });
+    setMotionMsg(`Đã chuyển “${inst.name}” thành keys thật.`);
+  };
+
+  const enterPathMode = () => {
+    const existing = selectedLayer?.motionPath;
+    setPathDraft(existing ? existing.points.map((pt) => ({ ...pt })) : []);
+    if (existing) {
+      setPathParams({
+        startSec: existing.startSec,
+        durationSec: existing.durationSec,
+        orientToPath: existing.orientToPath,
+        easing: existing.easing,
+      });
+    }
+    setSelectedPathPoint(null);
+    setPathMode(true);
+  };
+
+  const commitPath = () => {
+    if (!selectedLayer) return;
+    const pts = pathDraft ?? [];
+    if (pts.length < 2) {
+      setMotionMsg("Đường cần ít nhất 2 điểm — bấm thêm điểm lên sân khấu.");
+      return;
+    }
+    updateLayer(selectedLayer.id, {
+      motionPath: {
+        id: newKeyId("path"),
+        points: pts,
+        startSec: pathParams.startSec,
+        durationSec: Math.max(0.1, pathParams.durationSec),
+        orientToPath: pathParams.orientToPath,
+        easing: pathParams.easing,
+      },
+    });
+    setPathMode(false);
+    setPathDraft(null);
+    setSelectedPathPoint(null);
+    setMotionMsg("Đã lưu đường đi cho vật.");
+  };
+
+  const refreshSavedMotions = async () => {
+    try {
+      const all = await listAnimAssets();
+      setSavedMotions(all.filter((a): a is Motion2DAsset => a.kind === "motion2d"));
+    } catch {
+      /* thư viện chưa đọc được thì để danh sách cũ */
+    }
+  };
+
+  const saveMotion = async () => {
+    if (!motionPreset) return;
+    const name = savedMotionName.trim();
+    if (!name) {
+      setMotionMsg("Nhập tên rồi mới lưu được.");
+      return;
+    }
+    await saveAnimAsset({
+      kind: "motion2d",
+      id: newKeyId("motion"),
+      name,
+      presetId: motionPreset.id,
+      params: motionParams,
+      pathPoints:
+        selectedLayer?.motionPath && selectedLayer.motionPath.points.length >= 2
+          ? selectedLayer.motionPath.points
+          : undefined,
+      createdAt: Date.now(),
+    });
+    setSavedMotionName("");
+    await refreshSavedMotions();
+    setMotionMsg(`Đã lưu chuyển động “${name}”.`);
+  };
+
+  const applySavedMotion = (m: Motion2DAsset) => {
+    if (!selectedLayer) return;
+    const preset = motionPresetById(m.presetId);
+    if (!preset) {
+      setMotionMsg("Mẫu gốc của chuyển động này không còn nữa.");
+      return;
+    }
+    const rest = sampleTransform(selectedLayer.keys, m.params.startSec);
+    const { keys, instance } = applyMotionPreset(
+      selectedLayer.keys,
+      preset,
+      m.params,
+      rest,
+    );
+    updateLayer(selectedLayer.id, {
+      keys,
+      ...(instance
+        ? { motionInstances: [...(selectedLayer.motionInstances ?? []), instance] }
+        : {}),
+      ...(m.pathPoints && m.pathPoints.length >= 2
+        ? {
+            motionPath: {
+              id: newKeyId("path"),
+              points: m.pathPoints,
+              startSec: m.params.startSec,
+              durationSec: Math.max(0.1, m.params.durationSec),
+              orientToPath: true,
+              easing: m.params.easing,
+            },
+          }
+        : {}),
+    });
+    setMotionMsg(`Đã áp chuyển động “${m.name}”.`);
+  };
+
+  const copyMotionFrom = () => {
+    if (!selectedLayer || !copyFromLayerId) return;
+    const src = timeline.layers.find((l) => l.id === copyFromLayerId);
+    if (!src) return;
+    updateLayer(selectedLayer.id, {
+      ...(src.motionInstances && src.motionInstances.length > 0
+        ? {
+            motionInstances: src.motionInstances.map((i) => ({
+              ...i,
+              id: newKeyId("minst"),
+              cycleKeys: i.cycleKeys.map((k) => ({ ...k, id: newKeyId("mkey") })),
+            })),
+          }
+        : {}),
+      ...(src.motionPath
+        ? { motionPath: { ...src.motionPath, id: newKeyId("path") } }
+        : {}),
+    });
+    setMotionMsg(`Đã sao chép chuyển động từ “${src.name}”.`);
+  };
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-3 p-3">
@@ -1311,35 +1588,355 @@ export function TimelineEditor({
                   ))}
                 </div>
               )}
-              <div className="flex items-center gap-2">
+              {/* Chuyển động gắn 1 chạm: mẫu sinh keys thật, lặp chạy theo
+                  tham số, đường vẽ tay trên sân khấu. */}
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <h4 className="text-[11px] font-semibold text-white/60">
+                  CHUYỂN ĐỘNG — GẮN 1 CHẠM
+                </h4>
                 <select
-                  id="layer-preset"
-                  aria-label="Preset chuyển động cho layer"
-                  className="flex-1 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none"
-                  defaultValue=""
+                  value={motionPresetId}
+                  onChange={(e) => setMotionPresetId(e.currentTarget.value)}
+                  aria-label="Mẫu chuyển động"
+                  className="w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none"
                 >
-                  <option value="" disabled>
-                    Áp preset chuyển động…
-                  </option>
-                  {LAYER_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
+                  {(["enter", "exit", "emphasis"] as const).map((g) => (
+                    <optgroup key={g} label={MOTION_GROUP_LABEL[g]}>
+                      {MOTION_PRESETS.filter((p) => p.group === g).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
+                {motionPreset && (
+                  <p className="text-[11px] leading-relaxed text-white/35">
+                    {motionPreset.desc}
+                  </p>
+                )}
+                {slider("Bắt đầu", motionParams.startSec, 0, duration, 0.1, (v) =>
+                  setMotionParams({ ...motionParams, startSec: v }),
+                (v) => `${v.toFixed(1)}s`)}
                 <button
-                  onClick={() => {
-                    const sel = document.getElementById("layer-preset") as HTMLSelectElement | null;
-                    const preset = LAYER_PRESETS.find((p) => p.id === sel?.value);
-                    if (preset) {
-                      updateLayer(selectedLayer.id, { keys: preset.build(duration) });
-                      setDraftDirty(false);
-                    }
-                  }}
-                  className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10"
+                  onClick={() =>
+                    setMotionParams({ ...motionParams, startSec: timeSec })
+                  }
+                  className="h-7 px-2 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
                 >
-                  Áp dụng
+                  Dùng mốc đang tua ({timeSec.toFixed(2)}s)
                 </button>
+                {slider("Thời lượng", motionParams.durationSec, 0.2, duration, 0.1, (v) =>
+                  setMotionParams({ ...motionParams, durationSec: v }),
+                (v) => `${v.toFixed(1)}s`)}
+                {motionPreset?.usesDirection && (
+                  <label className="flex items-center gap-2 text-[11px] text-white/50">
+                    <span className="w-14 shrink-0">Hướng</span>
+                    <select
+                      value={motionParams.direction}
+                      onChange={(e) =>
+                        setMotionParams({
+                          ...motionParams,
+                          direction: e.currentTarget.value as MotionParams["direction"],
+                        })
+                      }
+                      className="flex-1 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-[11px]"
+                    >
+                      {(["left", "right", "bottom"] as const).map((d) => (
+                        <option key={d} value={d}>
+                          {MOTION_DIRECTION_LABEL[d]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {motionPreset?.usesStrength &&
+                  slider("Độ mạnh", motionParams.strength, 0, 2, 0.05, (v) =>
+                    setMotionParams({ ...motionParams, strength: v }),
+                  (v) => `${Math.round(v * 100)}%`)}
+                <label className="flex items-center gap-2 text-[11px] text-white/50">
+                  <span className="w-14 shrink-0">Mềm/cứng</span>
+                  <select
+                    value={motionParams.easing}
+                    onChange={(e) =>
+                      setMotionParams({
+                        ...motionParams,
+                        easing: e.currentTarget.value as EasingId,
+                      })
+                    }
+                    className="flex-1 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-[11px]"
+                  >
+                    {EASING_OPTIONS.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 text-[11px] text-white/50">
+                  <span className="w-14 shrink-0">Lặp</span>
+                  <select
+                    value={motionParams.loop}
+                    onChange={(e) =>
+                      setMotionParams({
+                        ...motionParams,
+                        loop: e.currentTarget.value as MotionParams["loop"],
+                      })
+                    }
+                    className="flex-1 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-[11px]"
+                  >
+                    {(["once", "loop", "pingpong"] as const).map((l) => (
+                      <option key={l} value={l}>
+                        {MOTION_LOOP_LABEL[l]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  onClick={attachMotion}
+                  className="w-full h-8 rounded-lg bg-pink-500/25 border border-pink-400/40 text-[12px] font-medium hover:bg-pink-500/35"
+                >
+                  Gắn vào vật
+                </button>
+                <p className="text-[11px] leading-relaxed text-white/35">
+                  Gắn một lần sinh keys thật — sửa tay từng key được. Gắn
+                  lặp thì vật chạy theo tham số; muốn sửa tay thì bấm
+                  “Chuyển thành keys” ở dưới.
+                </p>
+                {(selectedLayer.motionInstances ?? []).length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-semibold text-white/60">
+                      ĐANG CHẠY LẶP
+                    </div>
+                    {(selectedLayer.motionInstances ?? []).map((inst) => (
+                      <div
+                        key={inst.id}
+                        className="flex items-center gap-1.5 rounded-lg bg-white/[0.03] border border-white/5 px-2 py-1.5 text-[11px] text-white/70"
+                      >
+                        <span className="flex-1 truncate">
+                          {inst.name} · {MOTION_LOOP_LABEL[inst.params.loop]} · từ{" "}
+                          {inst.params.startSec.toFixed(1)}s
+                        </span>
+                        <button
+                          onClick={() => bakeInstance(inst)}
+                          className="px-2 h-6 rounded bg-white/5 border border-white/10 hover:bg-white/10"
+                        >
+                          Chuyển thành keys
+                        </button>
+                        <button
+                          onClick={() =>
+                            updateLayer(selectedLayer.id, {
+                              motionInstances: (selectedLayer.motionInstances ?? []).filter(
+                                (i) => i.id !== inst.id,
+                              ),
+                            })
+                          }
+                          aria-label="Xoá chuyển động lặp"
+                          className="text-white/40 hover:text-rose-400"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {motionMsg && (
+                  <p className="text-[11px] text-emerald-300/80">{motionMsg}</p>
+                )}
+
+                <div className="pt-1 space-y-2">
+                  <h5 className="text-[11px] font-semibold text-white/60">
+                    ĐƯỜNG ĐI VẼ TAY
+                  </h5>
+                  {slider("Bắt đầu", pathParams.startSec, 0, duration, 0.1, (v) =>
+                    setPathParams({ ...pathParams, startSec: v }),
+                  (v) => `${v.toFixed(1)}s`)}
+                  {slider("Thời lượng", pathParams.durationSec, 0.2, duration, 0.1, (v) =>
+                    setPathParams({ ...pathParams, durationSec: v }),
+                  (v) => `${v.toFixed(1)}s`)}
+                  <label className="flex items-center gap-2 text-[11px] text-white/50">
+                    <input
+                      type="checkbox"
+                      checked={pathParams.orientToPath}
+                      onChange={(e) =>
+                        setPathParams({ ...pathParams, orientToPath: e.currentTarget.checked })
+                      }
+                      className="accent-pink-500"
+                    />
+                    Xoay vật theo hướng đường đi
+                  </label>
+                  <label className="flex items-center gap-2 text-[11px] text-white/50">
+                    <span className="w-14 shrink-0">Mềm/cứng</span>
+                    <select
+                      value={pathParams.easing}
+                      onChange={(e) =>
+                        setPathParams({
+                          ...pathParams,
+                          easing: e.currentTarget.value as EasingId,
+                        })
+                      }
+                      className="flex-1 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-[11px]"
+                    >
+                      {EASING_OPTIONS.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {!pathMode ? (
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={enterPathMode}
+                        className="flex-1 h-8 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10"
+                      >
+                        {selectedLayer.motionPath ? "Sửa đường" : "Vẽ đường đi"}
+                      </button>
+                      {selectedLayer.motionPath && (
+                        <button
+                          onClick={() => {
+                            updateLayer(selectedLayer.id, { motionPath: null });
+                            setMotionMsg("Đã xoá đường đi.");
+                          }}
+                          className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] text-rose-300 hover:bg-white/10"
+                        >
+                          Xoá đường
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] leading-relaxed text-white/35">
+                        Bấm lên sân khấu để thêm điểm, kéo điểm để dời
+                        (điểm đang chọn màu vàng). Đang có{" "}
+                        {(pathDraft ?? []).length} điểm.
+                      </p>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={commitPath}
+                          className="flex-1 h-8 rounded-lg bg-pink-500/25 border border-pink-400/40 text-[12px] font-medium hover:bg-pink-500/35"
+                        >
+                          Xong — lưu đường
+                        </button>
+                        <button
+                          onClick={() => {
+                            setPathMode(false);
+                            setPathDraft(null);
+                            setSelectedPathPoint(null);
+                          }}
+                          className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10"
+                        >
+                          Huỷ
+                        </button>
+                        <button
+                          disabled={selectedPathPoint === null}
+                          onClick={() => {
+                            if (selectedPathPoint === null) return;
+                            setPathDraft(
+                              (pathDraft ?? []).filter((_, i) => i !== selectedPathPoint),
+                            );
+                            setSelectedPathPoint(null);
+                          }}
+                          className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10 disabled:opacity-40"
+                        >
+                          Xoá điểm
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {selectedLayer.motionPath && !pathMode && (
+                    <p className="text-[11px] text-white/35">
+                      Đã có đường {selectedLayer.motionPath.points.length} điểm, từ{" "}
+                      {selectedLayer.motionPath.startSec.toFixed(1)}s trong{" "}
+                      {selectedLayer.motionPath.durationSec.toFixed(1)}s.
+                    </p>
+                  )}
+                </div>
+
+                <div className="pt-1 space-y-2">
+                  <h5 className="text-[11px] font-semibold text-white/60">
+                    ĐÃ LƯU — DÙNG LẠI CHO VẬT KHÁC
+                  </h5>
+                  <div className="flex gap-1.5">
+                    <input
+                      value={savedMotionName}
+                      onChange={(e) => setSavedMotionName(e.currentTarget.value)}
+                      placeholder="Tên chuyển động riêng…"
+                      className="flex-1 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none placeholder:text-white/25"
+                    />
+                    <button
+                      onClick={saveMotion}
+                      className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10"
+                    >
+                      Lưu mẫu này
+                    </button>
+                  </div>
+                  {savedMotions.length === 0 ? (
+                    <p className="text-[11px] text-white/35">
+                      Chưa có mẫu nào — chỉnh mẫu trên rồi lưu tên riêng để
+                      dùng lại cho vật khác, dự án khác.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {savedMotions.map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-center gap-1.5 rounded-lg bg-white/[0.03] border border-white/5 px-2 py-1.5 text-[11px] text-white/70"
+                        >
+                          <span className="flex-1 truncate">{m.name}</span>
+                          <button
+                            onClick={() => applySavedMotion(m)}
+                            className="px-2 h-6 rounded bg-white/5 border border-white/10 hover:bg-white/10"
+                          >
+                            Áp
+                          </button>
+                          <button
+                            onClick={async () => {
+                              await deleteAnimAsset(m.id);
+                              await refreshSavedMotions();
+                            }}
+                            aria-label="Xoá mẫu đã lưu"
+                            className="text-white/40 hover:text-rose-400"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-1 space-y-2">
+                  <h5 className="text-[11px] font-semibold text-white/60">
+                    SAO CHÉP TỪ VẬT KHÁC
+                  </h5>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={copyFromLayerId}
+                      onChange={(e) => setCopyFromLayerId(e.currentTarget.value)}
+                      aria-label="Vật nguồn để sao chép chuyển động"
+                      className="flex-1 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] outline-none"
+                    >
+                      <option value="" disabled>
+                        Chọn vật trong cảnh…
+                      </option>
+                      {timeline.layers
+                        .filter((l) => l.id !== selectedLayer.id)
+                        .map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      onClick={copyMotionFrom}
+                      disabled={!copyFromLayerId}
+                      className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10 disabled:opacity-40"
+                    >
+                      Sao chép
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Chuyển động tham số */}

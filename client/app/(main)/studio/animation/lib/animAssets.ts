@@ -76,6 +76,20 @@ export interface Character2DAsset {
   createdAt: number;
 }
 
+/** Chuyển động 2D người dùng lưu tên (gắn chuyển động 2D): mẫu +
+ * tham số, kèm điểm đường vẽ nếu có — áp cho vật khác/dự án khác thì
+ * dựng lại keys từ tư thế nghỉ của vật đó, không chép cứng tư thế cũ. */
+export interface Motion2DAsset {
+  kind: "motion2d";
+  id: string;
+  name: string;
+  presetId: string;
+  params: import("./timeline").MotionParams;
+  /** Điểm đường vẽ kèm theo (nếu có) — áp cùng tham số thời gian. */
+  pathPoints?: Array<{ x: number; y: number }>;
+  createdAt: number;
+}
+
 /** Hiệu ứng hạt 3D người dùng tự dựng (Phase 5): công thức lưu
  * riêng, dùng chung cho mọi cảnh. */
 export interface EffectAsset {
@@ -92,7 +106,8 @@ export type AnimAsset =
   | ImageAsset
   | Model3DAsset
   | Character2DAsset
-  | EffectAsset;
+  | EffectAsset
+  | Motion2DAsset;
 
 let assetCounter = 0;
 export function newAssetId(prefix: string): string {

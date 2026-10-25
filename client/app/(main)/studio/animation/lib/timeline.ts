@@ -8,6 +8,11 @@
  * - Chuyển động tham số (`applyLayerMotions`): các chuyển động nhỏ kiểu
  *   nhân vật (thở, lay, nhấp nhô) cộng dồn lên transform theo tham số
  *   cường độ/tốc độ/pha — người dùng tinh chỉnh bằng slider, không cần AI.
+ * - Chuyển động lặp (`MotionInstance`) + đường đi vẽ tay (`MotionPath`):
+ *   đánh giá SAU keyframe + chuyển động tham số trong sampleLayerTransform,
+ *   nên xem thử, xuất phim và thumbnail dùng chung một kết quả. Instance
+ *   lặp chiếm quyền layer từ thời điểm bắt đầu của nó; đường đi chỉ ghi
+ *   đè vị trí (và xoay khi orientToPath) trong đoạn thời gian của nó.
  * - Camera là một track keyframe riêng (pan/zoom), độc lập với layer.
  */
 
@@ -252,6 +257,139 @@ export function applyLayerMotions(
   return out;
 }
 
+// ── Chuyển động gắn thêm: lặp + đường đi ────────────────────────────────
+
+export type MotionLoop = "once" | "loop" | "pingpong";
+export type MotionDirection = "left" | "right" | "bottom";
+
+export interface MotionParams {
+  startSec: number;
+  durationSec: number;
+  direction: MotionDirection;
+  strength: number;
+  easing: EasingId;
+  loop: MotionLoop;
+}
+
+/** Một mẫu chuyển động đang chạy lặp trên layer (loop/pingpong). */
+export interface MotionInstance {
+  id: string;
+  presetId: string;
+  name: string;
+  params: MotionParams;
+  /** Keys của MỘT chu kỳ, thời gian TƯƠNG ĐỐI 0..durationSec. */
+  cycleKeys: TransformKey[];
+}
+
+/** Đường đi vẽ tay gắn trên layer (tọa độ thế giới, normalized 0..1). */
+export interface MotionPath {
+  id: string;
+  points: Array<{ x: number; y: number }>;
+  startSec: number;
+  durationSec: number;
+  orientToPath: boolean;
+  easing: EasingId;
+}
+
+/**
+ * Thay các key nằm trong đoạn [startSec, endSec] bằng keys mới sinh —
+ * áp mẫu không để 2 key cùng thời điểm gây nội suy giật, key ngoài đoạn
+ * giữ nguyên. Dung sai 1e-6 như upsertTransformKey.
+ */
+export function replaceKeysInRange(
+  keys: readonly TransformKey[],
+  startSec: number,
+  endSec: number,
+  generated: readonly TransformKey[],
+): TransformKey[] {
+  let out = keys.filter(
+    (k) => k.timeSec < startSec - 1e-6 || k.timeSec > endSec + 1e-6,
+  );
+  for (const g of generated) out = upsertTransformKey(out, g);
+  return sortKeys(out);
+}
+
+/**
+ * Đánh giá instance lặp tại t: trước startSec → null (chưa chiếm quyền);
+ * loop → lặp chu kỳ, pingpong → đi rồi về trong chu kỳ kép 2×duration.
+ * Instance "once" không tồn tại ở runtime (đã bake thành keys) nhưng nếu
+ * có thì kẹp ở cuối chu kỳ thay vì lặp.
+ */
+export function sampleMotionInstance(
+  inst: MotionInstance,
+  t: number,
+): Transform | null {
+  const dur = Math.max(0.05, inst.params.durationSec);
+  const local0 = t - inst.params.startSec;
+  if (local0 < 0) return null;
+  let local: number;
+  if (inst.params.loop === "loop") {
+    local = local0 % dur;
+  } else if (inst.params.loop === "pingpong") {
+    const period = dur * 2;
+    const m = local0 % period;
+    local = m <= dur ? m : period - m;
+  } else {
+    local = Math.min(local0, dur);
+  }
+  return sampleTransform(inst.cycleKeys, local);
+}
+
+/** Điểm trên đường cong Catmull-Rom đều đi qua các điểm user bấm. */
+export function catmullRomPoint(
+  points: readonly { x: number; y: number }[],
+  u: number,
+): { x: number; y: number } {
+  if (points.length === 0) return { x: 0.5, y: 0.5 };
+  if (points.length === 1) return { ...points[0] };
+  const clamped = clamp01(u);
+  const segs = points.length - 1;
+  const f = clamped * segs;
+  const i = Math.min(Math.floor(f), segs - 1);
+  const local = f - i;
+  const p0 = points[Math.max(0, i - 1)];
+  const p1 = points[i];
+  const p2 = points[i + 1];
+  const p3 = points[Math.min(points.length - 1, i + 2)];
+  const t2 = local * local;
+  const t3 = t2 * local;
+  const blend = (a: number, b: number, c: number, d: number) =>
+    0.5 *
+    (2 * b +
+      (-a + c) * local +
+      (2 * a - 5 * b + 4 * c - d) * t2 +
+      (-a + 3 * b - 3 * c + d) * t3);
+  return { x: blend(p0.x, p1.x, p2.x, p3.x), y: blend(p0.y, p1.y, p2.y, p3.y) };
+}
+
+/** Góc tiếp tuyến của đường tại u (độ, hệ trục màn hình: y hướng xuống,
+ *  khớp chiều xoay dương của ctx.rotate). */
+export function catmullRomAngle(
+  points: readonly { x: number; y: number }[],
+  u: number,
+): number {
+  const e = 0.01;
+  const a = catmullRomPoint(points, Math.max(0, u - e));
+  const b = catmullRomPoint(points, Math.min(1, u + e));
+  return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+}
+
+/** Vị trí (+ góc xoay nếu orientToPath) trên đường tại t; ngoài đoạn → null. */
+export function sampleMotionPath(
+  path: MotionPath,
+  t: number,
+): { x: number; y: number; rotation: number | null } | null {
+  const dur = Math.max(0.05, path.durationSec);
+  if (t < path.startSec || t > path.startSec + dur) return null;
+  const progress = EASING_FNS[path.easing]((t - path.startSec) / dur);
+  const pt = catmullRomPoint(path.points, progress);
+  return {
+    x: pt.x,
+    y: pt.y,
+    rotation: path.orientToPath ? catmullRomAngle(path.points, progress) : null,
+  };
+}
+
 // ── Layer & timeline của một cảnh ────────────────────────────────────────────
 
 export interface SceneLayer {
@@ -264,6 +402,10 @@ export interface SceneLayer {
   visible: boolean;
   keys: TransformKey[];
   motions: LayerMotion[];
+  /** Mẫu chuyển động đang chạy lặp (loop/pingpong) — xem sampleMotionInstance. */
+  motionInstances?: MotionInstance[];
+  /** Đường đi vẽ tay — xem sampleMotionPath. */
+  motionPath?: MotionPath | null;
   /** Hiệu ứng của layer (S2) — xem lib/layerEffects.ts. */
   effects?: Partial<import("./layerEffects").LayerEffects>;
   /** Mốc hiệu ứng theo thời gian (R3) — khi có, các giá trị rung/phát
@@ -292,7 +434,33 @@ export function createSceneTimeline(): SceneTimeline {
   return { layers: [createSceneLayer("Lớp 1", "#3b2d5c")], cameraKeys: [] };
 }
 
-/** Transform hiệu dụng của layer tại t = keyframe nội suy + chuyển động tham số. */
+/**
+ * Transform hiệu dụng của layer tại t, theo thứ tự: keyframe nội suy →
+ * instance lặp chiếm quyền (nếu đang hoạt động) → chuyển động tham số →
+ * đường đi ghi đè vị trí/xoay (nếu trong đoạn của nó). Thứ tự này giữ
+ * nguyên hành vi cũ khi layer không có instance/đường.
+ */
 export function sampleLayerTransform(layer: SceneLayer, t: number): Transform {
-  return applyLayerMotions(sampleTransform(layer.keys, t), layer.motions, t);
+  let base = sampleTransform(layer.keys, t);
+  const instances = layer.motionInstances ?? [];
+  for (let i = instances.length - 1; i >= 0; i--) {
+    const s = sampleMotionInstance(instances[i], t);
+    if (s) {
+      base = s;
+      break;
+    }
+  }
+  let tr = applyLayerMotions(base, layer.motions, t);
+  if (layer.motionPath) {
+    const p = sampleMotionPath(layer.motionPath, t);
+    if (p) {
+      tr = {
+        ...tr,
+        x: p.x,
+        y: p.y,
+        ...(p.rotation !== null ? { rotation: p.rotation } : {}),
+      };
+    }
+  }
+  return tr;
 }
