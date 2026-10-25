@@ -620,10 +620,15 @@ export function DioramaWorkspace() {
                 const mEl = Math.sin(mAz) * 0.9 + 0.08;
                 dir = [Math.cos(mAz) * Math.cos(mEl), Math.sin(mEl), Math.sin(mAz) * Math.cos(mEl)];
               }
-              const camera: [number, number, number] = [-dir[0] * 140, 16, -dir[2] * 140];
+              // Nhắm THẲNG VÀO thiên thể: đích = vị trí mặt trời/mặt trăng
+              // (dir * 260, đúng chỗ canvas vẽ nó), camera lùi 100m dọc tia
+              // đó. Bản cũ đặt camera lệch khỏi tia nắng (y = 16, ngang
+              // -dir * 140) nên tia nhìn song song mà lệch ~22° — mặt trời
+              // chỉ ló ở mép dưới khung hình, màn lùn là mất hẳn.
+              const target: [number, number, number] = [dir[0] * 260, dir[1] * 260, dir[2] * 260];
               setFlyTo({
-                position: camera,
-                target: [camera[0] + dir[0] * 200, camera[1] + dir[1] * 200, camera[2] + dir[2] * 200],
+                position: [dir[0] * 160, dir[1] * 160, dir[2] * 160],
+                target,
                 nonce: Date.now(),
                 sky: true,
               });
