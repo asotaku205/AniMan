@@ -2668,7 +2668,9 @@ export function DioramaWorkspace() {
         ) : (
           center
         )}
-        {right}
+        {/* Thanh hồ sơ vật chỉ hiện khi đang chọn vật, còn lại
+            nhường trọn chỗ cho sa bàn (bấm ra đất trống là ẩn). */}
+        {selected ? right : null}
       </div>
       {editingModel && (
         <div className="fixed inset-0 z-[70] bg-black/70 grid place-items-center p-4 overflow-y-auto">
