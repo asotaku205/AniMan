@@ -4,9 +4,9 @@
  * tô vùng ảnh hưởng của xương, dáng tự tạo, khuôn mặt, chất liệu.
  *
  * Luồng cũ giữ nguyên: nạp model → tự căn xương mẫu theo chiều cao →
- * người dùng chỉnh khớp (ô số X/Y/Z) → thử dáng mẫu → lưu thành model
- * đã rig (.glb kèm xương) vào kho tài sản. Model đã có xương thì báo
- * và dừng.
+ * người dùng chỉnh khớp (kéo quả cầu trong khung xem trước, ô số chỉ
+ * để tinh chỉnh) → thử dáng mẫu → lưu thành model đã rig (.glb kèm
+ * xương) vào kho tài sản. Model đã có xương thì báo và dừng.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -48,6 +48,23 @@ import {
 } from "../lib/rigCustom";
 import { applyBrushStroke, normalizeWeights, type BrushMode } from "../lib/weightPaint";
 import { mirrorPose, newPoseId, type SavedPose } from "../lib/poseLibrary";
+import {
+  applySingleJointEdit,
+  descendantsOf,
+  mirrorSubtreeEdit,
+  translateSubtree,
+} from "../lib/jointEdit";
+import {
+  applyFingerPoseToJoints,
+  FINGER_NAMES,
+  FINGER_SIDES,
+  fingerKey,
+  getFingerBase,
+  parseFingerJoint,
+  type FingerBase,
+  type FingerName,
+  type FingerSide,
+} from "../lib/fingerPose";
 import type { EulerRad } from "../lib/retarget";
 import { inspectGlbDataUrl } from "../lib/modelInspect";
 import { newAssetId, type Model3DAsset } from "../lib/animAssets";
@@ -74,6 +91,50 @@ const FINGER_LABELS: Record<string, string> = {
   Pinky: "Ngón út",
 };
 const FINGER_DOTS = ["Đốt gốc", "Đốt giữa", "Đốt ngọn"];
+
+type ToolMode = "joints" | "ik" | "paint";
+const TOOL_MODES: Array<{ id: ToolMode; label: string }> = [
+  { id: "joints", label: "Chỉnh khớp" },
+  { id: "ik", label: "Tay chân với tới" },
+  { id: "paint", label: "Tô vùng ảnh hưởng" },
+];
+
+const CORE_LABELS: Record<string, string> = {
+  Hips: "Hông",
+  Spine: "Cột sống dưới",
+  Spine1: "Cột sống giữa",
+  Spine2: "Cột sống trên",
+  Neck: "Cổ",
+  Head: "Đầu",
+  LeftShoulder: "Vai trái",
+  LeftArm: "Cánh tay trái",
+  LeftForeArm: "Cẳng tay trái",
+  LeftHand: "Bàn tay trái",
+  RightShoulder: "Vai phải",
+  RightArm: "Cánh tay phải",
+  RightForeArm: "Cẳng tay phải",
+  RightHand: "Bàn tay phải",
+  LeftUpLeg: "Đùi trái",
+  LeftLeg: "Cẳng chân trái",
+  LeftFoot: "Bàn chân trái",
+  RightUpLeg: "Đùi phải",
+  RightLeg: "Cẳng chân phải",
+  RightFoot: "Bàn chân phải",
+  LeftToeBase: "Ngón chân trái",
+  RightToeBase: "Ngón chân phải",
+};
+
+/** Tên hiển thị cho khớp (tiếng Việt, khớp ngón kèm đốt). */
+function jointLabel(name: string): string {
+  if (CORE_LABELS[name]) return CORE_LABELS[name];
+  const parsed = parseFingerJoint(name);
+  if (parsed) {
+    const side = parsed.side === "Left" ? "trái" : "phải";
+    const dot = Number(name.slice(-1));
+    return `Ngón ${(FINGER_LABELS[parsed.finger] ?? parsed.finger).toLowerCase()} ${side} — ${FINGER_DOTS[dot - 1] ?? ""}`;
+  }
+  return name;
+}
 
 type IkLimbId = "armLeft" | "armRight" | "legLeft" | "legRight";
 const IK_LIMB_DEFS: Array<{
@@ -146,6 +207,27 @@ export function RigStudioModal({
   const [savedPoses, setSavedPoses] = useState<SavedPose[]>([]);
   const [poseName, setPoseName] = useState("");
   const [clipboardPose, setClipboardPose] = useState<Record<string, EulerRad> | null>(null);
+  // Công cụ xem trước + kéo khớp (Rig UX).
+  const [toolMode, setToolMode] = useState<ToolMode>("joints");
+  const [mirrorOn, setMirrorOn] = useState(true);
+  const [selectedJoint, setSelectedJoint] = useState<string | null>(null);
+  const [fingerPose, setFingerPose] = useState<Record<string, { curl: number; spread: number }>>({});
+  const [handPose, setHandPose] = useState<Record<FingerSide, { curl: number; spread: number }>>({
+    Left: { curl: 0, spread: 0 },
+    Right: { curl: 0, spread: 0 },
+  });
+  const [liveDragPos, setLiveDragPos] = useState<[number, number, number] | null>(null);
+  const toolModeRef = useRef(toolMode);
+  toolModeRef.current = toolMode;
+  const mirrorRef = useRef(mirrorOn);
+  mirrorRef.current = mirrorOn;
+  const selectedJointRef = useRef<string | null>(null);
+  selectedJointRef.current = selectedJoint;
+  const jointSpheresRef = useRef(new Map<string, THREE.Mesh>());
+  const jointGroupRef = useRef<THREE.Group | null>(null);
+  const ikGroupRef = useRef<THREE.Group | null>(null);
+  const fingerBaseRef = useRef(new Map<string, FingerBase>());
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
 
   // Trạng thái tương tác (cọ/kéo) đọc trong handler của khung xem trước.
   const interactRef = useRef({ paintBone, paintRadius, paintStrength, paintMode, joints });
@@ -169,11 +251,26 @@ export function RigStudioModal({
     setMaterialDefaults([]);
     paintRef.current = new Map();
     liveRef.current = null;
+    setToolMode("joints");
+    setSelectedJoint(null);
+    setLiveDragPos(null);
     loadModelForRig(asset.dataUrl)
       .then((m) => {
         if (cancelled) return;
         setLoaded(m);
-        if (!m.hasSkeleton) setJoints(autoFitRigPro(m.heightM));
+        if (!m.hasSkeleton) {
+          const fitted = autoFitRigPro(m.heightM);
+          setJoints(fitted);
+          setFingerPose({});
+          setHandPose({ Left: { curl: 0, spread: 0 }, Right: { curl: 0, spread: 0 } });
+          fingerBaseRef.current = new Map();
+          for (const side of FINGER_SIDES) {
+            for (const finger of FINGER_NAMES) {
+              const base = getFingerBase(fitted, side, finger);
+              if (base) fingerBaseRef.current.set(fingerKey(side, finger), base);
+            }
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) setError("Không nạp được model này để rig — kiểm tra lại file .glb.");
@@ -188,6 +285,35 @@ export function RigStudioModal({
       .then(setSavedPoses)
       .catch(() => setSavedPoses([]));
   }, []);
+
+  /** Tô sáng quả cầu khớp đang chọn (vàng, to hơn), còn lại tím nhạt. */
+  const applyJointHighlight = () => {
+    const selected = selectedJointRef.current;
+    jointSpheresRef.current.forEach((mesh, name) => {
+      const mat = mesh.material as THREE.MeshBasicMaterial;
+      if (name === selected) {
+        mat.color.set(0xfacc15);
+        mesh.scale.setScalar(1.6);
+      } else {
+        mat.color.set(0xd8b4fe);
+        mesh.scale.setScalar(1);
+      }
+    });
+  };
+
+  // Ẩn/hiện handle theo công cụ (không rebuild khung xem trước).
+  useEffect(() => {
+    if (jointGroupRef.current) jointGroupRef.current.visible = toolMode === "joints";
+    if (ikGroupRef.current) ikGroupRef.current.visible = toolMode === "ik";
+  }, [toolMode]);
+
+  // Chọn khớp từ khung 3D → sáng quả cầu + cuộn tới dòng nhập số.
+  useEffect(() => {
+    applyJointHighlight();
+    if (selectedJoint) {
+      rowRefs.current.get(selectedJoint)?.scrollIntoView({ block: "nearest" });
+    }
+  }, [selectedJoint]);
 
   // Xem trước 3D: model đã gắn xương + khung xương, dáng thử, mục tiêu IK,
   // vết tô, khuôn mặt, chất liệu.
@@ -221,7 +347,10 @@ export function RigStudioModal({
     let root: THREE.Group | null = null;
     let built: RiggedRoot | null = null;
     let rest: RestSnapshot | null = null;
+    let jointGroup: THREE.Group | null = null;
+    let ikGroup: THREE.Group | null = null;
     const spheres: THREE.Mesh[] = [];
+    const jointMeshes: THREE.Mesh[] = [];
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     const setPointer = (e: PointerEvent) => {
@@ -256,6 +385,35 @@ export function RigStudioModal({
       scene.add(root);
       const helper = new THREE.SkeletonHelper(built.boneByName.get("Hips")!);
       scene.add(helper);
+      // Quả cầu khớp kéo được (đủ 52 khớp), đặt đúng vị trí thế giới
+      // hiện tại của xương (đã áp dáng thử/IK).
+      jointGroup = new THREE.Group();
+      const jointMap = new Map<string, THREE.Mesh>();
+      root.updateMatrixWorld(true);
+      for (const joint of joints) {
+        const bone = built.boneByName.get(joint.name);
+        if (!bone) continue;
+        const small = parseFingerJoint(joint.name) || joint.name.includes("ToeBase");
+        const r = small ? Math.max(0.008, H * 0.012) : Math.max(0.02, H * 0.02);
+        const mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(r, 12, 10),
+          new THREE.MeshBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.95 }),
+        );
+        mesh.position.copy(bone.getWorldPosition(new THREE.Vector3()));
+        mesh.userData.jointName = joint.name;
+        jointGroup.add(mesh);
+        jointMeshes.push(mesh);
+        jointMap.set(joint.name, mesh);
+      }
+      scene.add(jointGroup);
+      jointSpheresRef.current = jointMap;
+      jointGroupRef.current = jointGroup;
+      ikGroup = new THREE.Group();
+      scene.add(ikGroup);
+      ikGroupRef.current = ikGroup;
+      jointGroup.visible = toolModeRef.current === "joints";
+      ikGroup.visible = toolModeRef.current === "ik";
+      applyJointHighlight();
       for (const def of IK_LIMB_DEFS) {
         if (!ikEnabled[def.id]) continue;
         const endRest = rest.positions.get(def.chain.end);
@@ -272,7 +430,7 @@ export function RigStudioModal({
         );
         sphere.position.set(t[0], t[1], t[2]);
         sphere.userData.limbId = def.id;
-        scene.add(sphere);
+        ikGroup.add(sphere);
         spheres.push(sphere);
       }
       setMorphList(collectMorphs(root));
@@ -289,6 +447,16 @@ export function RigStudioModal({
     type DragState =
       | { kind: "ik"; def: (typeof IK_LIMB_DEFS)[number]; plane: THREE.Plane }
       | { kind: "paint"; mesh: THREE.SkinnedMesh }
+      | {
+          kind: "joint";
+          name: string;
+          bone: THREE.Bone;
+          sphere: THREE.Mesh;
+          plane: THREE.Plane;
+          parentBind: THREE.Matrix4;
+          parentCurrentInv: THREE.Matrix4;
+          bindOld: [number, number, number];
+        }
       | null;
     let drag: DragState = null;
 
@@ -335,24 +503,69 @@ export function RigStudioModal({
     const onPointerDown = (e: PointerEvent) => {
       if (!built || !rest || !root) return;
       setPointer(e);
-      const sphereHits = raycaster.intersectObjects(spheres, false);
-      if (sphereHits.length > 0) {
-        const sphere = sphereHits[0].object as THREE.Mesh;
-        const def = IK_LIMB_DEFS.find((d) => d.id === sphere.userData.limbId)!;
-        const target = sphere.position.clone();
-        let plane: THREE.Plane;
-        if (ikLockGround[def.id]) {
-          plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -target.y);
-        } else {
-          const normal = camera.getWorldDirection(new THREE.Vector3()).negate();
-          plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, target);
+      const mode = toolModeRef.current;
+      if (mode === "joints") {
+        const hits = raycaster.intersectObjects(jointMeshes, false);
+        if (hits.length === 0) return;
+        const sphere = hits[0].object as THREE.Mesh;
+        const name = sphere.userData.jointName as string;
+        const bone = built.boneByName.get(name);
+        if (!bone) return;
+        setSelectedJoint(name);
+        // Ma trận bind của cha (để đổi điểm kéo về tọa độ khớp gốc) và
+        // nghịch đảo ma trận thế giới hiện tại của cha (để đặt xương).
+        const parent = bone.parent as THREE.Bone | null;
+        const parentIsBone = !!(parent && (parent as THREE.Bone).isBone);
+        const parentBind = new THREE.Matrix4();
+        if (parentIsBone) {
+          const pp = rest.positions.get(parent!.name);
+          const pq = rest.quats.get(parent!.name);
+          if (pp && pq) parentBind.compose(pp, pq, new THREE.Vector3(1, 1, 1));
         }
-        drag = { kind: "ik", def, plane };
+        const parentCurrentInv = new THREE.Matrix4();
+        if (parentIsBone) {
+          parent!.updateWorldMatrix(true, false);
+          parentCurrentInv.copy(parent!.matrixWorld).invert();
+        }
+        const joint = joints.find((j) => j.name === name);
+        const target = sphere.position.clone();
+        const normal = camera.getWorldDirection(new THREE.Vector3()).negate();
+        const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, target);
+        drag = {
+          kind: "joint",
+          name,
+          bone,
+          sphere,
+          plane,
+          parentBind,
+          parentCurrentInv,
+          bindOld: joint
+            ? [...joint.pos] as [number, number, number]
+            : [target.x, target.y, target.z],
+        };
         controls.enabled = false;
         return;
       }
+      if (mode === "ik") {
+        const sphereHits = raycaster.intersectObjects(spheres, false);
+        if (sphereHits.length > 0) {
+          const sphere = sphereHits[0].object as THREE.Mesh;
+          const def = IK_LIMB_DEFS.find((d) => d.id === sphere.userData.limbId)!;
+          const target = sphere.position.clone();
+          let plane: THREE.Plane;
+          if (ikLockGround[def.id]) {
+            plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -target.y);
+          } else {
+            const normal = camera.getWorldDirection(new THREE.Vector3()).negate();
+            plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, target);
+          }
+          drag = { kind: "ik", def, plane };
+          controls.enabled = false;
+          return;
+        }
+      }
       const st = interactRef.current;
-      if (st.paintBone) {
+      if (mode === "paint" && st.paintBone) {
         const meshes: THREE.SkinnedMesh[] = [];
         root.traverse((obj) => {
           if ((obj as THREE.SkinnedMesh).isSkinnedMesh) {
@@ -371,6 +584,20 @@ export function RigStudioModal({
       const current = drag;
       if (!current || !built || !rest || !root) return;
       setPointer(e);
+      if (current.kind === "joint") {
+        const point = new THREE.Vector3();
+        if (!raycaster.ray.intersectPlane(current.plane, point)) return;
+        const local = point.clone().applyMatrix4(current.parentCurrentInv);
+        current.bone.position.copy(local);
+        root.updateMatrixWorld(true);
+        current.sphere.position.copy(
+          current.bone.getWorldPosition(new THREE.Vector3()),
+        );
+        const est = local.clone().applyMatrix4(current.parentBind);
+        setLiveDragPos([est.x, est.y, est.z]);
+        render();
+        return;
+      }
       if (current.kind === "ik") {
         const point = new THREE.Vector3();
         if (!raycaster.ray.intersectPlane(current.plane, point)) return;
@@ -392,6 +619,33 @@ export function RigStudioModal({
     const onPointerUp = () => {
       const current = drag;
       if (!current) return;
+      if (current.kind === "joint") {
+        const local = current.bone.position.clone();
+        const bNew = local.applyMatrix4(current.parentBind);
+        const delta: [number, number, number] = [
+          bNew.x - current.bindOld[0],
+          bNew.y - current.bindOld[1],
+          bNew.z - current.bindOld[2],
+        ];
+        if (Math.hypot(...delta) > 1e-9) {
+          const moved = translateSubtree(joints, current.name, delta);
+          let next = moved;
+          if (mirrorRef.current) {
+            const sub = [current.name, ...descendantsOf(joints, current.name)];
+            const updated = new Map(
+              moved
+                .filter((j) => sub.includes(j.name))
+                .map((j) => [j.name, j.pos] as [string, [number, number, number]]),
+            );
+            next = mirrorSubtreeEdit(moved, sub, updated);
+          }
+          applyJointStateUpdate(joints, next);
+        }
+        setLiveDragPos(null);
+        drag = null;
+        controls.enabled = true;
+        return;
+      }
       if (current.kind === "ik") {
         const sphere = spheres.find((sp) => sp.userData.limbId === current.def.id);
         if (sphere) {
@@ -412,6 +666,14 @@ export function RigStudioModal({
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       controls.dispose();
+      for (const g of [jointGroup, ikGroup]) {
+        g?.traverse((obj) => {
+          (obj as THREE.Mesh).geometry?.dispose?.();
+        });
+      }
+      jointGroupRef.current = null;
+      ikGroupRef.current = null;
+      jointSpheresRef.current = new Map();
       if (root) {
         root.traverse((obj) => {
           (obj as THREE.Mesh).geometry?.dispose?.();
@@ -424,15 +686,115 @@ export function RigStudioModal({
     };
   }, [loaded, joints, poseId, libraryPose, ikEnabled, ikTargets, ikLockGround, morphValues, materialEdits]);
 
+  /**
+   * Nhận joints mới sau một lần sửa tay (kéo chuột / ô số): ngón nào bị
+   * dời thì đặt lại thanh gập/xòe của ngón đó và chụp lại chuỗi thẳng
+   * gốc từ vị trí mới (để lần gập/xòe sau tính từ đó, không cộng dồn).
+   */
+  const applyJointStateUpdate = (oldJs: RigJoint[], newJs: RigJoint[]) => {
+    const oldBy = new Map(oldJs.map((j) => [j.name, j.pos]));
+    const changedKeys = new Set<string>();
+    for (const j of newJs) {
+      const old = oldBy.get(j.name);
+      if (!old) continue;
+      if (old[0] !== j.pos[0] || old[1] !== j.pos[1] || old[2] !== j.pos[2]) {
+        const parsed = parseFingerJoint(j.name);
+        if (parsed) changedKeys.add(fingerKey(parsed.side, parsed.finger));
+      }
+    }
+    if (changedKeys.size > 0) {
+      setFingerPose((prev) => {
+        const next = { ...prev };
+        changedKeys.forEach((k) => {
+          next[k] = { curl: 0, spread: 0 };
+        });
+        return next;
+      });
+      changedKeys.forEach((k) => {
+        const [side, finger] = k.split(":") as [FingerSide, FingerName];
+        const base = getFingerBase(newJs, side, finger);
+        if (base) fingerBaseRef.current.set(k, base);
+        else fingerBaseRef.current.delete(k);
+      });
+    }
+    setJoints(newJs);
+  };
+
   const setJointPos = (name: string, axis: number, value: number) => {
-    setJoints((js) =>
-      (js ?? []).map((j) => {
-        if (j.name !== name) return j;
-        const pos: [number, number, number] = [...j.pos];
-        pos[axis] = value;
-        return { ...j, pos };
-      }),
-    );
+    if (!joints) return;
+    const cur = joints.find((j) => j.name === name);
+    if (!cur) return;
+    const pos: [number, number, number] = [...cur.pos];
+    pos[axis] = value;
+    applyJointStateUpdate(joints, applySingleJointEdit(joints, name, pos, mirrorRef.current));
+  };
+
+  /** Gập/xòe một ngón: tính từ chuỗi thẳng gốc, không cộng dồn theo lần kéo. */
+  const setFingerSlider = (
+    side: FingerSide,
+    finger: FingerName,
+    patch: Partial<{ curl: number; spread: number }>,
+  ) => {
+    if (!joints) return;
+    const key = fingerKey(side, finger);
+    const cur = fingerPose[key] ?? { curl: 0, spread: 0 };
+    const next = { ...cur, ...patch };
+    const applyTo = (js: RigJoint[], s: FingerSide) => {
+      const base = fingerBaseRef.current.get(fingerKey(s, finger));
+      if (!base) return js;
+      return applyFingerPoseToJoints(js, s, finger, next.curl, next.spread, base);
+    };
+    let nextJoints = applyTo(joints, side);
+    const updates: Record<string, { curl: number; spread: number }> = { [key]: next };
+    if (mirrorOn) {
+      const other: FingerSide = side === "Left" ? "Right" : "Left";
+      nextJoints = applyTo(nextJoints, other);
+      updates[fingerKey(other, finger)] = next;
+    }
+    setFingerPose((prev) => ({ ...prev, ...updates }));
+    setJoints(nextJoints);
+  };
+
+  /** Gập/xòe cả bàn: một lần tính cho 5 ngón (tránh ghi đè lẫn nhau). */
+  const setHandSlider = (
+    side: FingerSide,
+    patch: Partial<{ curl: number; spread: number }>,
+  ) => {
+    if (!joints) return;
+    const next = { ...(handPose[side]), ...patch };
+    setHandPose((prev) => ({ ...prev, [side]: next }));
+    const sides: FingerSide[] = mirrorOn
+      ? [side, side === "Left" ? "Right" : "Left"]
+      : [side];
+    let nextJoints = joints;
+    const updates: Record<string, { curl: number; spread: number }> = {};
+    for (const s of sides) {
+      for (const finger of FINGER_NAMES) {
+        const base = fingerBaseRef.current.get(fingerKey(s, finger));
+        if (!base) continue;
+        nextJoints = applyFingerPoseToJoints(nextJoints, s, finger, next.curl, next.spread, base);
+        updates[fingerKey(s, finger)] = next;
+      }
+    }
+    setFingerPose((prev) => ({ ...prev, ...updates }));
+    setJoints(nextJoints);
+  };
+
+  const resetJoints = () => {
+    if (!loaded) return;
+    const fitted = autoFitRigPro(loaded.heightM);
+    setJoints(fitted);
+    setFingerPose({});
+    setHandPose({ Left: { curl: 0, spread: 0 }, Right: { curl: 0, spread: 0 } });
+    setSelectedJoint(null);
+    setLiveDragPos(null);
+    fingerBaseRef.current = new Map();
+    for (const side of FINGER_SIDES) {
+      for (const finger of FINGER_NAMES) {
+        const base = getFingerBase(fitted, side, finger);
+        if (base) fingerBaseRef.current.set(fingerKey(side, finger), base);
+      }
+    }
   };
 
   const jointByName = new Map((joints ?? []).map((j) => [j.name, j]));
@@ -442,8 +804,17 @@ export function RigStudioModal({
       {names.map((name, i) => {
         const joint = jointByName.get(name);
         if (!joint) return null;
+        const selected = selectedJoint === name;
         return (
-          <div key={name} className="grid grid-cols-[110px_1fr_1fr_1fr] gap-1.5 items-center">
+          <div
+            key={name}
+            ref={(el) => {
+              if (el) rowRefs.current.set(name, el);
+              else rowRefs.current.delete(name);
+            }}
+            onClick={() => setSelectedJoint(name)}
+            className={`grid grid-cols-[110px_1fr_1fr_1fr] gap-1.5 items-center rounded-lg px-1 py-0.5 ${selected ? "bg-amber-400/15 ring-1 ring-amber-300/50" : ""}`}
+          >
             <span className="text-[11px] text-white/60">{labels?.[i] ?? name}</span>
             {joint.pos.map((v, axis) => (
               <label key={axis} className="block text-[10px] text-white/40">
@@ -452,6 +823,7 @@ export function RigStudioModal({
                   type="number"
                   step={0.01}
                   value={v}
+                  onFocus={() => setSelectedJoint(name)}
                   onChange={(e) => setJointPos(name, axis, Number(e.target.value) || 0)}
                   className="mt-0.5 w-full h-7 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] outline-none"
                 />
@@ -606,12 +978,48 @@ export function RigStudioModal({
           <>
             <p className="text-[11px] text-white/40 leading-relaxed">
               Xương mẫu đã tự căn theo chiều cao {loaded.heightM.toFixed(2)}m,
-              gồm cả ngón tay và ngón chân. Chỉnh khớp cho khớp đúng vai,
-              khuỷu, gối, ngón của nhân vật rồi thử dáng bên dưới. Clip
+              gồm cả ngón tay và ngón chân. Kéo quả cầu trong khung xem
+              trước để chỉnh khớp cho đúng vai, khuỷu, gối, ngón của nhân
+              vật rồi thử dáng bên dưới. Clip
               chuyển động dạng vật thể của model gốc (nếu có) sẽ không giữ
               lại sau khi rig.
             </p>
             <div ref={previewRef} className="w-full h-[420px] rounded-xl overflow-hidden bg-[#150e24] border border-white/10" />
+            <div className="flex flex-wrap gap-1.5 items-center">
+              {TOOL_MODES.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setToolMode(m.id)}
+                  className={`h-8 px-3 rounded-lg border text-[12px] ${toolMode === m.id ? "bg-violet-500/25 border-violet-400/40 text-violet-100" : "bg-white/5 border-white/10 text-white/70"}`}
+                >
+                  {m.label}
+                </button>
+              ))}
+              <label className="ml-auto flex items-center gap-1.5 text-[12px] text-white/70 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mirrorOn}
+                  onChange={(e) => setMirrorOn(e.target.checked)}
+                />
+                Đối xứng trái/phải
+              </label>
+            </div>
+            {selectedJoint && jointByName.get(selectedJoint) && (
+              <p className="text-[12px] text-amber-200/90 leading-relaxed">
+                Đang chọn: {jointLabel(selectedJoint)} — X{" "}
+                {(liveDragPos ?? jointByName.get(selectedJoint)!.pos)[0].toFixed(3)}, Y{" "}
+                {(liveDragPos ?? jointByName.get(selectedJoint)!.pos)[1].toFixed(3)}, Z{" "}
+                {(liveDragPos ?? jointByName.get(selectedJoint)!.pos)[2].toFixed(3)}
+              </p>
+            )}
+            <p className="text-[11px] text-white/40 leading-relaxed">
+              {toolMode === "joints" &&
+                "Kéo quả cầu để di chuyển khớp — kéo một khớp sẽ dời cả nhánh con theo. Chỉnh chính xác nhất ở dáng đứng thẳng."}
+              {toolMode === "ik" &&
+                "Kéo quả cầu tím (tay) hoặc xanh lá (chân) để với tới mục tiêu."}
+              {toolMode === "paint" &&
+                "Chọn xương ở mục Tô bên dưới rồi kéo trên nhân vật để tô."}
+            </p>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(TEST_POSES).map(([id, p]) => (
                 <button
@@ -632,7 +1040,7 @@ export function RigStudioModal({
                 </span>
               )}
               <button
-                onClick={() => setJoints(autoFitRigPro(loaded.heightM))}
+                onClick={resetJoints}
                 className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-white/70 text-[12px]"
               >
                 Tự căn lại
@@ -646,6 +1054,90 @@ export function RigStudioModal({
                     <div key={group.name}>
                       <p className="text-[11px] text-white/50 mb-1">{group.name}</p>
                       <JointRows names={group.joints} />
+                    </div>
+                  ))}
+                </div>
+              </details>
+
+              <details className={sectionClass}>
+                <summary className="text-[12px] text-white/70 cursor-pointer">Gập/xòe ngón tay</summary>
+                <p className="text-[11px] text-white/40 leading-relaxed mt-2">
+                  Kéo thanh trượt để gập hoặc xòe ngón — vị trí khớp đổi thật
+                  và giữ nguyên khi lưu file. Kéo khớp ngón bằng chuột hoặc
+                  sửa số sẽ đặt lại thanh trượt của ngón đó.
+                </p>
+                <div className="space-y-3 mt-2">
+                  {(["Left", "Right"] as const).map((side) => (
+                    <div key={side}>
+                      <p className="text-[11px] text-white/50 mb-1">
+                        Bàn tay {side === "Left" ? "trái" : "phải"} — đặt cho cả bàn
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block text-[11px] text-white/50">
+                          Gập cả bàn: {handPose[side].curl.toFixed(2)}
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={handPose[side].curl}
+                            onChange={(e) => setHandSlider(side, { curl: Number(e.target.value) })}
+                            className="w-full"
+                          />
+                        </label>
+                        <label className="block text-[11px] text-white/50">
+                          Xòe cả bàn: {handPose[side].spread.toFixed(2)}
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={handPose[side].spread}
+                            onChange={(e) => setHandSlider(side, { spread: Number(e.target.value) })}
+                            className="w-full"
+                          />
+                        </label>
+                      </div>
+                      <div className="space-y-1.5 mt-2">
+                        {FINGER_NAMES.map((finger) => {
+                          const v = fingerPose[fingerKey(side, finger)] ?? { curl: 0, spread: 0 };
+                          return (
+                            <div key={finger} className="rounded-lg bg-black/25 p-2">
+                              <p className="text-[11px] text-white/60 mb-1">{FINGER_LABELS[finger]}</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <label className="block text-[11px] text-white/50">
+                                  Gập: {v.curl.toFixed(2)}
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={1}
+                                    step={0.05}
+                                    value={v.curl}
+                                    onChange={(e) =>
+                                      setFingerSlider(side, finger, { curl: Number(e.target.value) })
+                                    }
+                                    className="w-full"
+                                  />
+                                </label>
+                                <label className="block text-[11px] text-white/50">
+                                  Xòe: {v.spread.toFixed(2)}
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={1}
+                                    step={0.05}
+                                    value={v.spread}
+                                    onChange={(e) =>
+                                      setFingerSlider(side, finger, { spread: Number(e.target.value) })
+                                    }
+                                    className="w-full"
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -685,8 +1177,9 @@ export function RigStudioModal({
               <details className={sectionClass}>
                 <summary className="text-[12px] text-white/70 cursor-pointer">Tay chân với tới mục tiêu</summary>
                 <p className="text-[11px] text-white/40 leading-relaxed mt-2">
-                  Bật một bên tay/chân rồi kéo quả cầu trong khung xem trước,
-                  hoặc nhập số mục tiêu. Quả cầu tím là tay, xanh lá là chân.
+                  Chọn công cụ “Tay chân với tới” phía trên khung xem trước,
+                  bật một bên tay/chân rồi kéo quả cầu hoặc nhập số mục tiêu.
+                  Quả cầu tím là tay, xanh lá là chân.
                 </p>
                 <div className="space-y-2 mt-2">
                   {IK_LIMB_DEFS.map((def) => {
@@ -744,9 +1237,9 @@ export function RigStudioModal({
               <details className={sectionClass}>
                 <summary className="text-[12px] text-white/70 cursor-pointer">Tô vùng ảnh hưởng của xương</summary>
                 <p className="text-[11px] text-white/40 leading-relaxed mt-2">
-                  Chọn một xương rồi bấm và kéo trên nhân vật trong khung xem
-                  trước để tô. Mẹo: tô chính xác nhất khi nhân vật ở dáng
-                  đứng thẳng.
+                  Chọn công cụ “Tô vùng ảnh hưởng” phía trên khung xem trước,
+                  chọn một xương rồi bấm và kéo trên nhân vật để tô. Mẹo: tô
+                  chính xác nhất khi nhân vật ở dáng đứng thẳng.
                 </p>
                 <div className="space-y-2 mt-2">
                   <label className="block text-[11px] text-white/50">
