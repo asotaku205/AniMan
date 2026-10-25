@@ -511,6 +511,8 @@ export function PrevizEditor({
   scenePostRef.current = scenePost;
   const brushDraftRef = useRef<TerrainGrid | null>(null);
   const paintingRef = useRef(false);
+  /** Chặn OrbitControls trong lúc đang kéo (vòng lặp render đọc cờ này). */
+  const dragLockRef = useRef(false);
   const paintAtRef = useRef<(x: number, z: number) => void>(() => {});
   const commitBrushRef = useRef<() => void>(() => {});
   paintAtRef.current = (x, z) => {
@@ -931,6 +933,7 @@ export function PrevizEditor({
           const hits = raycaster.intersectObject(ctxNow.terrainMesh, false);
           if (hits.length > 0) {
             paintingRef.current = true;
+            dragLockRef.current = true;
             controls.enabled = false;
             paintAtRef.current(hits[0].point.x, hits[0].point.z);
           }
@@ -987,6 +990,7 @@ export function PrevizEditor({
                 ? new THREE.Vector3(grab.x, grab.y, grab.z)
                 : new THREE.Vector3(anchor.x, anchor.y, anchor.z),
             };
+            dragLockRef.current = true;
             controls.enabled = false;
           }
         }
@@ -996,6 +1000,7 @@ export function PrevizEditor({
       const id = pickAt(e);
       if (id) {
         dragId = id;
+        dragLockRef.current = true;
         controls.enabled = false;
         stageInteractRef.current?.onPick(id);
       }
@@ -1060,7 +1065,9 @@ export function PrevizEditor({
       }
       dragId = null;
       downAt = null;
-      controls.enabled = stateRef.current.viewMode === "orbit";
+      dragLockRef.current = false;
+      controls.enabled =
+        stateRef.current.viewMode === "orbit" && !stateRef.current.camMoveMode;
     };
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
@@ -1725,7 +1732,11 @@ export function PrevizEditor({
       } else {
         ctx.flashMesh.visible = false;
       }
-      ctx.controls.enabled = st.viewMode === "orbit";
+      // Khóa góc xem khi đang kéo hoặc ở chế độ Dời máy quay: trước đây
+      // dòng này bật lại OrbitControls mỗi khung hình nên kéo camera cũng
+      // xoay cả khung hình theo con trỏ chuột.
+      ctx.controls.enabled =
+        st.viewMode === "orbit" && !st.camMoveMode && !dragLockRef.current;
       // Vẽ qua bộ xử lý hậu kỳ (phát sáng / mờ hậu cảnh / dư ảnh);
       // camera của bộ lọc bám theo camera đang xem (tự do hay camera phim).
       if (ctx.composer && ctx.renderPass) {
@@ -2838,7 +2849,8 @@ export function PrevizEditor({
               <p className="text-[11px] text-white/40 leading-relaxed">
                 Kéo thân máy để dời cả máy quay và điểm nhìn cùng nhau
                 (hướng nhìn giữ nguyên), kéo quả cầu vàng ở điểm nhìn để
-                đổi hướng ngắm. Kéo xong bấm "Đặt key camera" để lưu góc này.
+                đổi hướng ngắm. Ở chế độ này góc xem cố định, chỉ kéo được
+                máy quay. Kéo xong bấm "Đặt key camera" để lưu góc này.
               </p>
             )}
             <div className="flex flex-wrap gap-1.5">
