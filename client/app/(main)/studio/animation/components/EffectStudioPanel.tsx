@@ -10,6 +10,7 @@ import type { PrevizScene } from "../lib/previz";
 import { newPrevizId } from "../lib/previz";
 import {
   newEffectId,
+  type EffectEvent,
   type EffectFormula,
   type EffectLayer,
 } from "../lib/effectFormula";
@@ -77,24 +78,48 @@ export function EffectStudioPanel({
   onFormulasChange,
   previewing,
   onPreview,
+  mode,
+  onAttachFx,
+  placePosition,
+  onPlaceRequest,
 }: {
-  previz: PrevizScene;
-  onChange: (previz: PrevizScene) => void;
+  /** Cảnh 3D — chỉ chế độ 3d dùng (gắn event vào previz.effectEvents). */
+  previz?: PrevizScene;
+  onChange?: (previz: PrevizScene) => void;
   timeSec: number;
   selectedPosition: { x: number; y: number; z: number } | null;
   formulas: EffectFormula[];
   onFormulasChange: () => void;
   previewing: boolean;
   onPreview: (formula: EffectFormula | null) => void;
+  /** "2d": gắn event vào cảnh 2D qua onAttachFx, vị trí theo tọa độ
+   * khung hình (x/y 0..1, không có Z). Mặc định "3d" giữ hành vi cũ. */
+  mode?: "3d" | "2d";
+  /** Chế độ 2d: gắn event này vào cảnh 2D đang sửa. */
+  onAttachFx?: (ev: EffectEvent) => void;
+  /** Chế độ 2d: vị trí vừa bấm lên sân khấu — panel đồng bộ vào ô X/Y. */
+  placePosition?: { x: number; y: number } | null;
+  /** Chế độ 2d: bấm để bật chế độ bấm sân khấu đặt vị trí. */
+  onPlaceRequest?: () => void;
 }) {
+  const is2d = mode === "2d";
   const [draft, setDraft] = useState<EffectFormula | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [evStart, setEvStart] = useState(0);
   const [evDur, setEvDur] = useState(2);
-  const [evPos, setEvPos] = useState({ x: 0, y: 0.5, z: 0 });
+  const [evPos, setEvPos] = useState(
+    is2d ? { x: 0.5, y: 0.5, z: 0 } : { x: 0, y: 0.5, z: 0 },
+  );
   const [evBurst, setEvBurst] = useState(true);
   const [evShake, setEvShake] = useState(0);
   const [evFlash, setEvFlash] = useState(0);
+
+  // Chế độ 2d: vị trí bấm lên sân khấu đổ vào ô X/Y của form gắn.
+  useEffect(() => {
+    if (is2d && placePosition) {
+      setEvPos({ x: placePosition.x, y: placePosition.y, z: 0 });
+    }
+  }, [is2d, placePosition]);
 
   const draftSaved = draft ? formulas.some((f) => f.id === draft.id) : false;
 
@@ -359,7 +384,14 @@ export function EffectStudioPanel({
           </div>
 
           <div className="rounded-xl border border-white/10 bg-black/20 p-2.5 space-y-2">
-            <p className="text-[11px] text-white/60 font-medium">Gắn vào timeline</p>
+            <p className="text-[11px] text-white/60 font-medium">
+              {is2d ? "Gắn vào cảnh" : "Gắn vào timeline"}
+            </p>
+            {is2d && (
+              <p className="text-[11px] text-white/40 leading-relaxed">
+                Vị trí theo khung hình (X 0..1 trái→phải, Y 0..1 trên→dưới).
+              </p>
+            )}
             {!draftSaved && (
               <p className="text-[11px] text-amber-300 leading-relaxed">
                 Lưu hiệu ứng trước rồi mới gắn vào timeline được.
@@ -370,9 +402,26 @@ export function EffectStudioPanel({
               {numInput("Dài (s)", evDur, (v) => setEvDur(Math.max(0.1, v)))}
             </div>
             <div className="flex gap-1.5">
-              {numInput("X", evPos.x, (v) => setEvPos({ ...evPos, x: v }))}
-              {numInput("Y", evPos.y, (v) => setEvPos({ ...evPos, y: v }))}
-              {numInput("Z", evPos.z, (v) => setEvPos({ ...evPos, z: v }))}
+              {numInput(
+                "X",
+                evPos.x,
+                (v) =>
+                  setEvPos({
+                    ...evPos,
+                    x: is2d ? Math.min(1, Math.max(0, v)) : v,
+                  }),
+              )}
+              {numInput(
+                "Y",
+                evPos.y,
+                (v) =>
+                  setEvPos({
+                    ...evPos,
+                    y: is2d ? Math.min(1, Math.max(0, v)) : v,
+                  }),
+              )}
+              {!is2d &&
+                numInput("Z", evPos.z, (v) => setEvPos({ ...evPos, z: v }))}
             </div>
             <div className="flex gap-1.5 items-center">
               <label className="flex items-center gap-1.5 text-[11px] text-white/60">
@@ -389,15 +438,41 @@ export function EffectStudioPanel({
               >
                 Lấy mốc đang xem
               </button>
-              <button
-                onClick={() => { if (selectedPosition) setEvPos({ ...selectedPosition }); }}
-                disabled={!selectedPosition}
-                className="h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[11px] disabled:opacity-40"
-              >
-                Lấy vị trí vật đang chọn
-              </button>
+              {!is2d && (
+                <button
+                  onClick={() => { if (selectedPosition) setEvPos({ ...selectedPosition }); }}
+                  disabled={!selectedPosition}
+                  className="h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[11px] disabled:opacity-40"
+                >
+                  Lấy vị trí vật đang chọn
+                </button>
+              )}
+              {is2d && onPlaceRequest && (
+                <button
+                  onClick={onPlaceRequest}
+                  className="h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[11px]"
+                >
+                  Bấm lên sân khấu để đặt
+                </button>
+              )}
               <button
                 onClick={() => {
+                  if (!draft) return;
+                  if (is2d) {
+                    onAttachFx?.({
+                      id: newEffectId("fx"),
+                      effectId: draft.id,
+                      startSec: evStart,
+                      durationSec: evDur,
+                      position: { x: evPos.x, y: evPos.y, z: 0 },
+                      burst: evBurst,
+                      shake: evShake,
+                      flash: evFlash,
+                    });
+                    setMsg(`Đã gắn "${draft.name}" vào cảnh tại ${evStart}s.`);
+                    return;
+                  }
+                  if (!previz || !onChange) return;
                   onChange({
                     ...previz,
                     effectEvents: [
@@ -416,17 +491,17 @@ export function EffectStudioPanel({
                   });
                   setMsg(`Đã gắn "${draft.name}" vào timeline tại ${evStart}s.`);
                 }}
-                disabled={!draftSaved}
+                disabled={!draftSaved || (is2d && !onAttachFx)}
                 className="flex-1 h-8 rounded-lg bg-violet-500/25 border border-violet-400/40 text-[12px] font-medium hover:bg-violet-500/35 disabled:opacity-40"
               >
-                Gắn vào timeline
+                {is2d ? "Gắn vào cảnh" : "Gắn vào timeline"}
               </button>
             </div>
           </div>
         </>
       )}
 
-      {(previz.effectEvents ?? []).length > 0 && (
+      {!is2d && previz && (previz.effectEvents ?? []).length > 0 && (
         <div>
           <p className="text-[11px] text-white/45 mb-1.5">Sự kiện trên timeline</p>
           <div className="flex flex-wrap gap-1.5">
@@ -442,7 +517,7 @@ export function EffectStudioPanel({
                   {ev.shake > 0 ? " · rung" : ""}
                   {ev.flash > 0 ? " · chớp" : ""}
                   <button
-                    onClick={() => onChange({ ...previz, effectEvents: (previz.effectEvents ?? []).filter((x) => x.id !== ev.id) })}
+                    onClick={() => { if (!previz || !onChange) return; onChange({ ...previz, effectEvents: (previz.effectEvents ?? []).filter((x) => x.id !== ev.id) }); }}
                     aria-label="Xoá sự kiện"
                     className="text-white/40 hover:text-rose-400"
                   >

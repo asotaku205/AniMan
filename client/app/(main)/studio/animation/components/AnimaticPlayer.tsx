@@ -15,6 +15,7 @@ import {
   segmentAtWallTime,
 } from "../lib/animatic";
 import { drawSceneFrame } from "../lib/renderFrame";
+import { fxCustomTextureUrls, loadFxImage } from "../lib/fx2d";
 import { createPrevizFilmRenderer } from "../lib/previzFilmRender";
 import { listAnimAssets } from "../lib/animStorage";
 import type { EffectFormula } from "../lib/effectFormula";
@@ -160,6 +161,24 @@ export function AnimaticPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id, audioSignature, titleSec]);
 
+  // Nạp trước ảnh hạt custom của hiệu ứng 2D khi công thức về tới
+  // (cache module của fx2d — khung chưa xong thì bỏ qua hạt đó).
+  useEffect(() => {
+    if (project.kind !== "2d" || effectFormulas.length === 0) return;
+    const urls = new Set<string>();
+    for (const s of project.scenes)
+      for (const u of fxCustomTextureUrls(s.fxEvents ?? [], effectFormulas))
+        urls.add(u);
+    if (urls.size === 0) return;
+    let alive = true;
+    Promise.all([...urls].map((u) => loadFxImage(u))).then(() => {
+      if (alive) setImagesTick((v) => v + 1);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [project, effectFormulas]);
+
   // Nạp trước hình layer 2D
   useEffect(() => {
     if (project.kind !== "2d") return;
@@ -228,7 +247,9 @@ export function AnimaticPlayer({
     }
     lastSegIndexRef.current = seg.index;
     if (project.kind === "2d") {
-      drawSceneFrame(ctx, scene, tInScene, W, H, (url) => imagesRef.current.get(url) ?? null);
+      drawSceneFrame(ctx, scene, tInScene, W, H, (url) => imagesRef.current.get(url) ?? null, {
+        effectFormulas: effectFormulasRef.current,
+      });
     } else {
       if (!filmRef.current)
         filmRef.current = createPrevizFilmRenderer(W, H, {

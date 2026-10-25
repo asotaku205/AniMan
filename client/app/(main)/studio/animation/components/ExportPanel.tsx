@@ -37,6 +37,7 @@ import {
   saveVoiceBlob,
 } from "../lib/animStorage";
 import type { EffectFormula } from "../lib/effectFormula";
+import { fxCustomTextureUrls, loadFxImage } from "../lib/fx2d";
 import {
   EXPORT_PRESETS,
   EXPORT_PRESET_LIST,
@@ -135,6 +136,24 @@ export function ExportPanel({
       ),
     );
     const getImage = (url: string) => imageCache.get(url) ?? null;
+
+    // Công thức hiệu ứng 2D từ thư viện + nạp trước ảnh hạt custom
+    // (không có thì khung đầu thiếu hạt ảnh — giống cách nạp ảnh layer).
+    const effectFormulas2d: EffectFormula[] = [];
+    try {
+      for (const a of await listAnimAssets()) {
+        if (a.kind === "effect") effectFormulas2d.push(a.formula);
+      }
+    } catch {
+      // Thư viện hiệu ứng lỗi — xuất tiếp không có hiệu ứng.
+    }
+    for (const s of project.scenes) {
+      await Promise.all(
+        fxCustomTextureUrls(s.fxEvents ?? [], effectFormulas2d).map((u) =>
+          loadFxImage(u),
+        ),
+      );
+    }
 
     // Hậu kỳ (Đ3): hợp thành khung hình qua canvas riêng để áp chuyển
     // cảnh + chỉnh màu + màn hình tiêu đề
@@ -278,7 +297,9 @@ export function ExportPanel({
           const speed = sceneSpeed(scene);
           const wallDur = scene.durationSec / speed;
           if (t >= wallDur) return resolve();
-          drawSceneFrame(ctx, scene, t * speed, W, H, getImage);
+          drawSceneFrame(ctx, scene, t * speed, W, H, getImage, {
+            effectFormulas: effectFormulas2d,
+          });
           composite(canvas, t, t * speed, i, wallDur, scene);
           requestAnimationFrame(step);
         };

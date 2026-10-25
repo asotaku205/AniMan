@@ -12,6 +12,20 @@ import { dialogueLineAt } from "./dialogue";
 import { layerEffectAt, weatherParticles } from "./layerEffects";
 import { particlePointsAt } from "./particles";
 import { strokeVisiblePoints } from "./strokes";
+import {
+  drawFxFlash,
+  drawSceneFx,
+  fxShakeFlashOffsets,
+} from "./fx2d";
+import type { EffectFormula } from "./effectFormula";
+
+export interface DrawSceneFrameOptions {
+  /** Công thức hiệu ứng từ thư viện (không có = không vẽ hiệu ứng 2D,
+   * giữ nguyên hành vi cũ cho thumbnail phân cảnh). */
+  effectFormulas?: EffectFormula[];
+  /** Ảnh hạt custom (mặc định dùng cache module của fx2d). */
+  getEffectImage?: (url: string) => HTMLImageElement | null;
+}
 
 export function drawSceneFrame(
   ctx: CanvasRenderingContext2D,
@@ -20,6 +34,7 @@ export function drawSceneFrame(
   width: number,
   height: number,
   getImage: (dataUrl: string) => HTMLImageElement | null,
+  opts: DrawSceneFrameOptions = {},
 ): void {
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "#0a0616";
@@ -27,6 +42,14 @@ export function drawSceneFrame(
   const timeline = scene.timeline;
   if (!timeline) return;
   const cam = sampleCamera(timeline.cameraKeys, t);
+  // Rung camera của hiệu ứng 2D: lệch toàn bộ nội dung khung (trừ nền
+  // phẳng và phụ đề, khớp cách phim 3D rung sau cú máy).
+  const fxOff =
+    opts.effectFormulas && (scene.fxEvents ?? []).length > 0
+      ? fxShakeFlashOffsets(scene.fxEvents ?? [], t, width, height)
+      : { dx: 0, dy: 0, flash: 0 };
+  ctx.save();
+  if (fxOff.dx !== 0 || fxOff.dy !== 0) ctx.translate(fxOff.dx, fxOff.dy);
 
   for (const layer of timeline.layers) {
     if (!layer.visible) continue;
@@ -128,6 +151,17 @@ export function drawSceneFrame(
     ctx.stroke();
     ctx.restore();
   }
+
+  // Hiệu ứng hạt 2D (đợt 3): cùng hàm vẽ với sân khấu editor và bản
+  // xuất — vẽ trong không gian camera như layer, trước phụ đề.
+  if (opts.effectFormulas && (scene.fxEvents ?? []).length > 0) {
+    drawSceneFx(ctx, scene.fxEvents ?? [], opts.effectFormulas, t, width, height, {
+      camera: cam,
+      getImage: opts.getEffectImage,
+    });
+  }
+  ctx.restore();
+  drawFxFlash(ctx, fxOff.flash, width, height);
 
   const line = dialogueLineAt(scene.dialogue ?? [], t);
   if (line && line.text.trim()) {

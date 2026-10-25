@@ -54,13 +54,25 @@ import {
   MOTION_LOOP_LABEL,
   MOTION_PRESETS,
 } from "../lib/motionAttach";
-import type { Motion2DAsset } from "../lib/animAssets";
+import type { EffectAsset, Motion2DAsset } from "../lib/animAssets";
 import {
   deleteAnimAsset,
   listAnimAssets,
   saveAnimAsset,
 } from "../lib/animStorage";
 import { layerAtPoint, stageToWorld } from "../lib/stageHitTest";
+import { EffectStudioPanel } from "./EffectStudioPanel";
+import {
+  drawFxFlash,
+  drawSceneFx,
+  fxCustomTextureUrls,
+  fxShakeFlashOffsets,
+  loadFxImage,
+} from "../lib/fx2d";
+import type {
+  EffectEvent,
+  EffectFormula,
+} from "../lib/effectFormula";
 import {
   layerEffectAt,
   layerEffectsOf,
@@ -288,6 +300,7 @@ export function TimelineEditor({
   onAudioChange,
   onParticlesChange,
   onStrokesChange,
+  onSceneFxChange,
 }: {
   scene: AnimScene;
   onChange: (timeline: SceneTimeline) => void;
@@ -296,6 +309,8 @@ export function TimelineEditor({
   onAudioChange?: (clips: SceneAudioClip[]) => void;
   onParticlesChange?: (particles: ParticleSystemSettings | null) => void;
   onStrokesChange?: (strokes: SceneStroke[]) => void;
+  /** Hiệu ứng hạt của cảnh (đợt 3) — workspace lưu vào scene.fxEvents. */
+  onSceneFxChange?: (events: EffectEvent[]) => void;
 }) {
   const timeline = useMemo<SceneTimeline>(
     () => scene.timeline ?? createSceneTimeline(),
@@ -317,6 +332,40 @@ export function TimelineEditor({
   const [draftCamDirty, setDraftCamDirty] = useState(false);
   const { authenticatedFetch } = useAuth();
   const [motionQuery, setMotionQuery] = useState("");
+  // Hiệu ứng hạt của cảnh (đợt 3): công thức từ thư viện chung với 3D.
+  const [effectFormulas, setEffectFormulas] = useState<EffectFormula[]>([]);
+  const [fxPanelOpen, setFxPanelOpen] = useState(false);
+  /** Đang chờ bấm sân khấu: "panel" = đặt vị trí gắn mới, id = dời event đó. */
+  const [fxPlaceMode, setFxPlaceMode] = useState<{ target: string } | null>(null);
+  const [fxPanelPlace, setFxPanelPlace] = useState<{ x: number; y: number } | null>(null);
+
+  const reloadEffectFormulas = useCallback(() => {
+    listAnimAssets()
+      .then((all) =>
+        setEffectFormulas(
+          all
+            .filter((a): a is EffectAsset => a.kind === "effect")
+            .map((a) => a.formula),
+        ),
+      )
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    reloadEffectFormulas();
+  }, [reloadEffectFormulas]);
+  // Nạp trước ảnh hạt custom của các event trong cảnh (không có thì
+  // khung đầu sẽ thiếu hạt ảnh — giống cách nạp ảnh layer).
+  useEffect(() => {
+    const urls = fxCustomTextureUrls(scene.fxEvents ?? [], effectFormulas);
+    if (urls.length === 0) return;
+    let alive = true;
+    Promise.all(urls.map((u) => loadFxImage(u))).then(() => {
+      if (alive) setImageTick((v) => v + 1);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [scene.fxEvents, effectFormulas]);
   const [voiceLineId, setVoiceLineId] = useState<string | null>(null);
   const [targetLang, setTargetLang] = useState<TranslationTargetLang>("en");
   const [glossary, setGlossary] = useState<string>(() =>
@@ -420,6 +469,26 @@ export function TimelineEditor({
   const onStagePointerDown = (e: React.PointerEvent) => {
     const point = stagePointOf(e);
     if (!point) return;
+    // Đang chờ đặt vị trí hiệu ứng: bấm sân khấu = tọa độ khung (0..1).
+    if (fxPlaceMode) {
+      const placed = {
+        x: Math.min(1, Math.max(0, point.x)),
+        y: Math.min(1, Math.max(0, point.y)),
+      };
+      if (fxPlaceMode.target === "panel") {
+        setFxPanelPlace(placed);
+      } else if (onSceneFxChange) {
+        onSceneFxChange(
+          (scene.fxEvents ?? []).map((ev) =>
+            ev.id === fxPlaceMode.target
+              ? { ...ev, position: { ...placed, z: 0 } }
+              : ev,
+          ),
+        );
+      }
+      setFxPlaceMode(null);
+      return;
+    }
     if (pathMode) {
       const world = stageToWorld(timeline, timeSec, point);
       const draft = pathDraft ?? [];
@@ -863,6 +932,20 @@ export function TimelineEditor({
       ctx.restore();
     }
 
+    // Hiệu ứng hạt 2D (đợt 3): cùng hàm vẽ với xem thử/xuất phim, áp
+    // camera sân khấu như layer. Rung camera chỉ thấy ở xem thử/xuất
+    // phim (tránh sân khấu đang sửa bị lệch); chớp phủ trắng thấy ngay.
+    if ((scene.fxEvents ?? []).length > 0 && effectFormulas.length > 0) {
+      const camFx = draftCamDirty
+        ? draftCam
+        : sampleCamera(timeline.cameraKeys, timeSec);
+      drawSceneFx(ctx, scene.fxEvents ?? [], effectFormulas, timeSec, STAGE_W, STAGE_H, {
+        camera: camFx,
+      });
+      const fl = fxShakeFlashOffsets(scene.fxEvents ?? [], timeSec, STAGE_W, STAGE_H).flash;
+      drawFxFlash(ctx, fl, STAGE_W, STAGE_H);
+    }
+
     // Phụ đề: dòng thoại đang hiệu lực, vẽ ở đáy sân khấu (màn hình-space)
     const activeLine = dialogueLineAt(scene.dialogue ?? [], timeSec);
     if (activeLine) {
@@ -880,7 +963,7 @@ export function TimelineEditor({
       ctx.restore();
     }
 
-  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue, scene.weather, scene.particles, scene.strokes, drawingStroke, strokeColor, strokeWidth, scene.durationSec, pathMode, pathDraft, selectedPathPoint]);
+  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue, scene.weather, scene.particles, scene.strokes, drawingStroke, strokeColor, strokeWidth, scene.durationSec, pathMode, pathDraft, selectedPathPoint, scene.fxEvents, effectFormulas]);
 
   // ── Thao tác keyframe ──────────────────────────────────────────────────────
   const placeLayerKey = () => {
@@ -1452,6 +1535,200 @@ export function TimelineEditor({
               </div>
               <p className="text-[11px] text-white/35">
                 Thời tiết hiện ở cả lúc dựng, lúc phát thử và trong bản xuất.
+              </p>
+            </section>
+          )}
+
+          {/* Hiệu ứng hạt 2D (đợt 3) — chung thư viện công thức với 3D */}
+          {onSceneFxChange && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+              <h3 className="text-[12px] font-semibold text-white/70">
+                HIỆU ỨNG HẠT — GẮN VÀO CẢNH
+              </h3>
+              {fxPlaceMode && (
+                <p className="text-[11px] text-amber-300 leading-relaxed">
+                  Đang chờ bấm lên sân khấu để đặt vị trí…{" "}
+                  <button
+                    onClick={() => setFxPlaceMode(null)}
+                    className="underline"
+                  >
+                    Hủy
+                  </button>
+                </p>
+              )}
+              {(scene.fxEvents ?? []).length > 0 && (
+                <div className="space-y-2">
+                  {(scene.fxEvents ?? []).map((ev) => {
+                    const f = effectFormulas.find((x) => x.id === ev.effectId);
+                    const setEv = (patch: Partial<EffectEvent>) =>
+                      onSceneFxChange(
+                        (scene.fxEvents ?? []).map((x) =>
+                          x.id === ev.id ? { ...x, ...patch } : x,
+                        ),
+                      );
+                    const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+                    return (
+                      <div
+                        key={ev.id}
+                        className="rounded-lg border border-white/10 bg-black/20 p-2 space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[12px] text-white/80 truncate">
+                            {f ? f.name : "Hiệu ứng đã xoá"}
+                          </span>
+                          <button
+                            onClick={() =>
+                              onSceneFxChange(
+                                (scene.fxEvents ?? []).filter((x) => x.id !== ev.id),
+                              )
+                            }
+                            aria-label="Xoá hiệu ứng khỏi cảnh"
+                            className="text-white/40 hover:text-rose-400 shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/45">
+                          <label className="flex items-center gap-1">
+                            Từ
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.1}
+                              value={ev.startSec}
+                              onChange={(e) =>
+                                setEv({ startSec: Number(e.currentTarget.value) || 0 })
+                              }
+                              className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                            />
+                            s
+                          </label>
+                          <label className="flex items-center gap-1">
+                            Dài
+                            <input
+                              type="number"
+                              min={0.1}
+                              step={0.1}
+                              value={ev.durationSec}
+                              onChange={(e) =>
+                                setEv({ durationSec: Math.max(0.1, Number(e.currentTarget.value) || 0.1) })
+                              }
+                              className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                            />
+                            s
+                          </label>
+                          <label className="flex items-center gap-1">
+                            X
+                            <input
+                              type="number"
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={Math.round(ev.position.x * 100) / 100}
+                              onChange={(e) =>
+                                setEv({
+                                  position: {
+                                    ...ev.position,
+                                    x: clamp01(Number(e.currentTarget.value) || 0),
+                                  },
+                                })
+                              }
+                              className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                            />
+                          </label>
+                          <label className="flex items-center gap-1">
+                            Y
+                            <input
+                              type="number"
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={Math.round(ev.position.y * 100) / 100}
+                              onChange={(e) =>
+                                setEv({
+                                  position: {
+                                    ...ev.position,
+                                    y: clamp01(Number(e.currentTarget.value) || 0),
+                                  },
+                                })
+                              }
+                              className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                            />
+                          </label>
+                          <label className="flex items-center gap-1">
+                            <input
+                              type="checkbox"
+                              checked={ev.burst}
+                              onChange={(e) => setEv({ burst: e.currentTarget.checked })}
+                            />
+                            Nổ cùng lúc
+                          </label>
+                          <label className="flex items-center gap-1">
+                            Rung
+                            <input
+                              type="number"
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={ev.shake}
+                              onChange={(e) =>
+                                setEv({ shake: clamp01(Number(e.currentTarget.value) || 0) })
+                              }
+                              className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                            />
+                          </label>
+                          <label className="flex items-center gap-1">
+                            Chớp
+                            <input
+                              type="number"
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={ev.flash}
+                              onChange={(e) =>
+                                setEv({ flash: clamp01(Number(e.currentTarget.value) || 0) })
+                              }
+                              className="w-14 h-7 rounded bg-black/50 border border-white/10 px-1.5 text-white"
+                            />
+                          </label>
+                          <button
+                            onClick={() => setFxPlaceMode({ target: ev.id })}
+                            className="h-7 px-2 rounded-lg bg-white/5 border border-white/10 text-white/70"
+                          >
+                            Bấm sân khấu để dời
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <button
+                onClick={() => setFxPanelOpen((v) => !v)}
+                className="h-8 px-3 rounded-lg bg-violet-500/25 border border-violet-400/40 text-[12px] font-medium hover:bg-violet-500/35"
+              >
+                {fxPanelOpen ? "Đóng Phòng hiệu ứng" : "Mở Phòng hiệu ứng"}
+              </button>
+              {fxPanelOpen && (
+                <EffectStudioPanel
+                  mode="2d"
+                  timeSec={timeSec}
+                  selectedPosition={null}
+                  formulas={effectFormulas}
+                  onFormulasChange={reloadEffectFormulas}
+                  previewing={false}
+                  onPreview={() => {}}
+                  onAttachFx={(event) =>
+                    onSceneFxChange([...(scene.fxEvents ?? []), event])
+                  }
+                  placePosition={fxPanelPlace}
+                  onPlaceRequest={() => setFxPlaceMode({ target: "panel" })}
+                />
+              )}
+              <p className="text-[11px] text-white/35 leading-relaxed">
+                Hiệu ứng hiện ở cả lúc dựng, lúc phát thử và trong bản xuất.
+                Bản nháp chưa gắn thì chưa xem trước được — gắn vào cảnh rồi
+                tua timeline là thấy ngay trên sân khấu.
               </p>
             </section>
           )}
