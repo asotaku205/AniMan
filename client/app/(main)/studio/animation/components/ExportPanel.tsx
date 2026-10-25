@@ -3,22 +3,30 @@
 import { useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clapperboard, Download, Music, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import {
+  CREDIT_LINE_HEIGHT,
+  CREDIT_SPEED_DEFAULT,
+  GRADE_FILTERS,
+  TITLE_CARD_SEC,
+  creditRollDuration,
+  crossfadeBlend,
+  drawCreditRoll,
+  drawLowerThird,
+  drawTitleCard,
+  drawTransitionOverlay,
+  fadeBlackAlpha,
+  transitionCover,
+  type ColorGrade,
+  type TransitionType,
+} from "../lib/postFx";
+import {
   formatDuration,
+  postSettingsOf,
   projectDurationSec,
+  sceneSpeed,
   type AnimProject,
 } from "../lib/animProject";
 import { checkProjectForExport, hasExportErrors } from "../lib/exportCheck";
 import { drawSceneFrame } from "../lib/renderFrame";
-import { postSettingsOf } from "../lib/animProject";
-import {
-  GRADE_FILTERS,
-  TITLE_CARD_SEC,
-  crossfadeBlend,
-  drawTitleCard,
-  fadeBlackAlpha,
-  type ColorGrade,
-  type TransitionType,
-} from "../lib/postFx";
 import { buildFilmAudioPlan, renderFilmAudioMix } from "../lib/filmAudio";
 import { createPrevizFilmRenderer } from "../lib/previzFilmRender";
 import {
@@ -35,6 +43,36 @@ import {
  *   trộn tiếng (thoại + nhạc nền) vào cùng một file WebM. MP4 qua
  * WebCodecs là nâng cấp sau — WebM chạy được trên mọi trình duyệt demo.
  */
+/**
+ * Chạy credit roll lên canvas xuất (mỗi dòng một hàng, cuộn từ dưới lên);
+ * trả về ngay khi không có dòng nào hoặc người dùng huỷ.
+ */
+async function playCreditRollOn(
+  octx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  lines: string[],
+  speed: number,
+  isCancelled: () => boolean,
+): Promise<void> {
+  if (lines.length === 0) return;
+  const dur = creditRollDuration(lines.length, CREDIT_LINE_HEIGHT, height, speed);
+  const start = performance.now();
+  await new Promise<void>((resolve) => {
+    const step = () => {
+      if (isCancelled()) return resolve();
+      const t = (performance.now() - start) / 1000;
+      if (t >= dur) return resolve();
+      drawCreditRoll(octx, width, height, lines, t, {
+        speed,
+        lineHeight: CREDIT_LINE_HEIGHT,
+      });
+      requestAnimationFrame(step);
+    };
+    step();
+  });
+}
+
 export function ExportPanel({
   project,
   onProjectChange,
@@ -103,25 +141,41 @@ export function ExportPanel({
     };
     const composite = (
       source: HTMLCanvasElement,
-      tInScene: number,
+      tWall: number,
+      tContent: number,
       sceneIndex: number,
-      sceneDur: number,
+      sceneWallDur: number,
+      scene: (typeof project.scenes)[number],
     ) => {
       octx.save();
       octx.filter = GRADE_FILTERS[post.grade];
       octx.globalAlpha = 1;
       octx.drawImage(source, 0, 0);
       octx.restore();
-      const blend = crossfadeBlend(tInScene, sceneIndex, post);
+      // Chuyển cảnh: hoà tan dùng phủ alpha cũ; quét/phóng/vòng tròn
+      // dùng phủ khung mới; mờ qua đen dùng màn đen (xem postFx).
+      const blend = crossfadeBlend(tWall, sceneIndex, post);
       if (blend > 0 && prevSnapshot) {
         octx.save();
         octx.globalAlpha = blend;
         octx.drawImage(prevSnapshot, 0, 0);
         octx.restore();
+      } else if (prevSnapshot) {
+        drawTransitionOverlay(
+          octx,
+          prevSnapshot,
+          W,
+          H,
+          post.transition,
+          transitionCover(tWall, sceneIndex, post),
+        );
+      }
+      if (scene.lowerThird) {
+        drawLowerThird(octx, W, H, scene.lowerThird, tContent);
       }
       const black = fadeBlackAlpha(
-        tInScene,
-        sceneDur,
+        tWall,
+        sceneWallDur,
         sceneIndex === 0,
         sceneIndex === project.scenes.length - 1,
         post,
@@ -139,7 +193,14 @@ export function ExportPanel({
           if (cancelRef.current) return resolve();
           const t = (performance.now() - start) / 1000;
           if (t >= TITLE_CARD_SEC) return resolve();
-          drawTitleCard(octx, W, H, project.name, "Một bộ phim làm bằng AniMan");
+          drawTitleCard(
+            octx,
+            W,
+            H,
+            post.titleText ?? project.name,
+            post.titleSubtitle ?? "Một bộ phim làm bằng AniMan",
+            { sizeScale: post.titleSize, position: post.titlePosition },
+          );
           requestAnimationFrame(step);
         };
         step();
@@ -201,9 +262,11 @@ export function ExportPanel({
         const step = () => {
           if (cancelRef.current) return resolve();
           const t = (performance.now() - sceneStart) / 1000;
-          if (t >= scene.durationSec) return resolve();
-          drawSceneFrame(ctx, scene, t, W, H, getImage);
-          composite(canvas, t, i, scene.durationSec);
+          const speed = sceneSpeed(scene);
+          const wallDur = scene.durationSec / speed;
+          if (t >= wallDur) return resolve();
+          drawSceneFrame(ctx, scene, t * speed, W, H, getImage);
+          composite(canvas, t, t * speed, i, wallDur, scene);
           requestAnimationFrame(step);
         };
         step();
@@ -211,6 +274,16 @@ export function ExportPanel({
       snapshotOut();
       elapsed = (performance.now() - startedAt) / 1000;
     }
+    await playCreditRollOn(
+      octx,
+      W,
+      H,
+      post.creditsLines ?? [],
+      post.creditsSpeed && post.creditsSpeed > 0
+        ? post.creditsSpeed
+        : CREDIT_SPEED_DEFAULT,
+      () => cancelRef.current,
+    );
     recorder.stop();
     await stopped;
     if (audioCtx) void audioCtx.close().catch(() => undefined);
@@ -255,25 +328,39 @@ export function ExportPanel({
     const octx = out.getContext("2d")!;
     let prevSnapshot: HTMLCanvasElement | null = null;
     const composite3D = (
-      tInScene: number,
+      tWall: number,
+      tContent: number,
       sceneIndex: number,
-      sceneDur: number,
+      sceneWallDur: number,
+      scene: (typeof project.scenes)[number],
     ) => {
       octx.save();
       octx.filter = GRADE_FILTERS[post.grade];
       octx.globalAlpha = 1;
       octx.drawImage(film.canvas, 0, 0);
       octx.restore();
-      const blend = crossfadeBlend(tInScene, sceneIndex, post);
+      const blend = crossfadeBlend(tWall, sceneIndex, post);
       if (blend > 0 && prevSnapshot) {
         octx.save();
         octx.globalAlpha = blend;
         octx.drawImage(prevSnapshot, 0, 0);
         octx.restore();
+      } else if (prevSnapshot) {
+        drawTransitionOverlay(
+          octx,
+          prevSnapshot,
+          960,
+          540,
+          post.transition,
+          transitionCover(tWall, sceneIndex, post),
+        );
+      }
+      if (scene.lowerThird) {
+        drawLowerThird(octx, 960, 540, scene.lowerThird, tContent);
       }
       const black = fadeBlackAlpha(
-        tInScene,
-        sceneDur,
+        tWall,
+        sceneWallDur,
         sceneIndex === 0,
         sceneIndex === project.scenes.length - 1,
         post,
@@ -328,7 +415,14 @@ export function ExportPanel({
           if (cancelRef.current) return resolve();
           const t = (performance.now() - start) / 1000;
           if (t >= TITLE_CARD_SEC) return resolve();
-          drawTitleCard(octx, 960, 540, project.name, "Một bộ phim làm bằng AniMan");
+          drawTitleCard(
+            octx,
+            960,
+            540,
+            post.titleText ?? project.name,
+            post.titleSubtitle ?? "Một bộ phim làm bằng AniMan",
+            { sizeScale: post.titleSize, position: post.titlePosition },
+          );
           requestAnimationFrame(step);
         };
         step();
@@ -346,9 +440,11 @@ export function ExportPanel({
         const step = () => {
           if (cancelRef.current) return resolve();
           const t = (performance.now() - sceneStart) / 1000;
-          if (t >= scene.durationSec) return resolve();
-          film.drawAt(scene, t);
-          composite3D(t, i, scene.durationSec);
+          const speed = sceneSpeed(scene);
+          const wallDur = scene.durationSec / speed;
+          if (t >= wallDur) return resolve();
+          film.drawAt(scene, t * speed);
+          composite3D(t, t * speed, i, wallDur, scene);
           requestAnimationFrame(step);
         };
         step();
@@ -359,6 +455,16 @@ export function ExportPanel({
       snap.getContext("2d")!.drawImage(out, 0, 0);
       prevSnapshot = snap;
     }
+    await playCreditRollOn(
+      octx,
+      960,
+      540,
+      post.creditsLines ?? [],
+      post.creditsSpeed && post.creditsSpeed > 0
+        ? post.creditsSpeed
+        : CREDIT_SPEED_DEFAULT,
+      () => cancelRef.current,
+    );
     recorder.stop();
     await stopped;
     film.dispose();
@@ -528,6 +634,13 @@ export function ExportPanel({
                 <option value="none">Không chuyển cảnh</option>
                 <option value="crossfade">Hoà tan (khuyên dùng)</option>
                 <option value="fade">Mờ qua đen</option>
+                <option value="wipe-left">Quét sang trái</option>
+                <option value="wipe-right">Quét sang phải</option>
+                <option value="wipe-up">Quét lên trên</option>
+                <option value="wipe-down">Quét xuống dưới</option>
+                <option value="zoom">Phóng to rồi mờ</option>
+                <option value="iris-open">Vòng tròn mở ra</option>
+                <option value="iris-close">Vòng tròn khép lại</option>
               </select>
             </label>
             <label className="flex items-center gap-2">
@@ -568,6 +681,132 @@ export function ExportPanel({
                 className="accent-pink-400"
               />
               Màn hình tiêu đề đầu phim
+            </label>
+          </div>
+          {postSettingsOf(project).titleCard && (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-white/55">
+              <label className="flex items-center gap-2">
+                Chữ tiêu đề
+                <input
+                  value={postSettingsOf(project).titleText ?? ""}
+                  onChange={(e) =>
+                    onProjectChange({
+                      ...project,
+                      post: {
+                        ...postSettingsOf(project),
+                        titleText: e.currentTarget.value || undefined,
+                      },
+                    })
+                  }
+                  placeholder={project.name}
+                  className="h-8 w-44 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80 outline-none"
+                />
+              </label>
+              <label className="flex items-center gap-2">
+                Dòng phụ
+                <input
+                  value={postSettingsOf(project).titleSubtitle ?? ""}
+                  onChange={(e) =>
+                    onProjectChange({
+                      ...project,
+                      post: {
+                        ...postSettingsOf(project),
+                        titleSubtitle: e.currentTarget.value || undefined,
+                      },
+                    })
+                  }
+                  placeholder="Một bộ phim làm bằng AniMan"
+                  className="h-8 w-52 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80 outline-none"
+                />
+              </label>
+              <label className="flex items-center gap-2">
+                Cỡ chữ
+                <input
+                  type="range"
+                  min={0.7}
+                  max={1.5}
+                  step={0.1}
+                  value={postSettingsOf(project).titleSize ?? 1}
+                  onChange={(e) =>
+                    onProjectChange({
+                      ...project,
+                      post: {
+                        ...postSettingsOf(project),
+                        titleSize: Number(e.currentTarget.value),
+                      },
+                    })
+                  }
+                  className="w-24 accent-pink-400"
+                />
+              </label>
+              <label className="flex items-center gap-2">
+                Vị trí
+                <select
+                  value={postSettingsOf(project).titlePosition ?? "center"}
+                  onChange={(e) =>
+                    onProjectChange({
+                      ...project,
+                      post: {
+                        ...postSettingsOf(project),
+                        titlePosition: e.currentTarget.value as
+                          | "center"
+                          | "top"
+                          | "bottom",
+                      },
+                    })
+                  }
+                  className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80"
+                >
+                  <option value="center">Giữa</option>
+                  <option value="top">Trên</option>
+                  <option value="bottom">Dưới</option>
+                </select>
+              </label>
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <label className="block text-[12px] text-white/55">
+              Credit cuối phim (mỗi dòng một hàng, để trống là không có)
+              <textarea
+                value={(postSettingsOf(project).creditsLines ?? []).join("\n")}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    post: {
+                      ...postSettingsOf(project),
+                      creditsLines: e.currentTarget.value
+                        .split("\n")
+                        .filter((l) => l.trim().length > 0),
+                    },
+                  })
+                }
+                placeholder={"Đạo diễn: An\nDiễn viên: …"}
+                rows={2}
+                className="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-[12px] text-white/80 outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-[12px] text-white/55">
+              Tốc độ cuộn credit
+              <input
+                type="range"
+                min={30}
+                max={120}
+                step={10}
+                value={postSettingsOf(project).creditsSpeed ?? CREDIT_SPEED_DEFAULT}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    post: {
+                      ...postSettingsOf(project),
+                      creditsSpeed: Number(e.currentTarget.value),
+                    },
+                  })
+                }
+                className="w-24 accent-pink-400"
+              />
+              <span className="tabular-nums">
+                {postSettingsOf(project).creditsSpeed ?? CREDIT_SPEED_DEFAULT} px/giây
+              </span>
             </label>
           </div>
           <p className="text-[11px] text-white/35">

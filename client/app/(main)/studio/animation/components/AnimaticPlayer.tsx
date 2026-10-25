@@ -4,17 +4,34 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
 import {
   formatDuration,
-  projectDurationSec,
+  postSettingsOf,
   type AnimProject,
 } from "../lib/animProject";
-import { animaticTimeline, segmentAtTime } from "../lib/animatic";
+import {
+  contentTimeInSegment,
+  filmTimeline,
+  previewTimeline,
+  segmentAtTime,
+  segmentAtWallTime,
+} from "../lib/animatic";
 import { drawSceneFrame } from "../lib/renderFrame";
 import { createPrevizFilmRenderer } from "../lib/previzFilmRender";
 import {
   createFilmPreviewAudio,
-  dialogueAtFilmTime,
+  dialogueAtWallTime,
   type FilmPreviewAudio,
 } from "../lib/filmPreview";
+import {
+  CREDIT_LINE_HEIGHT,
+  CREDIT_SPEED_DEFAULT,
+  TRANSITION_SEC,
+  drawCreditRoll,
+  drawLowerThird,
+  drawTitleCard,
+  drawTransitionOverlay,
+  fadeBlackAlpha,
+  transitionCover,
+} from "../lib/postFx";
 
 const W = 960;
 const H = 540;
@@ -29,8 +46,17 @@ const H = 540;
  * đồng hồ hiệu năng. Mốc thoại dùng chung bản kế hoạch với bản xuất.
  */
 export function AnimaticPlayer({ project }: { project: AnimProject }) {
-  const segments = useMemo(() => animaticTimeline(project.scenes), [project.scenes]);
-  const totalSec = useMemo(() => projectDurationSec(project), [project]);
+  const post = postSettingsOf(project);
+  // Timeline phát thử: tiêu đề đầu phim + cảnh theo thời gian chiếu
+  // (đã áp tốc độ từng cảnh) + credit cuối phim.
+  const tl = useMemo(
+    () => previewTimeline({ scenes: project.scenes, post }),
+    [project.scenes, post],
+  );
+  const segments = tl.segments;
+  const wallSegments = useMemo(() => filmTimeline(project.scenes), [project.scenes]);
+  const totalSec = tl.totalSec;
+  const titleSec = tl.titleSec;
   const [playing, setPlaying] = useState(false);
   const [timeSec, setTimeSec] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -42,6 +68,9 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
   const filmLoadingRef = useRef<string | null>(null);
   const imagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const [imagesTick, setImagesTick] = useState(0);
+  // Ảnh chụp khung cuối của cảnh trước — dùng cho chuyển cảnh phát thử.
+  const snapshotRef = useRef<HTMLCanvasElement | null>(null);
+  const lastSegIndexRef = useRef<number | null>(null);
 
   // Đồng hồ hiện tại theo nguồn chủ đang dùng
   const currentTime = (): number => {
@@ -61,8 +90,10 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
     () =>
       JSON.stringify({
         bgm: project.bgm?.blobKey ?? "",
+        title: post.titleCard,
         scenes: project.scenes.map((s) => ({
           d: s.durationSec,
+          speed: s.speed ?? 1,
           takes: (s.dialogue ?? []).map(
             (l) => `${l.selectedTakeId ?? ""}@${l.startSec}`,
           ),
@@ -71,12 +102,12 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
           ),
         })),
       }),
-    [project],
+    [project, post.titleCard],
   );
 
   // Chuẩn bị tiếng (dựng lại khi dữ liệu tiếng thay đổi)
   useEffect(() => {
-    const audio = createFilmPreviewAudio(project);
+    const audio = createFilmPreviewAudio(project, titleSec);
     audioRef.current = audio;
     audioReadyRef.current = false;
     void audio.prepare().then(() => {
@@ -87,7 +118,7 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
       audioRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.id, audioSignature]);
+  }, [project.id, audioSignature, titleSec]);
 
   // Nạp trước hình layer 2D
   useEffect(() => {
@@ -105,19 +136,57 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
     }
   }, [project]);
 
-  // Vẽ khung hình tại thời điểm t lên sân khấu
+  // Vẽ khung hình tại thời điểm XEM t lên sân khấu (gồm tiêu đề đầu
+  // phim, chuyển cảnh giữa các cảnh, chữ chạy dưới, credit cuối phim).
   const drawAt = (t: number) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    const seg = segmentAtTime(segments, Math.min(t, Math.max(0, totalSec - 0.001)));
+    if (t < titleSec) {
+      drawTitleCard(
+        ctx,
+        W,
+        H,
+        post.titleText ?? project.name,
+        post.titleSubtitle ?? "Một bộ phim làm bằng AniMan",
+        { sizeScale: post.titleSize, position: post.titlePosition },
+      );
+      return;
+    }
+    const tWall = t - titleSec;
+    const wallTotal = wallSegments.length > 0 ? wallSegments[wallSegments.length - 1].endSec : 0;
+    if (tWall >= wallTotal && tl.creditsSec > 0) {
+      drawCreditRoll(
+        ctx,
+        W,
+        H,
+        post.creditsLines ?? [],
+        tWall - wallTotal,
+        {
+          speed: post.creditsSpeed && post.creditsSpeed > 0 ? post.creditsSpeed : CREDIT_SPEED_DEFAULT,
+          lineHeight: CREDIT_LINE_HEIGHT,
+        },
+      );
+      return;
+    }
+    const seg = segmentAtWallTime(wallSegments, Math.min(tWall, Math.max(0, wallTotal - 0.001)));
     if (!seg) {
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, W, H);
       return;
     }
     const scene = project.scenes[seg.index];
-    const tInScene = t - seg.startSec;
+    const tInSceneWall = tWall - seg.startSec;
+    const tInScene = contentTimeInSegment(seg, tWall);
+    // Đổi cảnh: chụp khung cuối của cảnh trước để làm chuyển cảnh.
+    if (lastSegIndexRef.current !== null && lastSegIndexRef.current !== seg.index) {
+      const snap = document.createElement("canvas");
+      snap.width = W;
+      snap.height = H;
+      snap.getContext("2d")!.drawImage(canvas, 0, 0);
+      snapshotRef.current = snap;
+    }
+    lastSegIndexRef.current = seg.index;
     if (project.kind === "2d") {
       drawSceneFrame(ctx, scene, tInScene, W, H, (url) => imagesRef.current.get(url) ?? null);
     } else {
@@ -140,6 +209,34 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
         ctx.font = "20px sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(`Đang dựng cảnh "${scene.name}"…`, W / 2, H / 2);
+      }
+    }
+    // Chuyển cảnh đầu cảnh (trừ cảnh đầu khi không có tiêu đề trước nó).
+    if (seg.index > 0 || titleSec > 0) {
+      const cover = transitionCover(tInSceneWall, seg.index, post);
+      if (post.transition === "crossfade" && cover > 0 && snapshotRef.current) {
+        ctx.save();
+        ctx.globalAlpha = cover;
+        ctx.drawImage(snapshotRef.current, 0, 0);
+        ctx.restore();
+      } else if (snapshotRef.current) {
+        drawTransitionOverlay(ctx, snapshotRef.current, W, H, post.transition, cover);
+      }
+    }
+    if (scene.lowerThird) {
+      drawLowerThird(ctx, W, H, scene.lowerThird, tInScene);
+    }
+    if (post.transition === "fade") {
+      const black = fadeBlackAlpha(
+        tInSceneWall,
+        seg.endSec - seg.startSec,
+        seg.index === 0 && titleSec === 0,
+        seg.index === project.scenes.length - 1,
+        post,
+      );
+      if (black > 0) {
+        ctx.fillStyle = `rgba(0,0,0,${black})`;
+        ctx.fillRect(0, 0, W, H);
       }
     }
   };
@@ -208,7 +305,7 @@ export function AnimaticPlayer({ project }: { project: AnimProject }) {
   };
 
   const currentSeg = segmentAtTime(segments, timeSec);
-  const subtitle = dialogueAtFilmTime(project, timeSec);
+  const subtitle = dialogueAtWallTime(project, timeSec, titleSec);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-4">

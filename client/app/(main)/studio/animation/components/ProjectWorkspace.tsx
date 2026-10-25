@@ -22,6 +22,8 @@ import {
   moveScene,
   projectDurationSec,
   removeScene,
+  sceneSpeed,
+  sceneWallDurationSec,
   updateScene,
   type AnimProject,
   type AnimScene,
@@ -437,6 +439,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                     onEnvironmentChange={(environment) =>
                       void apply(updateScene(project, sc.id, { environment }))
                     }
+                    onScenePostChange={(scenePost) =>
+                      void apply(updateScene(project, sc.id, { scenePost }))
+                    }
                   />
                 )
               ) : (
@@ -584,6 +589,34 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                 />
                 giây
               </label>
+              <label className="flex items-center gap-1.5 text-[12px] text-white/45">
+                Tốc độ
+                <input
+                  type="range"
+                  min={0.25}
+                  max={2}
+                  step={0.25}
+                  value={sceneSpeed(scene)}
+                  onChange={(e) =>
+                    void apply(
+                      updateScene(project, scene.id, {
+                        speed: Number(e.currentTarget.value),
+                      }),
+                    )
+                  }
+                  className="w-20 accent-pink-400"
+                />
+                <span className="tabular-nums text-white/70">
+                  {sceneSpeed(scene)}x
+                  {sceneSpeed(scene) !== 1 &&
+                    ` · chiếu ${sceneWallDurationSec(scene).toFixed(1)}s`}
+                </span>
+              </label>
+              {sceneSpeed(scene) !== 1 && (
+                <span className="text-[11px] text-white/35">
+                  Thoại và tiếng cảnh chậm/nhanh theo cảnh; nhạc nền giữ tốc độ gốc.
+                </span>
+              )}
               <input
                 value={scene.note ?? ""}
                 onChange={(e) =>
@@ -629,6 +662,143 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
+              <details className="basis-full rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
+                <summary className="text-[12px] text-white/60 cursor-pointer">
+                  Chữ chạy dưới (tên + chức danh)
+                  {scene.lowerThird
+                    ? ` — ${scene.lowerThird.name}`
+                    : " — chưa đặt"}
+                </summary>
+                <div className="flex flex-wrap items-center gap-2 mt-2 text-[12px] text-white/55">
+                  <input
+                    value={scene.lowerThird?.name ?? ""}
+                    onChange={(e) =>
+                      void apply(
+                        updateScene(project, scene.id, {
+                          lowerThird: {
+                            name: e.currentTarget.value,
+                            role: scene.lowerThird?.role ?? "",
+                            position: scene.lowerThird?.position ?? "bottom-left",
+                            startSec: scene.lowerThird?.startSec ?? 0,
+                            durationSec: scene.lowerThird?.durationSec ?? 3,
+                          },
+                        }),
+                      )
+                    }
+                    placeholder="Tên người hiện chữ"
+                    className="h-8 w-36 rounded-lg bg-black/50 border border-white/10 px-2 text-white outline-none"
+                  />
+                  <input
+                    value={scene.lowerThird?.role ?? ""}
+                    onChange={(e) =>
+                      void apply(
+                        updateScene(project, scene.id, {
+                          lowerThird: {
+                            name: scene.lowerThird?.name ?? "",
+                            role: e.currentTarget.value,
+                            position: scene.lowerThird?.position ?? "bottom-left",
+                            startSec: scene.lowerThird?.startSec ?? 0,
+                            durationSec: scene.lowerThird?.durationSec ?? 3,
+                          },
+                        }),
+                      )
+                    }
+                    placeholder="Chức danh"
+                    className="h-8 w-32 rounded-lg bg-black/50 border border-white/10 px-2 text-white outline-none"
+                  />
+                  <select
+                    value={scene.lowerThird?.position ?? "bottom-left"}
+                    onChange={(e) =>
+                      void apply(
+                        updateScene(project, scene.id, {
+                          lowerThird: {
+                            name: scene.lowerThird?.name ?? "",
+                            role: scene.lowerThird?.role ?? "",
+                            position: e.currentTarget.value as
+                              | "bottom-left"
+                              | "bottom-right"
+                              | "top-left"
+                              | "top-right",
+                            startSec: scene.lowerThird?.startSec ?? 0,
+                            durationSec: scene.lowerThird?.durationSec ?? 3,
+                          },
+                        }),
+                      )
+                    }
+                    className="h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-white outline-none"
+                  >
+                    <option value="bottom-left">Dưới trái</option>
+                    <option value="bottom-right">Dưới phải</option>
+                    <option value="top-left">Trên trái</option>
+                    <option value="top-right">Trên phải</option>
+                  </select>
+                  <label className="flex items-center gap-1.5">
+                    Bắt đầu
+                    <input
+                      type="number"
+                      min={0}
+                      max={scene.durationSec}
+                      step={0.5}
+                      value={scene.lowerThird?.startSec ?? 0}
+                      onChange={(e) =>
+                        void apply(
+                          updateScene(project, scene.id, {
+                            lowerThird: {
+                              name: scene.lowerThird?.name ?? "",
+                              role: scene.lowerThird?.role ?? "",
+                              position: scene.lowerThird?.position ?? "bottom-left",
+                              startSec: Number(e.currentTarget.value),
+                              durationSec: scene.lowerThird?.durationSec ?? 3,
+                            },
+                          }),
+                        )
+                      }
+                      className="w-16 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-white outline-none"
+                    />
+                    giây
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    Hiện
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={30}
+                      step={0.5}
+                      value={scene.lowerThird?.durationSec ?? 3}
+                      onChange={(e) =>
+                        void apply(
+                          updateScene(project, scene.id, {
+                            lowerThird: {
+                              name: scene.lowerThird?.name ?? "",
+                              role: scene.lowerThird?.role ?? "",
+                              position: scene.lowerThird?.position ?? "bottom-left",
+                              startSec: scene.lowerThird?.startSec ?? 0,
+                              durationSec: Number(e.currentTarget.value),
+                            },
+                          }),
+                        )
+                      }
+                      className="w-16 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-white outline-none"
+                    />
+                    giây
+                  </label>
+                  {scene.lowerThird && (
+                    <button
+                      onClick={() =>
+                        void apply(
+                          updateScene(project, scene.id, { lowerThird: undefined }),
+                        )
+                      }
+                      className="text-white/40 hover:text-rose-400"
+                    >
+                      Xoá chữ chạy dưới
+                    </button>
+                  )}
+                  <span className="text-[11px] text-white/35">
+                    Mốc theo thời gian nội dung của cảnh (không đổi khi đổi tốc độ).
+                  </span>
+                </div>
+              </details>
               <div className="basis-full flex flex-wrap items-center gap-2 pt-2 border-t border-white/5">
                 <label className="flex items-center gap-1.5 text-[12px] text-white/45">
                   <span

@@ -15,6 +15,19 @@ import {
   Trash2,
 } from "lucide-react";
 import type { AnimScene } from "../lib/animProject";
+import { sceneSpeed } from "../lib/animProject";
+import {
+  DEFAULT_SCENE_POST,
+  clampScenePostSettings,
+  scenePostOf,
+  type ScenePostSettings,
+} from "../lib/scenePost";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { BokehPass } from "three/addons/postprocessing/BokehPass.js";
+import { AfterimagePass } from "three/addons/postprocessing/AfterimagePass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { EASING_OPTIONS, type EasingId } from "../lib/timeline";
 import {
   createPrevizObject,
@@ -335,6 +348,15 @@ function PrevizStrip({
   );
 }
 
+/**
+ * Kiểu khai báo của three 0.180 để uniforms của BokehPass là `{}` nên
+ * truy cập trực tiếp bị lỗi type — ép kiểu qua record số khi chỉnh
+ * focus/aperture/maxblur/aspect lúc chạy.
+ */
+function bokehUniforms(pass: BokehPass): Record<string, { value: number }> {
+  return pass.uniforms as unknown as Record<string, { value: number }>;
+}
+
 export function PrevizEditor({
   scene,
   onChange,
@@ -343,6 +365,7 @@ export function PrevizEditor({
   onAudioChange,
   onParticlesChange,
   onEnvironmentChange,
+  onScenePostChange,
 }: {
   scene: AnimScene;
   onChange: (previz: PrevizScene) => void;
@@ -351,6 +374,7 @@ export function PrevizEditor({
   onAudioChange?: (clips: SceneAudioClip[]) => void;
   onParticlesChange?: (particles: ParticleSystemSettings | null) => void;
   onEnvironmentChange?: (environment: SceneEnvironment) => void;
+  onScenePostChange?: (post: ScenePostSettings) => void;
 }) {
   const previz = useMemo<PrevizScene>(
     () => scene.previz ?? createPrevizScene(),
@@ -377,6 +401,12 @@ export function PrevizEditor({
     orbitCam: THREE.PerspectiveCamera;
     shotCam: THREE.PerspectiveCamera;
     controls: OrbitControls;
+    /** Bộ xử lý hậu kỳ (giai đoạn C): null khi chưa dựng xong. */
+    composer: EffectComposer | null;
+    renderPass: RenderPass | null;
+    bloomPass: UnrealBloomPass | null;
+    bokehPass: BokehPass | null;
+    afterimagePass: AfterimagePass | null;
     groups: Map<string, THREE.Object3D>;
     characters: Map<string, CharacterParts>;
     /** Mixer phát clip xương cho từng vật thể model (Phase 4). */
@@ -419,6 +449,10 @@ export function PrevizEditor({
   brushToolRef.current = brushTool;
   const envRef = useRef(environment);
   envRef.current = environment;
+  // Hậu kỳ cảnh (giai đoạn C): cài đặt hiệu lực + ref cho vòng render/resize.
+  const scenePost = scenePostOf(scene);
+  const scenePostRef = useRef(scenePost);
+  scenePostRef.current = scenePost;
   const brushDraftRef = useRef<TerrainGrid | null>(null);
   const paintingRef = useRef(false);
   const paintAtRef = useRef<(x: number, z: number) => void>(() => {});
@@ -600,6 +634,33 @@ export function PrevizEditor({
     const controls = new OrbitControls(orbitCam, renderer.domElement);
     controls.target.set(0, 1, 0);
 
+    // Hậu kỳ (giai đoạn C): xử lý khung hình qua bộ lọc — khi mọi hiệu
+    // ứng tắt thì chuỗi chỉ còn vẽ cảnh + chuẩn hoá màu nên nhìn y như cũ.
+    const post0 = clampScenePostSettings(scene.scenePost ?? DEFAULT_SCENE_POST);
+    const composer = new EffectComposer(renderer);
+    composer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    const renderPass = new RenderPass(threeScene, orbitCam);
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(mount.clientWidth, mount.clientHeight),
+      post0.bloom.strength,
+      post0.bloom.radius,
+      post0.bloom.threshold,
+    );
+    bloomPass.enabled = post0.bloom.enabled;
+    const bokehPass = new BokehPass(threeScene, orbitCam, {
+      focus: post0.dof.focus,
+      aperture: post0.dof.aperture,
+      maxblur: post0.dof.maxblur,
+    });
+    bokehPass.enabled = post0.dof.enabled;
+    const afterimagePass = new AfterimagePass(post0.afterimage.damp);
+    afterimagePass.enabled = post0.afterimage.enabled;
+    composer.addPass(renderPass);
+    composer.addPass(bloomPass);
+    composer.addPass(bokehPass);
+    composer.addPass(afterimagePass);
+    composer.addPass(new OutputPass());
+
     threeScene.add(new THREE.AmbientLight(0xffffff, 0.75));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(5, 9, 4);
@@ -622,6 +683,11 @@ export function PrevizEditor({
       orbitCam,
       shotCam,
       controls,
+      composer,
+      renderPass,
+      bloomPass,
+      bokehPass,
+      afterimagePass,
       groups: new Map(),
       characters: new Map(),
       mixers: new Map(),
@@ -659,6 +725,13 @@ export function PrevizEditor({
       orbitCam.updateProjectionMatrix();
       shotCam.aspect = w / h;
       shotCam.updateProjectionMatrix();
+      composer.setSize(w, h);
+      // Chất lượng phát sáng "một nửa": xử lý mờ ở độ phân giải thấp hơn.
+      const pr = Math.min(2, window.devicePixelRatio || 1);
+      if (scenePostRef.current.bloom.quality === "half") {
+        bloomPass.setSize((w * pr) / 2, (h * pr) / 2);
+      }
+      bokehUniforms(bokehPass)["aspect"].value = orbitCam.aspect;
       const sf = safeFrameRef.current;
       if (sf) {
         let tw = w;
@@ -772,11 +845,49 @@ export function PrevizEditor({
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       controls.dispose();
+      (composer as unknown as { dispose?: () => void }).dispose?.();
+      (bloomPass as unknown as { dispose?: () => void }).dispose?.();
+      (bokehPass as unknown as { dispose?: () => void }).dispose?.();
+      (afterimagePass as unknown as { dispose?: () => void }).dispose?.();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
       threeRef.current = null;
     };
   }, []);
+
+  // ── Hậu kỳ (giai đoạn C): đồng bộ tham số bộ lọc khi cài đặt đổi ───
+  useEffect(() => {
+    const ctx = threeRef.current;
+    if (!ctx?.composer) return;
+    const post = scenePostRef.current;
+    if (ctx.bloomPass) {
+      ctx.bloomPass.enabled = post.bloom.enabled;
+      ctx.bloomPass.strength = post.bloom.strength;
+      ctx.bloomPass.radius = post.bloom.radius;
+      ctx.bloomPass.threshold = post.bloom.threshold;
+    }
+    if (ctx.bokehPass) {
+      ctx.bokehPass.enabled = post.dof.enabled;
+      const uniforms = bokehUniforms(ctx.bokehPass);
+      uniforms["focus"].value = post.dof.focus;
+      uniforms["aperture"].value = post.dof.aperture;
+      uniforms["maxblur"].value = post.dof.maxblur;
+    }
+    if (ctx.afterimagePass) {
+      ctx.afterimagePass.enabled = post.afterimage.enabled;
+      ctx.afterimagePass.uniforms["damp"].value = post.afterimage.damp;
+    }
+    // Đổi chất lượng phát sáng thì dựng lại kích thước bộ lọc.
+    const w = mountRef.current?.clientWidth ?? 0;
+    const h = mountRef.current?.clientHeight ?? 0;
+    if (w > 0 && h > 0) {
+      ctx.composer.setSize(w, h);
+      const pr = Math.min(2, window.devicePixelRatio || 1);
+      if (ctx.bloomPass && post.bloom.quality === "half") {
+        ctx.bloomPass.setSize((w * pr) / 2, (h * pr) / 2);
+      }
+    }
+  }, [scene.scenePost]);
 
   // ── Phong cảnh (giai đoạn B): dựng lại mặt đất khi địa hình đổi ───────
   useEffect(() => {
@@ -1331,10 +1442,15 @@ export function PrevizEditor({
         ctx.flashMesh.visible = false;
       }
       ctx.controls.enabled = st.viewMode === "orbit";
-      ctx.renderer.render(
-        ctx.scene,
-        st.viewMode === "shot" ? ctx.shotCam : ctx.orbitCam,
-      );
+      // Vẽ qua bộ xử lý hậu kỳ (phát sáng / mờ hậu cảnh / dư ảnh);
+      // camera của bộ lọc bám theo camera đang xem (tự do hay camera phim).
+      if (ctx.composer && ctx.renderPass) {
+        ctx.renderPass.camera = activeCam;
+        if (ctx.bokehPass) ctx.bokehPass.camera = activeCam;
+        ctx.composer.render();
+      } else {
+        ctx.renderer.render(ctx.scene, activeCam);
+      }
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
@@ -1350,7 +1466,9 @@ export function PrevizEditor({
       const dt = (ts - last) / 1000;
       last = ts;
       setTimeSec((prev) => {
-        const next = prev + dt;
+        // timeSec là thời gian NỘI DUNG: quay chậm thì đồng hồ nội dung
+        // chạy chậm theo tốc độ cảnh, vòng lặp vẫn quay về đầu ở cuối cảnh.
+        const next = prev + dt * sceneSpeed(scene);
         return next >= duration ? 0 : next;
       });
       raf = requestAnimationFrame(tick);
@@ -1441,7 +1559,11 @@ export function PrevizEditor({
     recorder.start(200);
     setPlaying(true);
     startSceneAudio?.();
-    await new Promise((r) => setTimeout(r, duration * 1000 + 150));
+    // Thời gian ghi THỰC TẾ = thời lượng nội dung / tốc độ (quay chậm
+    // thì ghi lâu hơn); bản trộn tiếng đã chậm theo cùng tốc độ nên khớp.
+    await new Promise((r) =>
+      setTimeout(r, (duration / sceneSpeed(scene)) * 1000 + 150),
+    );
     setPlaying(false);
     recorder.stop();
     await done;
@@ -1676,6 +1798,138 @@ export function PrevizEditor({
               brushTool={brushTool}
               onBrushToolChange={setBrushTool}
             />
+          )}
+
+          {onScenePostChange && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2.5">
+              <h3 className="text-[12px] font-semibold text-white/70">
+                HẬU KỲ CẢNH — PHÁT SÁNG · MỜ HẬU CẢNH · DƯ ẢNH
+              </h3>
+              <p className="text-[11px] text-white/40 leading-relaxed">
+                Tất cả mặc định tắt — bật lên mới tốn hiệu năng. Áp ngay
+                trong khung xem trước và cả khi xuất WebM cảnh này.
+              </p>
+              <label className="flex items-center gap-2 text-[12px] text-white/70">
+                <input
+                  type="checkbox"
+                  checked={scenePost.bloom.enabled}
+                  onChange={(e) =>
+                    onScenePostChange(
+                      clampScenePostSettings({
+                        ...scenePost,
+                        bloom: { ...scenePost.bloom, enabled: e.currentTarget.checked },
+                      }),
+                    )
+                  }
+                  className="accent-amber-400"
+                />
+                Phát sáng (đèn, lửa, mặt trời lan sáng ra xung quanh)
+              </label>
+              {scenePost.bloom.enabled && (
+                <div className="pl-6 space-y-1.5 text-[11px] text-white/55">
+                  <label className="flex items-center gap-2">
+                    <span className="w-24">Ngưỡng sáng</span>
+                    <input type="range" min={0} max={1} step={0.05} value={scenePost.bloom.threshold}
+                      onChange={(e) => onScenePostChange(clampScenePostSettings({ ...scenePost, bloom: { ...scenePost.bloom, threshold: Number(e.currentTarget.value) } }))}
+                      className="flex-1 accent-amber-400" />
+                    <span className="w-9 text-right tabular-nums text-white/70">{scenePost.bloom.threshold.toFixed(2)}</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-24">Cường độ</span>
+                    <input type="range" min={0} max={3} step={0.1} value={scenePost.bloom.strength}
+                      onChange={(e) => onScenePostChange(clampScenePostSettings({ ...scenePost, bloom: { ...scenePost.bloom, strength: Number(e.currentTarget.value) } }))}
+                      className="flex-1 accent-amber-400" />
+                    <span className="w-9 text-right tabular-nums text-white/70">{scenePost.bloom.strength.toFixed(1)}</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-24">Độ lan</span>
+                    <input type="range" min={0} max={1} step={0.05} value={scenePost.bloom.radius}
+                      onChange={(e) => onScenePostChange(clampScenePostSettings({ ...scenePost, bloom: { ...scenePost.bloom, radius: Number(e.currentTarget.value) } }))}
+                      className="flex-1 accent-amber-400" />
+                    <span className="w-9 text-right tabular-nums text-white/70">{scenePost.bloom.radius.toFixed(2)}</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-24">Chất lượng</span>
+                    <select
+                      value={scenePost.bloom.quality}
+                      onChange={(e) => onScenePostChange(clampScenePostSettings({ ...scenePost, bloom: { ...scenePost.bloom, quality: e.currentTarget.value as "full" | "half" } }))}
+                      className="h-7 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80"
+                    >
+                      <option value="full">Đủ (đẹp nhất)</option>
+                      <option value="half">Một nửa (nhẹ, máy yếu)</option>
+                    </select>
+                  </label>
+                </div>
+              )}
+              <label className="flex items-center gap-2 text-[12px] text-white/70">
+                <input
+                  type="checkbox"
+                  checked={scenePost.dof.enabled}
+                  onChange={(e) =>
+                    onScenePostChange(
+                      clampScenePostSettings({
+                        ...scenePost,
+                        dof: { ...scenePost.dof, enabled: e.currentTarget.checked },
+                      }),
+                    )
+                  }
+                  className="accent-sky-400"
+                />
+                Mờ hậu cảnh (chỉ giữ nét ở một khoảng cách)
+              </label>
+              {scenePost.dof.enabled && (
+                <div className="pl-6 space-y-1.5 text-[11px] text-white/55">
+                  <label className="flex items-center gap-2">
+                    <span className="w-24">Điểm nét (m)</span>
+                    <input type="range" min={0.5} max={30} step={0.5} value={scenePost.dof.focus}
+                      onChange={(e) => onScenePostChange(clampScenePostSettings({ ...scenePost, dof: { ...scenePost.dof, focus: Number(e.currentTarget.value) } }))}
+                      className="flex-1 accent-sky-400" />
+                    <span className="w-9 text-right tabular-nums text-white/70">{scenePost.dof.focus.toFixed(1)}</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-24">Độ mở</span>
+                    <input type="range" min={0} max={0.1} step={0.005} value={scenePost.dof.aperture}
+                      onChange={(e) => onScenePostChange(clampScenePostSettings({ ...scenePost, dof: { ...scenePost.dof, aperture: Number(e.currentTarget.value) } }))}
+                      className="flex-1 accent-sky-400" />
+                    <span className="w-9 text-right tabular-nums text-white/70">{scenePost.dof.aperture.toFixed(3)}</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="w-24">Độ mờ tối đa</span>
+                    <input type="range" min={0} max={0.05} step={0.005} value={scenePost.dof.maxblur}
+                      onChange={(e) => onScenePostChange(clampScenePostSettings({ ...scenePost, dof: { ...scenePost.dof, maxblur: Number(e.currentTarget.value) } }))}
+                      className="flex-1 accent-sky-400" />
+                    <span className="w-9 text-right tabular-nums text-white/70">{scenePost.dof.maxblur.toFixed(3)}</span>
+                  </label>
+                </div>
+              )}
+              <label className="flex items-center gap-2 text-[12px] text-white/70">
+                <input
+                  type="checkbox"
+                  checked={scenePost.afterimage.enabled}
+                  onChange={(e) =>
+                    onScenePostChange(
+                      clampScenePostSettings({
+                        ...scenePost,
+                        afterimage: { ...scenePost.afterimage, enabled: e.currentTarget.checked },
+                      }),
+                    )
+                  }
+                  className="accent-violet-400"
+                />
+                Dư ảnh chuyển động (vệt mờ khi vật di chuyển nhanh)
+              </label>
+              {scenePost.afterimage.enabled && (
+                <div className="pl-6 space-y-1.5 text-[11px] text-white/55">
+                  <label className="flex items-center gap-2">
+                    <span className="w-24">Độ giữ vệt</span>
+                    <input type="range" min={0} max={1} step={0.05} value={scenePost.afterimage.damp}
+                      onChange={(e) => onScenePostChange(clampScenePostSettings({ ...scenePost, afterimage: { ...scenePost.afterimage, damp: Number(e.currentTarget.value) } }))}
+                      className="flex-1 accent-violet-400" />
+                    <span className="w-9 text-right tabular-nums text-white/70">{scenePost.afterimage.damp.toFixed(2)}</span>
+                  </label>
+                </div>
+              )}
+            </section>
           )}
 
           {selected && (

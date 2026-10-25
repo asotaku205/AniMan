@@ -10,6 +10,7 @@
 import type { AnimProject } from "./animProject";
 import { dialogueLineAt, type DialogueLine } from "./dialogue";
 import { applyFadeEnvelope, buildFilmAudioPlan } from "./filmAudio";
+import { contentTimeInSegment, filmTimeline, segmentAtWallTime } from "./animatic";
 import { bgmBlobKey, loadVoiceBlob } from "./animStorage";
 
 /** Dòng thoại đang vang tại mốc thời gian tuyệt đối của phim. */
@@ -29,6 +30,29 @@ export function dialogueAtFilmTime(
   return null;
 }
 
+/**
+ * Dòng thoại đang vang tại thời điểm XEM (đã cộng cửa sổ tiêu đề đầu
+ * phim và tốc độ từng cảnh) — dùng cho phụ đề phủ trong phát thử.
+ */
+export function dialogueAtWallTime(
+  project: AnimProject,
+  tSec: number,
+  titleSec: number,
+): { sceneIndex: number; line: DialogueLine } | null {
+  const tWall = tSec - titleSec;
+  if (tWall < 0) return null;
+  const segs = filmTimeline(project.scenes);
+  const seg = segmentAtWallTime(segs, tWall);
+  if (!seg) return null;
+  const scene = project.scenes[seg.index];
+  if (!scene) return null;
+  const line = dialogueLineAt(
+    scene.dialogue ?? [],
+    contentTimeInSegment(seg, tWall),
+  );
+  return line ? { sceneIndex: seg.index, line } : null;
+}
+
 export interface FilmPreviewAudio {
   /** true khi phim có ít nhất thoại hoặc nhạc nền để phát. */
   hasAudio: boolean;
@@ -44,7 +68,11 @@ export interface FilmPreviewAudio {
   dispose: () => void;
 }
 
-export function createFilmPreviewAudio(project: AnimProject): FilmPreviewAudio {
+export function createFilmPreviewAudio(
+  project: AnimProject,
+  /** Độ dời thời gian xem (cửa sổ tiêu đề đầu phim): tiếng bắt đầu sau khoảng này. */
+  offsetSec = 0,
+): FilmPreviewAudio {
   const plan = buildFilmAudioPlan(project);
   const bgm = project.bgm ?? null;
   let ctx: AudioContext | null = null;
@@ -111,20 +139,23 @@ export function createFilmPreviewAudio(project: AnimProject): FilmPreviewAudio {
       startedAtCtx = ctx.currentTime + 0.06;
       startedFromSec = fromSec;
       playing = true;
-      // Thoại: lên lịch từng clip còn lại trên trục thời gian
+      // Thoại: lên lịch từng clip còn lại trên trục thời gian XEM
+      // (mốc kế hoạch + độ dời tiêu đề); clip phát đúng tốc độ cảnh.
       for (const clip of plan.clips) {
         const buf = buffers.get(clip.takeId);
         if (!buf) continue;
+        const rate = clip.playbackRate ?? 1;
         const playDur = clip.playDurationSec ?? buf.duration;
-        const clipEnd = clip.atSec + playDur;
-        if (clipEnd <= fromSec) continue;
+        const clipEndWall = clip.atSec + playDur / rate;
+        if (clipEndWall + offsetSec <= fromSec) continue;
         const src = ctx.createBufferSource();
         src.buffer = buf;
+        src.playbackRate.value = rate;
         const gain = ctx.createGain();
         src.connect(gain);
         gain.connect(ctx.destination);
-        const when = startedAtCtx + Math.max(0, clip.atSec - fromSec);
-        const offsetInClip = Math.max(0, fromSec - clip.atSec);
+        const when = startedAtCtx + Math.max(0, clip.atSec + offsetSec - fromSec);
+        const offsetInClip = Math.max(0, fromSec - offsetSec - clip.atSec) * rate;
         applyFadeEnvelope(gain.gain, {
           startCtx: when,
           durationSec: playDur,
@@ -144,7 +175,8 @@ export function createFilmPreviewAudio(project: AnimProject): FilmPreviewAudio {
           /* clip không hợp lệ — bỏ qua */
         }
       }
-      // Nhạc nền
+      // Nhạc nền: giữ tốc độ gốc (nhạc nền không bám theo từng cảnh),
+      // bắt đầu sau cửa sổ tiêu đề.
       if (bgm && bgmBuffer) {
         const src = ctx.createBufferSource();
         src.buffer = bgmBuffer;
@@ -154,7 +186,11 @@ export function createFilmPreviewAudio(project: AnimProject): FilmPreviewAudio {
         src.connect(gain);
         gain.connect(ctx.destination);
         try {
-          src.start(startedAtCtx, bgm.loop ? fromSec % bgmBuffer.duration : fromSec);
+          const intoFilm = Math.max(0, fromSec - offsetSec);
+          src.start(
+            startedAtCtx + Math.max(0, offsetSec - fromSec),
+            bgm.loop ? intoFilm % bgmBuffer.duration : intoFilm,
+          );
           sources.push(src);
         } catch {
           /* nhạc nền không phát được — phim vẫn chạy */

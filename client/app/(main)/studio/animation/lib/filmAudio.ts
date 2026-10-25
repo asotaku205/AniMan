@@ -5,14 +5,14 @@
  * `renderFilmAudioMix` render bằng OfflineAudioContext thành 1 file WAV.
  */
 
-import { projectDurationSec, type AnimProject } from "./animProject";
+import { sceneSpeed, type AnimProject } from "./animProject";
 import { selectedDialogueTake } from "./dialogue";
 import { loadVoiceBlob } from "./animStorage";
 import { audioClipBlobKey } from "./audioClips";
 
 export interface FilmVoiceClip {
   takeId: string;
-  /** Mốc tuyệt đối trong phim (giây). */
+  /** Mốc tuyệt đối TRÊN ĐỒNG HỒ CHIẾU (giây, đã áp tốc độ cảnh). */
   atSec: number;
   volume: number;
   sceneName: string;
@@ -22,6 +22,8 @@ export interface FilmVoiceClip {
   playDurationSec?: number;
   fadeInSec?: number;
   fadeOutSec?: number;
+  /** Tốc độ phát của clip (bằng tốc độ cảnh chứa nó; 1 = tốc độ gốc). */
+  playbackRate?: number;
 }
 
 /**
@@ -79,15 +81,19 @@ export function buildFilmAudioPlan(project: AnimProject): {
   const missing: MissingVoiceLine[] = [];
   let offset = 0;
   for (const scene of project.scenes) {
+    // Đồng hồ chiếu: cảnh quay chậm chiếm nhiều thời gian chiếu hơn,
+    // mốc thoại trong cảnh chia cho tốc độ; clip phát đúng tốc độ cảnh.
+    const speed = sceneSpeed(scene);
     for (const line of scene.dialogue ?? []) {
       if (!line.text.trim()) continue;
       const take = selectedDialogueTake(line);
       if (take) {
         clips.push({
           takeId: take.id,
-          atSec: offset + line.startSec,
+          atSec: offset + line.startSec / speed,
           volume: take.volume,
           sceneName: scene.name,
+          playbackRate: speed !== 1 ? speed : undefined,
         });
       } else {
         missing.push({ sceneName: scene.name, text: line.text });
@@ -96,18 +102,19 @@ export function buildFilmAudioPlan(project: AnimProject): {
     for (const clip of scene.audioClips ?? []) {
       clips.push({
         takeId: audioClipBlobKey(clip.id),
-        atSec: offset + clip.startSec,
+        atSec: offset + clip.startSec / speed,
         volume: clip.volume,
         sceneName: scene.name,
         sourceOffsetSec: clip.offsetSec,
         playDurationSec: clip.durationSec,
         fadeInSec: clip.fadeInSec,
         fadeOutSec: clip.fadeOutSec,
+        playbackRate: speed !== 1 ? speed : undefined,
       });
     }
-    offset += scene.durationSec;
+    offset += scene.durationSec / speed;
   }
-  return { clips, missing, totalSec: projectDurationSec(project) };
+  return { clips, missing, totalSec: offset };
 }
 
 /** Mã hoá AudioBuffer thành WAV 16-bit (đủ cho bản trộn đưa vào WebM). */
@@ -182,6 +189,7 @@ export async function renderFilmAudioMix(
     if (!buf) continue;
     const src = ctx.createBufferSource();
     src.buffer = buf;
+    src.playbackRate.value = clip.playbackRate ?? 1;
     const gain = ctx.createGain();
     src.connect(gain);
     gain.connect(ctx.destination);

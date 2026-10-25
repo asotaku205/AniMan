@@ -21,6 +21,13 @@ export interface AnimScene {
   name: string;
   /** Thời lượng cảnh (giây) — animatic và timeline đều tính theo đây. */
   durationSec: number;
+  /** Hệ số tốc độ cảnh (0.25–2, mặc định 1): < 1 quay chậm, > 1 tua nhanh.
+   * Thời lượng nội dung không đổi; thời gian chiếu = durationSec / speed. */
+  speed?: number;
+  /** Chữ chạy dưới của cảnh (tên + chức danh, hiện theo mốc nội dung). */
+  lowerThird?: import("./postFx").LowerThird;
+  /** Cài đặt hậu kỳ cảnh 3D (phát sáng / mờ hậu cảnh / dư ảnh). */
+  scenePost?: import("./scenePost").ScenePostSettings;
   /** Panel nguồn trong Manga Studio (trang/khung) nếu cảnh nạp từ manga. */
   source?: { mangaProjectId: string; page: number; panelId: string } | null;
   note?: string;
@@ -168,8 +175,24 @@ export function projectDurationSec(project: AnimProject): number {
   return project.scenes.reduce((sum, s) => sum + (s.durationSec || 0), 0);
 }
 
-/** Định dạng giây → "m:ss" cho thẻ dự án/timeline. */
-export function formatDuration(totalSec: number): string {
+/** Hệ số tốc độ hiệu lực của cảnh (kẹp 0.25–2, mặc định 1). */
+export function sceneSpeed(scene: { speed?: number } | null | undefined): number {
+  const s = scene?.speed;
+  if (typeof s !== "number" || !Number.isFinite(s)) return 1;
+  return Math.min(2, Math.max(0.25, s));
+}
+
+/** Thời gian chiếu thực tế của cảnh (giây) khi áp tốc độ. */
+export function sceneWallDurationSec(scene: AnimScene): number {
+  return (scene.durationSec || 0) / sceneSpeed(scene);
+}
+
+/** Tổng thời gian chiếu thực tế của phim (giây) khi áp tốc độ từng cảnh. */
+export function projectWallDurationSec(project: AnimProject): number {
+  return project.scenes.reduce((sum, s) => sum + sceneWallDurationSec(s), 0);
+}
+
+/** Định dạng giây → "m:ss" cho thẻ dự án/timeline. */export function formatDuration(totalSec: number): string {
   const sec = Math.max(0, Math.round(totalSec));
   const m = Math.floor(sec / 60);
   const r = sec % 60;

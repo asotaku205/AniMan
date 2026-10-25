@@ -67,4 +67,15 @@ export const EFFECT_PRESETS: EffectFormula[] = [
   preset("sparks", "Tia lửa", [
     layer({ shape: "sphere", count: 50, speed: [3, 8], life: [0.3, 0.8], gravity: -4, size: [0.1, 0.02], colorStart: "#ffffcc", colorEnd: "#ff8800", glow: true, spread: 1, opacity: 1 }),
   ], { burstDefault: true }),
+  // Sét đánh: vệt sáng rơi thẳng cực nhanh + chớp sáng toàn khung.
+  // (Khác mưa thời tiết toàn cảnh ở S2: đây là một tia sét tại điểm đặt.)
+  preset("lightning", "Sét đánh", [
+    layer({ shape: "point", count: 60, speed: [0, 0.3], life: [0.25, 0.5], gravity: -45, size: [0.14, 0.02], colorStart: "#ffffff", colorEnd: "#88aaff", glow: true, spread: 0.2, opacity: 1 }),
+    layer({ shape: "sphere", count: 30, speed: [1, 3], life: [0.1, 0.25], size: [0.5, 0.1], colorStart: "#cfe0ff", colorEnd: "#3355aa", glow: true, spread: 1, opacity: 0.6 }),
+  ], { burstDefault: true, suggestedShake: 0.3, suggestedFlash: 1 }),
+  // Mưa rào cục bộ tại điểm đặt (khác mưa thời tiết toàn cảnh ở S2):
+  // hạt nhỏ rơi dày, rải đều trong thời lượng sự kiện.
+  preset("rain", "Mưa rào", [
+    layer({ shape: "cone", count: 150, speed: [0.2, 0.8], life: [1, 1.5], gravity: -14, size: [0.06, 0.06], colorStart: "#cfe8ff", colorEnd: "#4a7dbd", glow: false, spread: 0.8, opacity: 0.6 }),
+  ], { burstDefault: false }),
 ];
