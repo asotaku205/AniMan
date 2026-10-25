@@ -13,6 +13,8 @@
  */
 
 import { DEFAULT_POST, type PostSettings } from "./postFx";
+import type { ExportPresetId } from "./exportPresets";
+import type { AudioMasterSettings } from "./audioMaster";
 
 export type AnimProjectKind = "2d" | "3d";
 
@@ -118,6 +120,10 @@ export interface AnimProject {
   bgm?: ProjectBgm | null;
   /** Cài đặt hậu kỳ bản xuất (Đợt Đ3): chuyển cảnh, màu, màn hình tiêu đề. */
   post?: PostSettings;
+  /** Kiểu xuất hiệu lực (giai đoạn D) — vắng thì mặc định phim ngắn 16:9. */
+  exportPreset?: ExportPresetId;
+  /** Cài đặt âm thanh tổng (giai đoạn D) — vắng thì dùng mặc định. */
+  master?: AudioMasterSettings;
 }
 
 export const ANIM_KIND_LABEL: Record<AnimProjectKind, string> = {

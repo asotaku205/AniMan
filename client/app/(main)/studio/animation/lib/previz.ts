@@ -138,9 +138,18 @@ export interface PrevizCameraKey {
   easing: EasingId;
 }
 
+/** Mốc điểm nét của cú focus pull (mét, dọc hướng nhìn camera). */
+export interface FocusKey {
+  timeSec: number;
+  focus: number;
+}
+
 export interface PrevizScene {
   objects: PrevizObject[];
   cameraKeys: PrevizCameraKey[];
+  /** Mốc điểm nét theo thời gian (focus pull) — vắng thì dùng điểm
+   * nét cố định trong cài đặt hậu kỳ của cảnh. */
+  focusKeys?: FocusKey[];
   /** Sự kiện hiệu ứng 3D gắn timeline (Phase 5). */
   effectEvents?: import("./effectFormula").EffectEvent[];
   /** Màu nền trời/sân khấu của cảnh. */
@@ -289,6 +298,29 @@ export function samplePrevizCamera(
     }
   }
   return { position: { ...last.position }, target: { ...last.target } };
+}
+
+/** Nội suy điểm nét tại t: trước key đầu giữ key đầu, sau key cuối
+ * giữ key cuối, giữa hai key nội suy tuyến tính; rỗng thì null. */
+export function sampleFocus(
+  keys: readonly FocusKey[],
+  t: number,
+): number | null {
+  const sorted = [...keys].sort((a, b) => a.timeSec - b.timeSec);
+  if (sorted.length === 0) return null;
+  if (t <= sorted[0].timeSec) return sorted[0].focus;
+  const last = sorted[sorted.length - 1];
+  if (t >= last.timeSec) return last.focus;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i];
+    const b = sorted[i + 1];
+    if (t >= a.timeSec && t <= b.timeSec) {
+      const span = b.timeSec - a.timeSec;
+      const k = span <= 0 ? 1 : (t - a.timeSec) / span;
+      return a.focus + (b.focus - a.focus) * k;
+    }
+  }
+  return last.focus;
 }
 
 /** Ghi đè/thêm key vật thể tại thời điểm (cùng timeSec → thay thế). */

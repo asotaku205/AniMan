@@ -10,6 +10,11 @@
 import type { AnimProject } from "./animProject";
 import { dialogueLineAt, type DialogueLine } from "./dialogue";
 import { applyFadeEnvelope, buildFilmAudioPlan } from "./filmAudio";
+import {
+  audioMasterOf,
+  bgmGainEnvelope,
+  gainAtEnvelope,
+} from "./audioMaster";
 import { contentTimeInSegment, filmTimeline, segmentAtWallTime } from "./animatic";
 import { bgmBlobKey, loadVoiceBlob } from "./animStorage";
 
@@ -176,13 +181,46 @@ export function createFilmPreviewAudio(
         }
       }
       // Nhạc nền: giữ tốc độ gốc (nhạc nền không bám theo từng cảnh),
-      // bắt đầu sau cửa sổ tiêu đề.
+      // bắt đầu sau cửa sổ tiêu đề. Hạ nhạc dưới thoại như bản xuất.
       if (bgm && bgmBuffer) {
         const src = ctx.createBufferSource();
         src.buffer = bgmBuffer;
         src.loop = bgm.loop;
         const gain = ctx.createGain();
-        gain.gain.value = bgm.volume;
+        const master = audioMasterOf(project);
+        if (master.enabled) {
+          const filmStart = Math.max(0, fromSec - offsetSec);
+          const windows = plan.clips
+            .filter((c) => c.kind === "dialogue")
+            .map((c) => {
+              const buf = buffers.get(c.takeId);
+              const dur =
+                (c.playDurationSec ?? buf?.duration ?? 0) /
+                (c.playbackRate ?? 1);
+              return { startSec: c.atSec, endSec: c.atSec + dur };
+            })
+            .filter((w) => w.endSec > w.startSec);
+          const env = bgmGainEnvelope(
+            windows,
+            plan.totalSec,
+            bgm.volume,
+            master,
+          );
+          gain.gain.setValueAtTime(
+            gainAtEnvelope(env, filmStart),
+            startedAtCtx,
+          );
+          for (const [t, v] of env) {
+            if (t > filmStart) {
+              gain.gain.linearRampToValueAtTime(
+                v,
+                startedAtCtx + (t - filmStart),
+              );
+            }
+          }
+        } else {
+          gain.gain.value = bgm.volume;
+        }
         src.connect(gain);
         gain.connect(ctx.destination);
         try {

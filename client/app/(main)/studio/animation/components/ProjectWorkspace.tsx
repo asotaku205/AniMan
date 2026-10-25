@@ -51,6 +51,10 @@ import {
 } from "../lib/sceneSuggest";
 import { loadMangaPanels } from "../lib/mangaImport";
 import { buildDialogueTrack } from "../lib/dialogue";
+import {
+  parseScreenplay,
+  screenplayToAnimScenes,
+} from "../lib/screenplay";
 import { createSceneLayer } from "../lib/timeline";
 import { CAMERA_PRESETS } from "../lib/motionPresets";
 
@@ -94,6 +98,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [importing, setImporting] = useState(false);
   const [showNovelSuggest, setShowNovelSuggest] = useState(false);
   const [novelText, setNovelText] = useState("");
+  const [showScreenplay, setShowScreenplay] = useState(false);
+  const [screenplayText, setScreenplayText] = useState("");
   const [novelDrafts, setNovelDrafts] = useState<SceneDraft[] | null>(null);
   const [importNote, setImportNote] = useState<string | null>(null);
   const [railTab, setRailTab] = useState<"scenes" | "assets">("scenes");
@@ -367,6 +373,75 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                     >
                       Gợi ý phân cảnh từ novel
                     </button>
+                    <button
+                      onClick={() => setShowScreenplay(true)}
+                      className="w-full h-9 rounded-xl bg-sky-500/15 border border-sky-400/30 text-[13px] hover:bg-sky-500/25 transition"
+                    >
+                      Tách kịch bản thành cảnh
+                    </button>
+                    {showScreenplay && (
+                      <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="w-full max-w-lg rounded-2xl bg-[#120a1f] border border-white/10 p-6 space-y-4">
+                          <h2 className="text-lg font-semibold">
+                            Tách kịch bản thành cảnh
+                          </h2>
+                          <p className="text-[12px] text-white/45 leading-relaxed">
+                            Dán kịch bản dạng: đầu cảnh INT./EXT., tên nhân
+                            vật VIẾT HOA rồi thoại bên dưới, mô tả viết
+                            thường. Dòng nào không nhận ra sẽ giữ trong ghi
+                            chú của cảnh, không mất.
+                          </p>
+                          <textarea
+                            value={screenplayText}
+                            onChange={(e) => setScreenplayText(e.currentTarget.value)}
+                            rows={12}
+                            placeholder={"INT. LỚP HỌC - NGÀY\n\nThầy giáo bước vào lớp.\n\nLINH\nChào buổi sáng ạ!"}
+                            className="w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-sm outline-none focus:border-sky-400/60 resize-y"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setShowScreenplay(false)}
+                              className="flex-1 h-11 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-white/10 transition"
+                            >
+                              Huỷ
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const parsed = parseScreenplay(screenplayText);
+                                const newScenes = screenplayToAnimScenes(parsed);
+                                if (newScenes.length === 0) {
+                                  setImportNote(
+                                    "Chưa tách được cảnh nào — kiểm tra lại kịch bản.",
+                                  );
+                                  return;
+                                }
+                                await apply({
+                                  ...project,
+                                  scenes: [...project.scenes, ...newScenes],
+                                  updatedAt: Date.now(),
+                                });
+                                const noteCount = parsed.reduce(
+                                  (n, s) => n + s.notes.length,
+                                  0,
+                                );
+                                setImportNote(
+                                  `Đã tạo ${newScenes.length} cảnh từ kịch bản${
+                                    noteCount > 0
+                                      ? ` (${noteCount} dòng giữ trong ghi chú)`
+                                      : ""
+                                  } — mở từng cảnh sửa tiếp rồi dựng như bình thường.`,
+                                );
+                                setShowScreenplay(false);
+                                setScreenplayText("");
+                              }}
+                              className="flex-1 h-11 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 text-sm font-medium hover:opacity-90 transition"
+                            >
+                              Tạo cảnh
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {project.kind === "2d" && project.sourceMangaProjectId && (
                       <button
                         onClick={() => void importFromManga()}

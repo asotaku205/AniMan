@@ -34,6 +34,14 @@ import {
   deleteVoiceBlob,
   saveVoiceBlob,
 } from "../lib/animStorage";
+import {
+  EXPORT_PRESETS,
+  EXPORT_PRESET_LIST,
+  exportPresetOf,
+  resolveExportSize,
+  type ExportPresetId,
+} from "../lib/exportPresets";
+import { audioMasterOf } from "../lib/audioMaster";
 
 /**
  * Kiểm tra & xuất bản toàn dự án:
@@ -91,8 +99,10 @@ export function ExportPanel({
     if (exporting || project.kind !== "2d") return;
     setExporting(true);
     cancelRef.current = false;
-    const W = 960;
-    const H = 540;
+    // Khổ khung + tốc độ khung hình theo kiểu xuất (giai đoạn D).
+    const { width: W, height: H, fps } = resolveExportSize(
+      exportPresetOf(project),
+    );
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
@@ -212,7 +222,7 @@ export function ExportPanel({
     const mix = await renderFilmAudioMix(project, titleSec).catch(() => null);
     const audioPlan = buildFilmAudioPlan(project);
     let audioCtx: AudioContext | null = null;
-    let stream: MediaStream = out.captureStream(30);
+    let stream: MediaStream = out.captureStream(fps);
     if (mix) {
       try {
         audioCtx = new AudioContext();
@@ -237,7 +247,7 @@ export function ExportPanel({
         });
       } catch {
         audioCtx = null;
-        stream = out.captureStream(30);
+        stream = out.captureStream(fps);
       }
     }
     const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
@@ -321,10 +331,13 @@ export function ExportPanel({
     const titleSec = post.titleCard ? TITLE_CARD_SEC : 0;
     const mix = await renderFilmAudioMix(project, titleSec).catch(() => null);
     const audioPlan = buildFilmAudioPlan(project);
-    const film = createPrevizFilmRenderer(960, 540);
+    const { width: W, height: H, fps } = resolveExportSize(
+      exportPresetOf(project),
+    );
+    const film = createPrevizFilmRenderer(W, H);
     const out = document.createElement("canvas");
-    out.width = 960;
-    out.height = 540;
+    out.width = W;
+    out.height = H;
     const octx = out.getContext("2d")!;
     let prevSnapshot: HTMLCanvasElement | null = null;
     const composite3D = (
@@ -349,14 +362,14 @@ export function ExportPanel({
         drawTransitionOverlay(
           octx,
           prevSnapshot,
-          960,
-          540,
+          W,
+          H,
           post.transition,
           transitionCover(tWall, sceneIndex, post),
         );
       }
       if (scene.lowerThird) {
-        drawLowerThird(octx, 960, 540, scene.lowerThird, tContent);
+        drawLowerThird(octx, W, H, scene.lowerThird, tContent);
       }
       const black = fadeBlackAlpha(
         tWall,
@@ -367,11 +380,11 @@ export function ExportPanel({
       );
       if (black > 0) {
         octx.fillStyle = `rgba(0,0,0,${black})`;
-        octx.fillRect(0, 0, 960, 540);
+        octx.fillRect(0, 0, W, H);
       }
     };
     let audioCtx: AudioContext | null = null;
-    let stream: MediaStream = out.captureStream(30);
+    let stream: MediaStream = out.captureStream(fps);
     if (mix) {
       try {
         audioCtx = new AudioContext();
@@ -395,7 +408,7 @@ export function ExportPanel({
         });
       } catch {
         audioCtx = null;
-        stream = out.captureStream(30);
+        stream = out.captureStream(fps);
       }
     }
     const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
@@ -417,8 +430,8 @@ export function ExportPanel({
           if (t >= TITLE_CARD_SEC) return resolve();
           drawTitleCard(
             octx,
-            960,
-            540,
+            W,
+            H,
             post.titleText ?? project.name,
             post.titleSubtitle ?? "Một bộ phim làm bằng AniMan",
             { sizeScale: post.titleSize, position: post.titlePosition },
@@ -450,15 +463,15 @@ export function ExportPanel({
         step();
       });
       const snap = document.createElement("canvas");
-      snap.width = 960;
-      snap.height = 540;
+      snap.width = W;
+      snap.height = H;
       snap.getContext("2d")!.drawImage(out, 0, 0);
       prevSnapshot = snap;
     }
     await playCreditRollOn(
       octx,
-      960,
-      540,
+      W,
+      H,
       post.creditsLines ?? [],
       post.creditsSpeed && post.creditsSpeed > 0
         ? post.creditsSpeed
@@ -613,6 +626,100 @@ export function ExportPanel({
       {onProjectChange && (
         <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
           <h3 className="text-[12px] font-semibold text-white/70 flex items-center gap-1.5">
+            <Music className="w-3.5 h-3.5" /> ÂM THANH TỔNG
+          </h3>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-white/55">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={audioMasterOf(project).enabled}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    master: {
+                      ...audioMasterOf(project),
+                      enabled: e.currentTarget.checked,
+                    },
+                  })
+                }
+                className="accent-emerald-400"
+              />
+              Nhạc tự nhỏ dưới thoại + cân âm lượng
+            </label>
+            <label className="flex items-center gap-2">
+              Nhạc còn lại khi có thoại
+              <input
+                type="range"
+                min={0.05}
+                max={0.6}
+                step={0.05}
+                value={audioMasterOf(project).duckLevel}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    master: {
+                      ...audioMasterOf(project),
+                      duckLevel: Number(e.currentTarget.value),
+                    },
+                  })
+                }
+                className="w-24 accent-emerald-400"
+              />
+              <span className="w-9 text-white/70">
+                {Math.round(audioMasterOf(project).duckLevel * 100)}%
+              </span>
+            </label>
+            <label className="flex items-center gap-2">
+              Hạ nhanh (giây)
+              <input
+                type="range"
+                min={0.02}
+                max={1}
+                step={0.05}
+                value={audioMasterOf(project).attackSec}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    master: {
+                      ...audioMasterOf(project),
+                      attackSec: Number(e.currentTarget.value),
+                    },
+                  })
+                }
+                className="w-24 accent-emerald-400"
+              />
+            </label>
+            <label className="flex items-center gap-2">
+              Nhả chậm (giây)
+              <input
+                type="range"
+                min={0.05}
+                max={2}
+                step={0.05}
+                value={audioMasterOf(project).releaseSec}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    master: {
+                      ...audioMasterOf(project),
+                      releaseSec: Number(e.currentTarget.value),
+                    },
+                  })
+                }
+                className="w-24 accent-emerald-400"
+              />
+            </label>
+          </div>
+          <p className="text-[11px] text-white/35">
+            Âm lượng tổng tự cân về mức chuẩn khi xuất (không đo LUFS
+            phòng thu). Nhạc nền giữ tốc độ gốc.
+          </p>
+        </div>
+      )}
+
+      {onProjectChange && (
+        <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+          <h3 className="text-[12px] font-semibold text-white/70 flex items-center gap-1.5">
             <Clapperboard className="w-3.5 h-3.5" /> HẬU KỲ BẢN XUẤT
           </h3>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-white/55">
@@ -682,7 +789,40 @@ export function ExportPanel({
               />
               Màn hình tiêu đề đầu phim
             </label>
+            <label className="flex items-center gap-2">
+              Kiểu xuất
+              <select
+                value={exportPresetOf(project)}
+                onChange={(e) => {
+                  const id = e.currentTarget.value as ExportPresetId;
+                  const p = EXPORT_PRESETS[id];
+                  onProjectChange({
+                    ...project,
+                    exportPreset: id,
+                    post: {
+                      ...postSettingsOf(project),
+                      transition: p.transition,
+                      grade: p.grade,
+                      titleCard: p.titleCard,
+                    },
+                  });
+                }}
+                className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-white/80"
+              >
+                {EXPORT_PRESET_LIST.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
+          <p className="text-[11px] text-white/35">
+            {EXPORT_PRESETS[exportPresetOf(project)].desc} Chọn kiểu xuất sẽ
+            đặt lại hậu kỳ mặc định — chỉnh lại sau nếu muốn. Khung dọc
+            9:16 xuất đúng tỉ lệ; khung xem trong trình dựng vẫn giữ tỉ
+            lệ màn hình.
+          </p>
           {postSettingsOf(project).titleCard && (
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-white/55">
               <label className="flex items-center gap-2">

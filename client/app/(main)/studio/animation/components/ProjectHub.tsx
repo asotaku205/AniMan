@@ -42,6 +42,11 @@ import {
   buildSampleProject3D,
   SAMPLE_VOICE_FILES,
 } from "../lib/sampleProjects";
+import {
+  buildTemplateProject,
+  PROJECT_TEMPLATES,
+  type ProjectTemplateId,
+} from "../lib/projectTemplates";
 
 /**
  * Hub Animation Studio — danh sách DỰ ÁN PHIM THẬT của người dùng
@@ -127,6 +132,15 @@ export function ProjectHub() {
     await refresh();
     setTransferNote(
       `Đã tạo "${sample.name}" — dự án đã có sẵn giọng mẫu và nhạc nền: mở dự án bấm Phát thử là nghe được ngay. Muốn dùng giọng của bạn thì vào từng cảnh thu đè trong mục Thoại.`,
+    );
+  };
+
+  const handleCreateTemplate = async (id: ProjectTemplateId) => {
+    const template = buildTemplateProject(id);
+    await saveAnimProject(template);
+    await refresh();
+    setTransferNote(
+      `Đã tạo "${template.name}" — mở workspace để sửa thành phim của bạn. Thoại trong mẫu chưa có giọng: vào từng cảnh thu giọng trong mục Thoại.`,
     );
   };
 
@@ -225,6 +239,31 @@ export function ProjectHub() {
           >
             Tạo mẫu 3D
           </button>
+        </span>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-[#0d0817] p-5 flex flex-wrap items-center gap-4">
+        <span className="w-11 h-11 rounded-xl bg-sky-500/15 grid place-items-center shrink-0">
+          <Film className="w-5 h-5 text-sky-300" />
+        </span>
+        <span className="flex-1 min-w-[240px]">
+          <span className="block font-medium">Bắt đầu từ mẫu dự án</span>
+          <span className="block text-[13px] text-white/45 leading-relaxed mt-0.5">
+            Khung dự án dựng sẵn theo từng thể loại — bấm một cái là có
+            cảnh, nhân vật và hậu kỳ mẫu, sửa thoải mái thành phim của bạn.
+          </span>
+        </span>
+        <span className="flex flex-wrap gap-2">
+          {PROJECT_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              title={t.desc}
+              onClick={() => void handleCreateTemplate(t.id)}
+              className="px-4 h-10 rounded-xl bg-sky-500/20 border border-sky-400/40 text-sm font-medium hover:bg-sky-500/30 transition"
+            >
+              {t.label}
+            </button>
+          ))}
         </span>
       </div>
 

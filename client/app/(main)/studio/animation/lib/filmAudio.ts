@@ -9,6 +9,12 @@ import { sceneSpeed, type AnimProject } from "./animProject";
 import { selectedDialogueTake } from "./dialogue";
 import { loadVoiceBlob } from "./animStorage";
 import { audioClipBlobKey } from "./audioClips";
+import {
+  audioMasterOf,
+  bgmGainEnvelope,
+  normalizeChannels,
+  type DuckWindow,
+} from "./audioMaster";
 
 export interface FilmVoiceClip {
   takeId: string;
@@ -24,6 +30,8 @@ export interface FilmVoiceClip {
   fadeOutSec?: number;
   /** Tốc độ phát của clip (bằng tốc độ cảnh chứa nó; 1 = tốc độ gốc). */
   playbackRate?: number;
+  /** Loại clip: thoại (để hạ nhạc) hay clip âm thanh của cảnh. */
+  kind?: "dialogue" | "clip";
 }
 
 /**
@@ -94,6 +102,7 @@ export function buildFilmAudioPlan(project: AnimProject): {
           volume: take.volume,
           sceneName: scene.name,
           playbackRate: speed !== 1 ? speed : undefined,
+          kind: "dialogue",
         });
       } else {
         missing.push({ sceneName: scene.name, text: line.text });
@@ -110,6 +119,7 @@ export function buildFilmAudioPlan(project: AnimProject): {
         fadeInSec: clip.fadeInSec,
         fadeOutSec: clip.fadeOutSec,
         playbackRate: speed !== 1 ? speed : undefined,
+        kind: "clip",
       });
     }
     offset += scene.durationSec / speed;
@@ -166,6 +176,7 @@ export async function renderFilmAudioMix(
   const plan = buildFilmAudioPlan(project);
   const bgm = project.bgm ?? null;
   if (plan.clips.length === 0 && !bgm) return null;
+  const master = audioMasterOf(project);
   const total = Math.max(1, plan.totalSec + offsetSec);
   const sampleRate = 44100;
   const ctx = new OfflineAudioContext(
@@ -184,9 +195,21 @@ export async function renderFilmAudioMix(
     }
   };
 
+  // Khoảng thoại (theo đồng hồ bản trộn, đã cộng độ dời tiêu đề) để
+  // hạ nhạc nền — chỉ thoại mới hạ nhạc, clip hiệu ứng thì không.
+  const dialogueWindows: DuckWindow[] = [];
+
   for (const clip of plan.clips) {
     const buf = await decode(clip.takeId);
     if (!buf) continue;
+    if (clip.kind === "dialogue") {
+      const dur =
+        (clip.playDurationSec ?? buf.duration) / (clip.playbackRate ?? 1);
+      dialogueWindows.push({
+        startSec: clip.atSec + offsetSec,
+        endSec: clip.atSec + offsetSec + dur,
+      });
+    }
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = clip.playbackRate ?? 1;
@@ -216,10 +239,24 @@ export async function renderFilmAudioMix(
       src.buffer = buf;
       src.loop = bgm.loop;
       const gain = ctx.createGain();
-      const fadeStart = Math.max(0, total - 2);
-      gain.gain.setValueAtTime(bgm.volume, 0);
-      gain.gain.setValueAtTime(bgm.volume, fadeStart);
-      gain.gain.linearRampToValueAtTime(0.0001, total);
+      if (master.enabled) {
+        // Hạ nhạc dưới thoại theo đường cong chung + tắt dần cuối phim.
+        const env = bgmGainEnvelope(
+          dialogueWindows,
+          total,
+          bgm.volume,
+          master,
+        );
+        gain.gain.setValueAtTime(env[0][1], 0);
+        for (let i = 1; i < env.length; i++) {
+          gain.gain.linearRampToValueAtTime(env[i][1], env[i][0]);
+        }
+      } else {
+        const fadeStart = Math.max(0, total - 2);
+        gain.gain.setValueAtTime(bgm.volume, 0);
+        gain.gain.setValueAtTime(bgm.volume, fadeStart);
+        gain.gain.linearRampToValueAtTime(0.0001, total);
+      }
       src.connect(gain);
       gain.connect(ctx.destination);
       src.start(offsetSec);
@@ -232,5 +269,13 @@ export async function renderFilmAudioMix(
   }
 
   const rendered = await ctx.startRendering();
+  if (master.enabled) {
+    // Cân âm lượng tổng về mức chuẩn + kẹp chống vỡ trước khi mã hoá.
+    const chans: Float32Array[] = [];
+    for (let c = 0; c < rendered.numberOfChannels; c++) {
+      chans.push(rendered.getChannelData(c));
+    }
+    normalizeChannels(chans, master);
+  }
   return audioBufferToWavBlob(rendered);
 }

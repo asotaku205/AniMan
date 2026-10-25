@@ -34,6 +34,7 @@ import {
   createPrevizScene,
   newPrevizId,
   POSE_OPTIONS,
+  sampleFocus,
   samplePrevizCamera,
   samplePrevizObject,
   upsertPrevizCameraKey,
@@ -45,6 +46,11 @@ import {
   type ClipSource,
   type Vec3,
 } from "../lib/previz";
+import {
+  buildShotKeys,
+  SHOT_PRESETS,
+  type ShotPresetId,
+} from "../lib/cameraShots";
 import { videoGenStatus } from "../lib/videoGen";
 import { newDialogueId, type DialogueLine } from "../lib/dialogue";
 import { loadModelForSceneWithClips, loadClipSourceAsset } from "../lib/modelLoader";
@@ -588,6 +594,15 @@ export function PrevizEditor({
   const [easing, setEasing] = useState<EasingId>("ease-in-out");
   const [draftCamPos, setDraftCamPos] = useState<Vec3>(vec3(0, 1.6, 6));
   const [draftCamTarget, setDraftCamTarget] = useState<Vec3>(vec3(0, 1.1, 0));
+  // Cú máy mẫu (giai đoạn D): chọn mẫu + mục tiêu rồi sinh key.
+  const [shotPreset, setShotPreset] = useState<ShotPresetId>("dolly-in");
+  const [shotDuration, setShotDuration] = useState(3);
+  const [shotTargetId, setShotTargetId] = useState("");
+  const [shotDistance, setShotDistance] = useState(0);
+  const [shotHeight, setShotHeight] = useState(2);
+  const [shotAngle, setShotAngle] = useState(90);
+  const [shotFocusFrom, setShotFocusFrom] = useState(3);
+  const [shotFocusTo, setShotFocusTo] = useState(9);
   const [draftCamDirty, setDraftCamDirty] = useState(false);
 
   useEffect(() => {
@@ -1446,7 +1461,17 @@ export function PrevizEditor({
       // camera của bộ lọc bám theo camera đang xem (tự do hay camera phim).
       if (ctx.composer && ctx.renderPass) {
         ctx.renderPass.camera = activeCam;
-        if (ctx.bokehPass) ctx.bokehPass.camera = activeCam;
+        if (ctx.bokehPass) {
+          ctx.bokehPass.camera = activeCam;
+          // Focus pull: điểm nét chạy theo mốc thời gian của cảnh.
+          const focusKeys = st.previz?.focusKeys;
+          if (focusKeys && focusKeys.length > 0) {
+            const f = sampleFocus(focusKeys, st.timeSec);
+            if (f != null) {
+              bokehUniforms(ctx.bokehPass)["focus"].value = f;
+            }
+          }
+        }
         ctx.composer.render();
       } else {
         ctx.renderer.render(ctx.scene, activeCam);
@@ -2530,6 +2555,191 @@ export function PrevizEditor({
                   </button>
                 </span>
               ))}
+            </div>
+            <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 space-y-2">
+              <div className="text-[11px] font-medium text-white/70">Cú máy mẫu</div>
+              <p className="text-[11px] text-white/40 leading-relaxed">
+                Chọn một cú máy, máy sẽ tự đặt key từ vị trí camera hiện
+                tại — sửa từng key tay sau đó như bình thường.
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <select
+                  value={shotPreset}
+                  onChange={(e) => setShotPreset(e.currentTarget.value as ShotPresetId)}
+                  className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-[12px] text-white/80 outline-none"
+                >
+                  {SHOT_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
+                  ))}
+                </select>
+                {(shotPreset === "orbit" || shotPreset === "tracking") && (
+                  <select
+                    value={shotTargetId}
+                    onChange={(e) => setShotTargetId(e.currentTarget.value)}
+                    className="h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-[12px] text-white/80 outline-none"
+                  >
+                    <option value="">Mục tiêu: điểm nhìn hiện tại</option>
+                    {previz.objects.map((o) => (
+                      <option key={o.id} value={o.id}>{o.name}</option>
+                    ))}
+                  </select>
+                )}
+                <label className="flex items-center gap-1 text-[11px] text-white/45">
+                  Dài
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={30}
+                    step={0.5}
+                    value={shotDuration}
+                    onChange={(e) => setShotDuration(Number(e.currentTarget.value) || 3)}
+                    className="w-14 h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] text-white/80 outline-none"
+                  />
+                  s
+                </label>
+                {(shotPreset === "dolly-in" || shotPreset === "dolly-out") && (
+                  <label className="flex items-center gap-1 text-[11px] text-white/45">
+                    Khoảng (m, 0 = tự tính)
+                    <input
+                      type="number"
+                      min={0}
+                      max={20}
+                      step={0.5}
+                      value={shotDistance}
+                      onChange={(e) => setShotDistance(Number(e.currentTarget.value) || 0)}
+                      className="w-14 h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] text-white/80 outline-none"
+                    />
+                  </label>
+                )}
+                {(shotPreset === "crane-up" || shotPreset === "crane-down") && (
+                  <label className="flex items-center gap-1 text-[11px] text-white/45">
+                    Độ cao (m)
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={10}
+                      step={0.5}
+                      value={shotHeight}
+                      onChange={(e) => setShotHeight(Number(e.currentTarget.value) || 2)}
+                      className="w-14 h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] text-white/80 outline-none"
+                    />
+                  </label>
+                )}
+                {shotPreset === "orbit" && (
+                  <label className="flex items-center gap-1 text-[11px] text-white/45">
+                    Góc quay (°)
+                    <input
+                      type="number"
+                      min={10}
+                      max={360}
+                      step={10}
+                      value={shotAngle}
+                      onChange={(e) => setShotAngle(Number(e.currentTarget.value) || 90)}
+                      className="w-16 h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] text-white/80 outline-none"
+                    />
+                  </label>
+                )}
+                {shotPreset === "focus-pull" && (
+                  <>
+                    <label className="flex items-center gap-1 text-[11px] text-white/45">
+                      Nét từ (m)
+                      <input
+                        type="number"
+                        min={0.1}
+                        max={100}
+                        step={0.5}
+                        value={shotFocusFrom}
+                        onChange={(e) => setShotFocusFrom(Number(e.currentTarget.value) || 3)}
+                        className="w-14 h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] text-white/80 outline-none"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1 text-[11px] text-white/45">
+                      tới (m)
+                      <input
+                        type="number"
+                        min={0.1}
+                        max={100}
+                        step={0.5}
+                        value={shotFocusTo}
+                        onChange={(e) => setShotFocusTo(Number(e.currentTarget.value) || 9)}
+                        className="w-14 h-8 rounded-lg bg-black/40 border border-white/10 px-2 text-[12px] text-white/80 outline-none"
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+              {shotPreset === "tracking" &&
+                (() => {
+                  const t = previz.objects.find((o) => o.id === shotTargetId);
+                  return !t || t.keys.length < 2;
+                })() && (
+                  <p className="text-[11px] text-amber-300/85 leading-relaxed">
+                    Đi theo cần một vật có ít nhất 2 key chuyển động — chọn
+                    vật khác hoặc đặt thêm key cho vật trước.
+                  </p>
+                )}
+              {shotPreset === "focus-pull" && (
+                <p className="text-[11px] text-white/40 leading-relaxed">
+                  Bấm thêm sẽ tự bật mờ hậu cảnh cho cảnh này để thấy điểm
+                  nét chuyển dần.
+                </p>
+              )}
+              <button
+                disabled={
+                  shotPreset === "tracking" &&
+                  (() => {
+                    const t = previz.objects.find((o) => o.id === shotTargetId);
+                    return !t || t.keys.length < 2;
+                  })()
+                }
+                onClick={() => {
+                  const targetObj = previz.objects.find((o) => o.id === shotTargetId);
+                  const targetPos = targetObj
+                    ? samplePrevizObject(targetObj, timeSec).position
+                    : draftCamTarget;
+                  const pathSamples =
+                    shotPreset === "tracking" && targetObj
+                      ? targetObj.keys.map((k) => ({
+                          timeSec: k.timeSec,
+                          position: k.position,
+                        }))
+                      : undefined;
+                  const built = buildShotKeys(shotPreset, {
+                    startTimeSec: timeSec,
+                    durationSec: shotDuration,
+                    fromPosition: draftCamPos,
+                    fromTarget: draftCamTarget,
+                    targetPosition: targetPos,
+                    moveDistance: shotDistance > 0 ? shotDistance : undefined,
+                    height: shotHeight,
+                    angleDeg: shotAngle,
+                    pathSamples,
+                    focusFrom: shotFocusFrom,
+                    focusTo: shotFocusTo,
+                  });
+                  let keys = previz.cameraKeys;
+                  for (const k of built.keys) {
+                    keys = upsertPrevizCameraKey(keys, k);
+                  }
+                  onChange({
+                    ...previz,
+                    cameraKeys: keys,
+                    focusKeys:
+                      built.focusKeys.length > 0
+                        ? [...(previz.focusKeys ?? []), ...built.focusKeys]
+                        : previz.focusKeys,
+                  });
+                  if (shotPreset === "focus-pull" && onScenePostChange) {
+                    onScenePostChange({
+                      ...scenePost,
+                      dof: { ...scenePost.dof, enabled: true },
+                    });
+                  }
+                }}
+                className="w-full h-8 rounded-lg bg-sky-500/20 border border-sky-400/40 text-[12px] font-medium hover:bg-sky-500/30 disabled:opacity-50"
+              >
+                Thêm cú máy từ {timeSec.toFixed(2)}s
+              </button>
             </div>
             <label className="flex items-center gap-2 text-[11px] text-white/45">
               <span className="w-14">Nền cảnh</span>
