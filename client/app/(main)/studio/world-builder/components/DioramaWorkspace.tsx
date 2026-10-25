@@ -195,7 +195,7 @@ export function DioramaWorkspace() {
   const [newFactionColor, setNewFactionColor] = useState("#ef4444");
   const [eraFilter, setEraFilter] = useState<string | null>(null);
   const [newEventEra, setNewEventEra] = useState("");
-  const [flyTo, setFlyTo] = useState<{ position: [number, number, number]; target: [number, number, number]; nonce: number } | null>(null);
+  const [flyTo, setFlyTo] = useState<{ position: [number, number, number]; target: [number, number, number]; nonce: number; sky?: boolean } | null>(null);
   // Chế độ xoá chunk (W8.1): bật lên rồi bấm vào chunk cần xoá, bấm
   // lần 2 để xác nhận. Chunk còn vật thì chặn (tránh xoá mất vật).
   const [chunkDeleteMode, setChunkDeleteMode] = useState(false);
@@ -537,7 +537,7 @@ export function DioramaWorkspace() {
             {" "}· bấm vào mặt đất (Esc để huỷ)
           </span>
         )}
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1.5 min-w-0 overflow-x-auto">
           <button
             onClick={() => {
               if (!selected) return;
@@ -601,6 +601,45 @@ export function DioramaWorkspace() {
             <option value="rain">Mưa</option>
             <option value="snow">Tuyết</option>
           </select>
+          <button
+            onClick={() => {
+              // Bay tới góc ngắm trời: camera thấp, nhìn thẳng về phía
+              // mặt trời (ban ngày) hoặc mặt trăng (ban đêm) theo đúng
+              // công thức hướng trong DioramaCanvas, để thiên thể nằm
+              // giữa khung hình thay vì ngoài tầm nhìn từ trên cao.
+              const t = state.sky.time;
+              const day = t >= 6 && t <= 18;
+              let dir: [number, number, number];
+              if (day) {
+                const az = ((t - 6) / 12) * Math.PI;
+                const el = Math.max(0.05, Math.sin(((t - 6) / 12) * Math.PI));
+                dir = [Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)];
+              } else {
+                const nightT = t >= 18 ? t - 18 : t + 6;
+                const mAz = (nightT / 12) * Math.PI;
+                const mEl = Math.sin(mAz) * 0.9 + 0.08;
+                dir = [Math.cos(mAz) * Math.cos(mEl), Math.sin(mEl), Math.sin(mAz) * Math.cos(mEl)];
+              }
+              const camera: [number, number, number] = [-dir[0] * 140, 16, -dir[2] * 140];
+              setFlyTo({
+                position: camera,
+                target: [camera[0] + dir[0] * 200, camera[1] + dir[1] * 200, camera[2] + dir[2] * 200],
+                nonce: Date.now(),
+                sky: true,
+              });
+            }}
+            title="Bay camera tới góc nhìn thẳng lên bầu trời (mặt trời ban ngày, mặt trăng ban đêm)"
+            className="h-8 px-3 rounded-lg bg-sky-500/25 border border-sky-400/40 text-sky-100 text-[12px] whitespace-nowrap hover:bg-sky-500/35"
+          >
+            ☀ Ngắm bầu trời
+          </button>
+          <button
+            onClick={() => setFlyTo({ position: [22, 24, 22], target: [0, 0, 0], nonce: Date.now() })}
+            title="Về góc nhìn sa bàn mặc định"
+            className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-white/70 text-[12px] whitespace-nowrap hover:bg-white/10"
+          >
+            Về sa bàn
+          </button>
           <select
             value={state.sky.season}
             onChange={(e) => setState({ ...state, sky: { ...state.sky, season: e.target.value as typeof state.sky.season } })}

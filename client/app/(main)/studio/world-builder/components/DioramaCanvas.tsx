@@ -59,7 +59,7 @@ interface Props {
   customModels: CustomModel[];
   factions: Faction[];
   sky: SkySettings;
-  flyTo: { position: [number, number, number]; target: [number, number, number]; nonce: number } | null;
+  flyTo: { position: [number, number, number]; target: [number, number, number]; nonce: number; sky?: boolean } | null;
   canvasApiRef: React.MutableRefObject<{
     capture: () => string | null;
     getCamera: () => { position: [number, number, number]; target: [number, number, number] } | null;
@@ -1212,6 +1212,10 @@ export function DioramaCanvas({
   useEffect(() => {
     const t = threeRef.current;
     if (!t || !flyTo) return;
+    // Góc ngắm trời nhìn thẳng lên nên phải mở khoá cực (mặc định khoá
+    // ở 85° để camera không chui xuống dưới đế sa bàn); bay thường thì
+    // trả về giới hạn cũ để góc nhìn sa bàn không bị lạ.
+    t.controls.maxPolarAngle = flyTo.sky ? Math.PI : Math.PI / 2 - 0.05;
     flyRef.current = {
       fromPos: t.camera.position.clone(),
       fromTarget: t.controls.target.clone(),
