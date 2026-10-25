@@ -11,6 +11,8 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { listAnimAssets } from "./animStorage";
 import type { Model3DAsset } from "./animAssets";
+import type { RigJoint } from "./rig";
+import { gltfBonesToRigJoints } from "./clipRetarget";
 
 interface CachedModel {
   group: THREE.Group;
@@ -61,4 +63,51 @@ export async function loadModelForSceneWithClips(
   }
   const proto = await cache.get(assetId)!;
   return { group: cloneSkeleton(proto.group) as THREE.Object3D, clips: proto.clips };
+}
+
+export interface ClipSourceAsset {
+  /** Clip xương trong file nguồn (dùng chung, chỉ đọc). */
+  clips: THREE.AnimationClip[];
+  /** Xương gốc của file nguồn (để khớp sang nhân vật đích). */
+  sourceJoints: RigJoint[];
+  sourceName: string;
+}
+
+const clipSourceCache = new Map<string, Promise<ClipSourceAsset>>();
+
+/**
+ * Nạp một file nguồn làm kho chuyển động (Phase 4: gắn clip từ file
+ * khác). Ném "not-found" khi tài sản không còn, "no-skeleton" khi file
+ * không có xương. Kết quả cache theo mã tài sản.
+ */
+export async function loadClipSourceAsset(
+  assetId: string,
+): Promise<ClipSourceAsset> {
+  if (!clipSourceCache.has(assetId)) {
+    clipSourceCache.set(
+      assetId,
+      (async () => {
+        const assets = await listAnimAssets();
+        const asset = assets.find(
+          (a): a is Model3DAsset => a.kind === "model3d" && a.id === assetId,
+        );
+        if (!asset) throw new Error("not-found");
+        const loader = new GLTFLoader();
+        const gltf = await loader.parseAsync(asset.dataUrl, "");
+        const skinnedMeshes: THREE.SkinnedMesh[] = [];
+        gltf.scene.traverse((obj) => {
+          const skinned = obj as THREE.SkinnedMesh;
+          if (skinned.isSkinnedMesh && skinned.skeleton) skinnedMeshes.push(skinned);
+        });
+        const skeleton = skinnedMeshes[0]?.skeleton ?? null;
+        if (!skeleton) throw new Error("no-skeleton");
+        return {
+          clips: gltf.animations ?? [],
+          sourceJoints: gltfBonesToRigJoints(skeleton.bones),
+          sourceName: asset.name,
+        };
+      })(),
+    );
+  }
+  return clipSourceCache.get(assetId)!;
 }

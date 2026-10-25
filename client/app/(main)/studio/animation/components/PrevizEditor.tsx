@@ -29,19 +29,23 @@ import {
   type PrevizObject,
   type PrevizObjectKind,
   type PrevizScene,
+  type ClipSource,
   type Vec3,
 } from "../lib/previz";
 import { videoGenStatus } from "../lib/videoGen";
 import { newDialogueId, type DialogueLine } from "../lib/dialogue";
-import { loadModelForSceneWithClips } from "../lib/modelLoader";
+import { loadModelForSceneWithClips, loadClipSourceAsset } from "../lib/modelLoader";
 import { createActionSegment, sampleActionSegment } from "../lib/actionTrack";
 import { createMixerState, updateMixerState, type MixerState } from "../lib/clipPlayer";
+import { bakeClipForTarget, mixerBindToRigJoints } from "../lib/clipRetarget";
 import { createPoseKey, eulerDegToQuat, expandPoseTemplate, quatToEulerDeg, samplePoseKeys, type BoneQuat } from "../lib/poseTrack";
 import { applyPoseToBones, capturePose } from "../lib/posePlayer";
 import { TEST_POSES } from "../lib/rig";
 import { EffectPoints } from "../lib/effectPlayer";
 import { formulaMaxLife, type EffectFormula } from "../lib/effectFormula";
-import { listAnimAssets } from "../lib/animStorage";
+import { listAnimAssets, saveAnimAsset } from "../lib/animStorage";
+import { newAssetId, type Model3DAsset } from "../lib/animAssets";
+import { inspectGlbDataUrl } from "../lib/modelInspect";
 import { EffectStudioPanel } from "./EffectStudioPanel";
 import {
   createWeatherPoints,
@@ -56,6 +60,20 @@ import type { ParticleSystemSettings } from "../lib/particles";
 import type { SceneWeather, WeatherType } from "../lib/layerEffects";
 import DialogueVoice from "./DialogueVoice";
 import { SceneAudioPanel } from "./SceneAudioPanel";
+import { EnvironmentPanel, type TerrainBrushTool } from "./EnvironmentPanel";
+import {
+  DEFAULT_ENVIRONMENT,
+  effectiveFog,
+  environmentSky,
+  type SceneEnvironment,
+} from "../lib/sceneEnvironment";
+import {
+  applyBrush,
+  heightAtGrid,
+  type TerrainGrid,
+} from "../lib/terrainBrush";
+import { createTerrainGeometry } from "../lib/terrainMesh";
+import { weatherParams } from "../../world-builder/lib/diorama";
 import type { SceneAudioClip } from "../lib/animProject";
 import { playSceneSounds } from "../lib/voicePreview";
 import { renderFilmAudioMix } from "../lib/filmAudio";
@@ -115,6 +133,17 @@ function buildCharacter(color: string, height: number): CharacterParts {
 
   root.add(legL, legR, torso);
   return { root, armL, armR, legL, legR, head, torso };
+}
+
+/** Chuyển động gắn thêm đã khớp xong, sẵn sàng phát qua mixer. */
+interface AttachedClipInfo {
+  /** Tên clip trong mixer (clip đã khớp mang hậu tố "(đã khớp)"). */
+  bakedName: string;
+  sourceAssetId: string;
+  sourceClipName: string;
+  sourceName: string;
+  status: "direct" | "retargeted";
+  missingBones: string[];
 }
 
 function buildProp(kind: PrevizObjectKind, color: string, size: number): THREE.Object3D {
@@ -313,6 +342,7 @@ export function PrevizEditor({
   onWeatherChange,
   onAudioChange,
   onParticlesChange,
+  onEnvironmentChange,
 }: {
   scene: AnimScene;
   onChange: (previz: PrevizScene) => void;
@@ -320,6 +350,7 @@ export function PrevizEditor({
   onWeatherChange?: (weather: SceneWeather | null) => void;
   onAudioChange?: (clips: SceneAudioClip[]) => void;
   onParticlesChange?: (particles: ParticleSystemSettings | null) => void;
+  onEnvironmentChange?: (environment: SceneEnvironment) => void;
 }) {
   const previz = useMemo<PrevizScene>(
     () => scene.previz ?? createPrevizScene(),
@@ -359,6 +390,13 @@ export function PrevizEditor({
     flashMesh: THREE.Mesh;
     weatherPoints: THREE.Points | null;
     particlePoints: THREE.Points | null;
+    sunLight: THREE.DirectionalLight;
+    envHemi: THREE.HemisphereLight | null;
+    flashLight: THREE.AmbientLight;
+    terrainMesh: THREE.Mesh | null;
+    envPoints: THREE.Points | null;
+    waterMesh: THREE.Mesh | null;
+    cloudGroup: THREE.Group | null;
   } | null>(null);
 
   /** Công thức hiệu ứng đã lưu + xem thử (Phase 5). */
@@ -368,6 +406,45 @@ export function PrevizEditor({
   const [previewPos, setPreviewPos] = useState({ x: 0, y: 0.5, z: 0 });
 
   const selected = previz.objects.find((o) => o.id === selectedId) ?? null;
+
+  // Phong cảnh (giai đoạn B): môi trường của cảnh + cọ nặn đất.
+  const environment = scene.environment ?? DEFAULT_ENVIRONMENT;
+  const [brushTool, setBrushTool] = useState<TerrainBrushTool>({
+    mode: "off",
+    radius: 2,
+    strength: 0.3,
+  });
+  const [brushDraft, setBrushDraft] = useState<TerrainGrid | null>(null);
+  const brushToolRef = useRef(brushTool);
+  brushToolRef.current = brushTool;
+  const envRef = useRef(environment);
+  envRef.current = environment;
+  const brushDraftRef = useRef<TerrainGrid | null>(null);
+  const paintingRef = useRef(false);
+  const paintAtRef = useRef<(x: number, z: number) => void>(() => {});
+  const commitBrushRef = useRef<() => void>(() => {});
+  paintAtRef.current = (x, z) => {
+    const env = envRef.current;
+    const tool = brushToolRef.current;
+    if (tool.mode === "off") return;
+    const next = applyBrush(
+      brushDraftRef.current ?? env.terrain,
+      tool.mode,
+      x,
+      z,
+      tool.radius,
+      tool.strength,
+    );
+    brushDraftRef.current = next;
+    setBrushDraft(next);
+  };
+  commitBrushRef.current = () => {
+    const draft = brushDraftRef.current;
+    brushDraftRef.current = null;
+    setBrushDraft(null);
+    if (draft && onEnvironmentChange)
+      onEnvironmentChange({ ...envRef.current, terrain: draft });
+  };
 
   const refreshEffectFormulas = useCallback(async () => {
     const assets = await listAnimAssets().catch(() => []);
@@ -448,6 +525,22 @@ export function PrevizEditor({
   const [draftPose, setDraftPose] = useState("stand");
   /** Tên clip xương đã nạp cho từng vật thể model (Phase 4). */
   const [modelClipNames, setModelClipNames] = useState<Record<string, string[]>>({});
+  /** Model nào có xương (để gắn chuyển động từ file khác). */
+  const [modelHasSkeleton, setModelHasSkeleton] = useState<Record<string, boolean>>({});
+  /** Chuyển động gắn thêm đã khớp xong cho từng vật thể model. */
+  const [attachedClipInfo, setAttachedClipInfo] = useState<Record<string, AttachedClipInfo[]>>({});
+  /** Lỗi gắn chuyển động cho từng vật thể model. */
+  const [attachErrors, setAttachErrors] = useState<Record<string, string>>({});
+  /** Thông báo của form gắn chuyển động (panel hành động). */
+  const [attachMsg, setAttachMsg] = useState<string | null>(null);
+  /** Mẫu trong thư viện có thể lấy chuyển động (trừ file của nhân vật). */
+  const [clipSourceAssets, setClipSourceAssets] = useState<Model3DAsset[]>([]);
+  const [draftSourceAssetId, setDraftSourceAssetId] = useState("");
+  const [draftSourceClips, setDraftSourceClips] = useState<string[]>([]);
+  const [draftSourceClip, setDraftSourceClip] = useState("");
+  /** key "assetId::clipName" đã xử lý cho từng vật thể -> tên clip trong mixer ("" = đã thử và lỗi). */
+  const attachedDoneRef = useRef(new Map<string, Map<string, string>>());
+  const attachedBusyRef = useRef(new Set<string>());
   const [draftActClip, setDraftActClip] = useState("");
   const [draftActStart, setDraftActStart] = useState(0);
   const [draftActDur, setDraftActDur] = useState(2);
@@ -513,13 +606,15 @@ export function PrevizEditor({
     threeScene.add(sun);
     const grid = new THREE.GridHelper(30, 30, 0x554477, 0x332a4d);
     threeScene.add(grid);
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(30, 30),
-      new THREE.MeshStandardMaterial({ color: "#1b1530", roughness: 1 }),
+    // Mặt đất phong cảnh (giai đoạn B): lưới cao độ, mặc định phẳng.
+    const initialEnv = scene.environment ?? DEFAULT_ENVIRONMENT;
+    const terrainMesh = new THREE.Mesh(
+      createTerrainGeometry(initialEnv.terrain),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.01;
-    threeScene.add(ground);
+    threeScene.add(terrainMesh);
+    const flashLight = new THREE.AmbientLight(0xffffff, 0);
+    threeScene.add(flashLight);
 
     threeRef.current = {
       renderer,
@@ -532,6 +627,13 @@ export function PrevizEditor({
       mixers: new Map(),
       effectGroups: new Map(),
       previewPoints: null,
+      sunLight: sun,
+      envHemi: null,
+      flashLight,
+      terrainMesh,
+      envPoints: null,
+      waterMesh: null,
+      cloudGroup: null,
       flashMesh: (() => {
         const m = new THREE.Mesh(
           new THREE.PlaneGeometry(1, 1),
@@ -604,6 +706,20 @@ export function PrevizEditor({
     };
     const onPointerDown = (e: PointerEvent) => {
       if (stateRef.current.viewMode !== "orbit") return;
+      // Cọ địa hình: kéo trên mặt đất để nặn đất, không chọn vật.
+      if (brushToolRef.current.mode !== "off") {
+        const ctxNow = threeRef.current;
+        if (ctxNow?.terrainMesh) {
+          raycaster.setFromCamera(ndcOf(e), ctxNow.orbitCam);
+          const hits = raycaster.intersectObject(ctxNow.terrainMesh, false);
+          if (hits.length > 0) {
+            paintingRef.current = true;
+            controls.enabled = false;
+            paintAtRef.current(hits[0].point.x, hits[0].point.z);
+          }
+        }
+        return;
+      }
       downAt = { x: e.clientX, y: e.clientY };
       const id = pickAt(e);
       if (id) {
@@ -613,20 +729,35 @@ export function PrevizEditor({
       }
     };
     const onPointerMove = (e: PointerEvent) => {
+      if (paintingRef.current) {
+        const ctxNow = threeRef.current;
+        if (!ctxNow?.terrainMesh) return;
+        raycaster.setFromCamera(ndcOf(e), ctxNow.orbitCam);
+        const hits = raycaster.intersectObject(ctxNow.terrainMesh, false);
+        if (hits.length > 0)
+          paintAtRef.current(hits[0].point.x, hits[0].point.z);
+        return;
+      }
       if (!dragId) return;
       const ctxNow = threeRef.current;
       if (!ctxNow) return;
       raycaster.setFromCamera(ndcOf(e), ctxNow.orbitCam);
       const point = new THREE.Vector3();
       if (raycaster.ray.intersectPlane(groundPlane, point)) {
+        const nx = Math.max(-14, Math.min(14, point.x));
+        const nz = Math.max(-14, Math.min(14, point.z));
         stageInteractRef.current?.onDrag(dragId, {
-          x: Math.max(-14, Math.min(14, point.x)),
-          y: 0,
-          z: Math.max(-14, Math.min(14, point.z)),
+          x: nx,
+          y: heightAtGrid(envRef.current.terrain, nx, nz),
+          z: nz,
         });
       }
     };
     const onPointerUp = () => {
+      if (paintingRef.current) {
+        paintingRef.current = false;
+        commitBrushRef.current();
+      }
       dragId = null;
       downAt = null;
       controls.enabled = stateRef.current.viewMode === "orbit";
@@ -646,6 +777,124 @@ export function PrevizEditor({
       threeRef.current = null;
     };
   }, []);
+
+  // ── Phong cảnh (giai đoạn B): dựng lại mặt đất khi địa hình đổi ───────
+  useEffect(() => {
+    const ctx = threeRef.current;
+    if (!ctx?.terrainMesh) return;
+    const grid = brushDraft ?? environment.terrain;
+    const old = ctx.terrainMesh.geometry;
+    ctx.terrainMesh.geometry = createTerrainGeometry(grid);
+    old.dispose();
+  }, [environment.terrain, brushDraft]);
+
+  // ── Phong cảnh (giai đoạn B): trời, nắng, sương, mây, nước, mưa ───────
+  useEffect(() => {
+    const ctx = threeRef.current;
+    if (!ctx) return;
+    if (ctx.envPoints) {
+      ctx.scene.remove(ctx.envPoints);
+      ctx.envPoints.geometry.dispose();
+      (ctx.envPoints.material as THREE.Material).dispose();
+      ctx.envPoints = null;
+    }
+    if (ctx.cloudGroup) {
+      ctx.scene.remove(ctx.cloudGroup);
+      ctx.cloudGroup.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (mesh.isMesh) {
+          mesh.geometry.dispose();
+          (mesh.material as THREE.Material).dispose();
+        }
+      });
+      ctx.cloudGroup = null;
+    }
+    if (ctx.waterMesh) {
+      ctx.scene.remove(ctx.waterMesh);
+      ctx.waterMesh.geometry.dispose();
+      (ctx.waterMesh.material as THREE.Material).dispose();
+      ctx.waterMesh = null;
+    }
+    const env = scene.environment;
+    if (!env) {
+      ctx.scene.fog = null;
+      return;
+    }
+    const sky = environmentSky(env);
+    ctx.scene.background = new THREE.Color(sky.skyBg);
+    ctx.sunLight.color.set(sky.sunColor);
+    ctx.sunLight.intensity = sky.sunIntensity;
+    const angle = ((env.time - 6) / 12) * Math.PI;
+    ctx.sunLight.position.set(
+      Math.cos(angle) * 20,
+      Math.max(1, Math.sin(angle) * 18 + 2),
+      6,
+    );
+    if (!ctx.envHemi) {
+      ctx.envHemi = new THREE.HemisphereLight(0xffffff, 0x332244, 0.3);
+      ctx.scene.add(ctx.envHemi);
+    }
+    ctx.envHemi.intensity = sky.hemiIntensity;
+    const fog = effectiveFog(env);
+    ctx.scene.fog = new THREE.Fog(sky.skyBg, fog.near, fog.far);
+    // Mây: số lượng theo độ phủ, màu theo độ xám của thời tiết.
+    const wp = weatherParams(env.weather);
+    const cloudGroup = new THREE.Group();
+    const cloudMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color("#ffffff").lerp(
+        new THREE.Color("#5b6470"),
+        wp.cloudDark,
+      ),
+      transparent: true,
+      opacity: 0.9,
+      roughness: 1,
+    });
+    const count = Math.round(wp.cloudCover * 10);
+    for (let i = 0; i < count; i += 1) {
+      const cloud = new THREE.Group();
+      for (let k = 0; k < 3; k += 1) {
+        const puff = new THREE.Mesh(
+          new THREE.SphereGeometry(2 + (k % 2), 10, 8),
+          cloudMat,
+        );
+        puff.position.set(k * 2.2 - 2.2, (k % 2) * 0.5, 0);
+        puff.scale.y = 0.45;
+        cloud.add(puff);
+      }
+      cloud.position.set(
+        -25 + ((i * 37) % 50),
+        12 + (i % 3) * 2,
+        -25 + ((i * 53) % 50),
+      );
+      cloudGroup.add(cloud);
+    }
+    ctx.scene.add(cloudGroup);
+    ctx.cloudGroup = cloudGroup;
+    // Mặt nước phẳng.
+    if (env.waterLevel >= 0) {
+      const water = new THREE.Mesh(
+        new THREE.PlaneGeometry(30, 30),
+        new THREE.MeshStandardMaterial({
+          color: "#3a7bd5",
+          transparent: true,
+          opacity: 0.65,
+          roughness: 0.2,
+        }),
+      );
+      water.rotation.x = -Math.PI / 2;
+      water.position.y = env.waterLevel;
+      ctx.scene.add(water);
+      ctx.waterMesh = water;
+    }
+    // Hạt mưa/tuyết của chính thời tiết phong cảnh (tái dùng hạt S2).
+    if (env.weather === "rain") {
+      ctx.envPoints = createWeatherPoints({ type: "rain", intensity: 0.8 });
+      ctx.scene.add(ctx.envPoints);
+    } else if (env.weather === "snow") {
+      ctx.envPoints = createWeatherPoints({ type: "snow", intensity: 0.6 });
+      ctx.scene.add(ctx.envPoints);
+    }
+  }, [scene.environment]);
 
   // ── Thời tiết 3D (S2): gắn hạt vào scene khi thời tiết thay đổi ──────────
   useEffect(() => {
@@ -681,11 +930,193 @@ export function PrevizEditor({
     }
   }, [scene.particles]);
 
+  // ── Chuyển động gắn thêm từ file khác (Phase 4: clip retarget) ──────────
+  const attachKey = (assetId: string, clipName: string) => `${assetId}::${clipName}`;
+
+  /** Hòa giải clipSources của một vật thể với mixer: gắn mới, gỡ cũ. */
+  const reconcileAttachedClips = (obj: PrevizObject, ms: MixerState) => {
+    const wanted = new Map<string, ClipSource>();
+    for (const s of obj.clipSources ?? []) wanted.set(attachKey(s.assetId, s.clipName), s);
+    let done = attachedDoneRef.current.get(obj.id);
+    if (!done) {
+      done = new Map();
+      attachedDoneRef.current.set(obj.id, done);
+    }
+    const doneMap = done;
+    // Gỡ những clip không còn trong danh sách.
+    for (const [key, bakedName] of [...doneMap.entries()]) {
+      if (wanted.has(key)) continue;
+      doneMap.delete(key);
+      if (bakedName) {
+        const idx = ms.clips.findIndex((c) => c.name === bakedName);
+        if (idx >= 0) ms.clips.splice(idx, 1);
+        setAttachedClipInfo((prev) => ({
+          ...prev,
+          [obj.id]: (prev[obj.id] ?? []).filter((a) => a.bakedName !== bakedName),
+        }));
+      }
+    }
+    for (const [key, s] of wanted) {
+      if (doneMap.has(key)) continue;
+      const busyKey = `${obj.id}|${key}`;
+      if (attachedBusyRef.current.has(busyKey)) continue;
+      attachedBusyRef.current.add(busyKey);
+      void (async () => {
+        try {
+          const src = await loadClipSourceAsset(s.assetId);
+          const sourceClip = src.clips.find((c) => c.name === s.clipName);
+          if (!sourceClip) {
+            setAttachErrors((prev) => ({
+              ...prev,
+              [obj.id]: `Không còn chuyển động “${s.clipName}” trong file “${src.sourceName}”.`,
+            }));
+            doneMap.set(key, "");
+            return;
+          }
+          const targetJoints = mixerBindToRigJoints(ms);
+          const baked = bakeClipForTarget(sourceClip, src.sourceJoints, targetJoints);
+          if (!baked) {
+            setAttachErrors((prev) => ({
+              ...prev,
+              [obj.id]: `Chuyển động “${s.clipName}” không khớp với nhân vật này (không còn xương nào dùng được) nên chưa gắn.`,
+            }));
+            doneMap.set(key, "");
+            return;
+          }
+          if (!ms.clips.some((c) => c.name === baked.clip.name)) ms.clips.push(baked.clip);
+          doneMap.set(key, baked.clip.name);
+          setAttachedClipInfo((prev) => ({
+            ...prev,
+            [obj.id]: [
+              ...(prev[obj.id] ?? []).filter((a) => a.bakedName !== baked.clip.name),
+              {
+                bakedName: baked.clip.name,
+                sourceAssetId: s.assetId,
+                sourceClipName: s.clipName,
+                sourceName: src.sourceName,
+                status: baked.status,
+                missingBones: baked.missingBones,
+              },
+            ],
+          }));
+          setAttachErrors((prev) => {
+            const next = { ...prev };
+            delete next[obj.id];
+            return next;
+          });
+        } catch (e) {
+          const msg =
+            e instanceof Error && e.message === "not-found"
+              ? "Không tìm thấy file chuyển động gốc trong thư viện (có thể đã bị xoá)."
+              : e instanceof Error && e.message === "no-skeleton"
+                ? "File gốc không có xương nên không gắn được chuyển động."
+                : "Không đọc được file chuyển động gốc.";
+          setAttachErrors((prev) => ({ ...prev, [obj.id]: msg }));
+          doneMap.set(key, "");
+        } finally {
+          attachedBusyRef.current.delete(busyKey);
+        }
+      })();
+    }
+  };
+
+  const refreshClipSourceAssets = useCallback(async () => {
+    const assets = await listAnimAssets().catch(() => []);
+    const models: Model3DAsset[] = [];
+    for (const a of assets) {
+      if (a.kind !== "model3d") continue;
+      if (a.inspection && a.inspection.animations.length === 0) continue;
+      models.push(a);
+    }
+    setClipSourceAssets(models);
+  }, []);
+
+  useEffect(() => {
+    void refreshClipSourceAssets();
+  }, [refreshClipSourceAssets]);
+
+  const handleSourceAssetChange = async (assetId: string) => {
+    setDraftSourceAssetId(assetId);
+    setDraftSourceClip("");
+    const asset = clipSourceAssets.find((a) => a.id === assetId);
+    if (!asset) {
+      setDraftSourceClips([]);
+      return;
+    }
+    const names = asset.inspection?.animations.map((a) => a.name) ?? [];
+    if (names.length > 0) {
+      setDraftSourceClips(names);
+      return;
+    }
+    try {
+      const src = await loadClipSourceAsset(assetId);
+      setDraftSourceClips(src.clips.map((c) => c.name));
+    } catch {
+      setDraftSourceClips([]);
+    }
+  };
+
+  const attachSource = (obj: PrevizObject, assetId: string, clipName: string) => {
+    const existing = obj.clipSources ?? [];
+    if (existing.some((s) => s.assetId === assetId && s.clipName === clipName)) {
+      setAttachMsg("Chuyển động này đã gắn rồi.");
+      return;
+    }
+    if (assetId === obj.modelAssetId) {
+      setAttachMsg("Đây chính là file của nhân vật — chuyển động của nó đã có sẵn.");
+      return;
+    }
+    setAttachMsg(null);
+    updateObject(obj.id, { clipSources: [...existing, { assetId, clipName }] });
+  };
+
+  const uploadClipFile = (file: File) => {
+    if (file.size > 20 * 1024 * 1024) {
+      setAttachMsg("File nặng hơn 20MB — hãy dùng bản rút gọn.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result);
+      const inspection = inspectGlbDataUrl(dataUrl) ?? undefined;
+      const names = inspection?.animations.map((a) => a.name) ?? [];
+      if (names.length === 0) {
+        setAttachMsg("File này không có chuyển động xương nào.");
+        return;
+      }
+      const id = newAssetId("model");
+      await saveAnimAsset({
+        kind: "model3d",
+        id,
+        name: file.name.replace(/\.glb$/i, ""),
+        dataUrl,
+        createdAt: Date.now(),
+        inspection,
+      });
+      await refreshClipSourceAssets();
+      setDraftSourceAssetId(id);
+      setDraftSourceClips(names);
+      if (names.length === 1) {
+        const obj = previz.objects.find((o) => o.id === selectedId);
+        if (obj) attachSource(obj, id, names[0]);
+        setAttachMsg(`Đã nạp “${file.name}” vào thư viện và gắn chuyển động “${names[0]}”.`);
+      } else {
+        setDraftSourceClip("");
+        setAttachMsg(`Đã nạp “${file.name}” vào thư viện — chọn chuyển động rồi bấm Gắn.`);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // ── Đồng bộ vật thể vào scene Three ────────────────────────────────────────
   useEffect(() => {
     const ctx = threeRef.current;
     if (!ctx) return;
-    ctx.scene.background = new THREE.Color(previz.backdrop);
+    ctx.scene.background = new THREE.Color(
+      scene.environment
+        ? environmentSky(scene.environment).skyBg
+        : previz.backdrop,
+    );
     const seen = new Set<string>();
     for (const obj of previz.objects) {
       seen.add(obj.id);
@@ -703,11 +1134,15 @@ export function PrevizEditor({
                 if (ctx.groups.get(obj.id) !== holder) return;
                 holder.add(loaded.group);
                 const ms = createMixerState(loaded.group, loaded.clips);
-                if (ms) ctx.mixers.set(obj.id, ms);
+                if (ms) {
+                  ctx.mixers.set(obj.id, ms);
+                  reconcileAttachedClips(obj, ms);
+                }
                 setModelClipNames((prev) => ({
                   ...prev,
                   [obj.id]: loaded.clips.map((c) => c.name),
                 }));
+                setModelHasSkeleton((prev) => ({ ...prev, [obj.id]: ms !== null }));
               })
               .catch(() => undefined);
           }
@@ -723,6 +1158,11 @@ export function PrevizEditor({
           ctx.scene.add(mesh);
         }
       }
+      // Vật thể đã có sẵn: chỉ hòa giải chuyển động gắn thêm (clipSources đổi).
+      if (obj.kind === "model" && ctx.groups.has(obj.id)) {
+        const ms = ctx.mixers.get(obj.id);
+        if (ms) reconcileAttachedClips(obj, ms);
+      }
     }
     for (const [id, group] of [...ctx.groups.entries()]) {
       if (!seen.has(id)) {
@@ -730,13 +1170,29 @@ export function PrevizEditor({
         ctx.groups.delete(id);
         ctx.characters.delete(id);
         ctx.mixers.delete(id);
+        attachedDoneRef.current.delete(id);
+        setAttachedClipInfo((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        setAttachErrors((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        setModelHasSkeleton((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
       }
     }
   }, [previz]);
 
   // ── Vòng render ─────────────────────────────────────────────────────────────
-  const stateRef = useRef({ previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec });
-  stateRef.current = { previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec };
+  const stateRef = useRef({ previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec, environment });
+  stateRef.current = { previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec, environment };
   useEffect(() => {
     let raf = 0;
     const loop = () => {
@@ -802,6 +1258,26 @@ export function PrevizEditor({
       ctx.shotCam.position.set(cam.position.x, cam.position.y, cam.position.z);
       ctx.shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
       if (ctx.weatherPoints) updateWeatherPoints(ctx.weatherPoints, st.timeSec);
+      if (ctx.envPoints) updateWeatherPoints(ctx.envPoints, st.timeSec);
+      if (ctx.cloudGroup && st.environment) {
+        const wind = weatherParams(st.environment.weather).wind;
+        ctx.cloudGroup.position.x = ((st.timeSec * wind * 0.6) % 60) - 30;
+      }
+      if (
+        ctx.waterMesh &&
+        st.environment &&
+        st.environment.waterLevel >= 0
+      ) {
+        ctx.waterMesh.position.y =
+          st.environment.waterLevel + Math.sin(st.timeSec * 0.8) * 0.03;
+      }
+      // Sấm sét (chỉ mưa): chớp sáng thoáng qua theo thời gian xem.
+      if (st.environment?.weather === "rain") {
+        const fl = Math.sin(st.timeSec * 13.7) * Math.sin(st.timeSec * 7.3);
+        ctx.flashLight.intensity = fl > 0.996 ? 1.5 : 0;
+      } else {
+        ctx.flashLight.intensity = 0;
+      }
       if (ctx.particlePoints) updateParticlePoints(ctx.particlePoints, st.timeSec);
       // Hiệu ứng 3D (Phase 5): hạt + rung camera + chớp sáng theo timeline.
       for (const [id, g] of ctx.effectGroups) {
@@ -1121,6 +1597,14 @@ export function PrevizEditor({
                         ? `Nhân vật ${previz.objects.filter((o) => o.kind === "character").length + 1}`
                         : label.replace("+ ", ""),
                     );
+                    obj.keys[0] = {
+                      ...obj.keys[0],
+                      position: {
+                        x: 0,
+                        y: heightAtGrid(environment.terrain, 0, 0),
+                        z: 0,
+                      },
+                    };
                     onChange({ ...previz, objects: [...previz.objects, obj] });
                     setSelectedId(obj.id);
                   }}
@@ -1182,6 +1666,17 @@ export function PrevizEditor({
               </div>
             ))}
           </section>
+
+          {onEnvironmentChange && (
+            <EnvironmentPanel
+              previz={previz}
+              onPrevizChange={onChange}
+              environment={scene.environment ?? DEFAULT_ENVIRONMENT}
+              onEnvironmentChange={onEnvironmentChange}
+              brushTool={brushTool}
+              onBrushToolChange={setBrushTool}
+            />
+          )}
 
           {selected && (
             <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2.5">
@@ -1322,20 +1817,21 @@ export function PrevizEditor({
                 HÀNH ĐỘNG (clip xương)
               </h3>
               {(() => {
-                const clipNames = modelClipNames[selected.id];
-                if (clipNames === undefined) {
+                const embedded = modelClipNames[selected.id];
+                if (embedded === undefined) {
                   return <p className="text-[11px] text-white/40">Đang nạp model…</p>;
                 }
-                if (clipNames.length === 0) {
-                  return (
-                    <p className="text-[11px] text-white/40 leading-relaxed">
-                      Model này không có clip xương. Nạp file .glb có sẵn clip
-                      (ví dụ tải từ Mixamo) thì clip mới hiện ở đây để gắn
-                      vào timeline.
-                    </p>
-                  );
-                }
-                const clip = clipNames.includes(draftActClip) ? draftActClip : clipNames[0];
+                const attached = attachedClipInfo[selected.id] ?? [];
+                const clipOptions = [
+                  ...embedded.map((c) => ({ value: c, label: c })),
+                  ...attached.map((a) => ({
+                    value: a.bakedName,
+                    label: `${a.sourceClipName} · ${a.status === "retargeted" ? "đã khớp" : "trực tiếp"}`,
+                  })),
+                ];
+                const clip = clipOptions.find((o) => o.value === draftActClip)?.value ?? clipOptions[0]?.value ?? "";
+                const attachedOfClip = attached.find((a) => a.bakedName === clip);
+                const sourceOptions = clipSourceAssets.filter((a) => a.id !== selected.modelAssetId);
                 return (
                   <>
                     <div className="flex flex-wrap gap-1.5">
@@ -1360,80 +1856,198 @@ export function PrevizEditor({
                         </span>
                       ))}
                     </div>
-                    <label className="flex items-center gap-2 text-[11px] text-white/45">
-                      <span className="w-14">Clip</span>
-                      <select
-                        value={clip}
-                        onChange={(e) => setDraftActClip(e.currentTarget.value)}
-                        className="flex-1 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
-                      >
-                        {clipNames.map((c) => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="flex gap-2">
-                      <label className="flex-1 text-[11px] text-white/45">
-                        Bắt đầu (s)
-                        <input
-                          type="number" step={0.1} min={0} value={draftActStart}
-                          onChange={(e) => setDraftActStart(Number(e.currentTarget.value) || 0)}
-                          className="mt-0.5 w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
-                        />
-                      </label>
-                      <label className="flex-1 text-[11px] text-white/45">
-                        Dài (s)
-                        <input
-                          type="number" step={0.1} min={0.1} value={draftActDur}
-                          onChange={(e) => setDraftActDur(Number(e.currentTarget.value) || 0.1)}
-                          className="mt-0.5 w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
-                        />
-                      </label>
-                      <label className="flex-1 text-[11px] text-white/45">
-                        Tốc độ
-                        <input
-                          type="number" step={0.1} min={0.1} value={draftActSpeed}
-                          onChange={(e) => setDraftActSpeed(Number(e.currentTarget.value) || 1)}
-                          className="mt-0.5 w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
-                        />
-                      </label>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <label className="flex items-center gap-1.5 text-[11px] text-white/60 px-1">
-                        <input
-                          type="checkbox" checked={draftActLoop}
-                          onChange={(e) => setDraftActLoop(e.currentTarget.checked)}
-                        />
-                        Lặp tới hết đoạn
-                      </label>
-                      <button
-                        onClick={() => setDraftActStart(Math.round(timeSec * 100) / 100)}
-                        className="h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[11px]"
-                      >
-                        Lấy mốc đang xem ({timeSec.toFixed(2)}s)
-                      </button>
-                      <button
-                        onClick={() => {
-                          updateObject(selected.id, {
-                            actions: [
-                              ...(selected.actions ?? []),
-                              {
-                                ...createActionSegment(clip, draftActStart, draftActDur),
-                                loop: draftActLoop,
-                                speed: draftActSpeed,
-                              },
-                            ],
-                          });
-                        }}
-                        className="flex-1 h-8 rounded-lg bg-violet-500/25 border border-violet-400/40 text-[12px] font-medium hover:bg-violet-500/35"
-                      >
-                        Thêm hành động
-                      </button>
-                    </div>
-                    <p className="text-[10.5px] text-white/30 leading-relaxed">
-                      Bấm phát là nhân vật diễn đúng đoạn đã gắn; xuất WebM
-                      ghi lại đúng hành động đang xem.
-                    </p>
+                    {clipOptions.length === 0 ? (
+                      <p className="text-[11px] text-white/40 leading-relaxed">
+                        Model này chưa có chuyển động nào. Gắn chuyển động từ
+                        file khác ở bên dưới (ví dụ file .glb tải từ Mixamo) —
+                        chuyển động sẽ tự khớp sang tỉ lệ nhân vật này.
+                      </p>
+                    ) : (
+                      <>
+                        <label className="flex items-center gap-2 text-[11px] text-white/45">
+                          <span className="w-14">Clip</span>
+                          <select
+                            value={clip}
+                            onChange={(e) => setDraftActClip(e.currentTarget.value)}
+                            className="flex-1 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                          >
+                            {clipOptions.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        {attachedOfClip && (
+                          <p className="text-[11px] leading-relaxed text-sky-200/80">
+                            {attachedOfClip.status === "retargeted"
+                              ? `Đã khớp chuyển động từ “${attachedOfClip.sourceName}” sang nhân vật này.`
+                              : `Dùng trực tiếp chuyển động từ “${attachedOfClip.sourceName}” (xương đã khớp sẵn).`}
+                          </p>
+                        )}
+                        {attachedOfClip && attachedOfClip.missingBones.length > 0 && (
+                          <p className="text-[11px] leading-relaxed text-amber-300/90">
+                            Một số xương trong file gốc không có trên nhân vật này nên đã bỏ qua: {attachedOfClip.missingBones.join(", ")}.
+                          </p>
+                        )}
+                        <div className="flex gap-2">
+                          <label className="flex-1 text-[11px] text-white/45">
+                            Bắt đầu (s)
+                            <input
+                              type="number" step={0.1} min={0} value={draftActStart}
+                              onChange={(e) => setDraftActStart(Number(e.currentTarget.value) || 0)}
+                              className="mt-0.5 w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                            />
+                          </label>
+                          <label className="flex-1 text-[11px] text-white/45">
+                            Dài (s)
+                            <input
+                              type="number" step={0.1} min={0.1} value={draftActDur}
+                              onChange={(e) => setDraftActDur(Number(e.currentTarget.value) || 0.1)}
+                              className="mt-0.5 w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                            />
+                          </label>
+                          <label className="flex-1 text-[11px] text-white/45">
+                            Tốc độ
+                            <input
+                              type="number" step={0.1} min={0.1} value={draftActSpeed}
+                              onChange={(e) => setDraftActSpeed(Number(e.currentTarget.value) || 1)}
+                              className="mt-0.5 w-full h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                            />
+                          </label>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <label className="flex items-center gap-1.5 text-[11px] text-white/60 px-1">
+                            <input
+                              type="checkbox" checked={draftActLoop}
+                              onChange={(e) => setDraftActLoop(e.currentTarget.checked)}
+                            />
+                            Lặp tới hết đoạn
+                          </label>
+                          <button
+                            onClick={() => setDraftActStart(Math.round(timeSec * 100) / 100)}
+                            className="h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[11px]"
+                          >
+                            Lấy mốc đang xem ({timeSec.toFixed(2)}s)
+                          </button>
+                          <button
+                            onClick={() => {
+                              updateObject(selected.id, {
+                                actions: [
+                                  ...(selected.actions ?? []),
+                                  {
+                                    ...createActionSegment(clip, draftActStart, draftActDur),
+                                    loop: draftActLoop,
+                                    speed: draftActSpeed,
+                                  },
+                                ],
+                              });
+                            }}
+                            className="flex-1 h-8 rounded-lg bg-violet-500/25 border border-violet-400/40 text-[12px] font-medium hover:bg-violet-500/35"
+                          >
+                            Thêm hành động
+                          </button>
+                        </div>
+                        <p className="text-[10.5px] text-white/30 leading-relaxed">
+                          Bấm phát là nhân vật diễn đúng đoạn đã gắn; xuất WebM
+                          ghi lại đúng hành động đang xem.
+                        </p>
+                      </>
+                    )}
+                    {modelHasSkeleton[selected.id] ? (
+                      <div className="pt-2 border-t border-white/10 space-y-2">
+                        <p className="text-[11px] font-medium text-white/60">Thêm chuyển động từ file khác</p>
+                        {attachErrors[selected.id] && (
+                          <p className="text-[11px] text-rose-300 leading-relaxed">{attachErrors[selected.id]}</p>
+                        )}
+                        {attachMsg && (
+                          <p className="text-[11px] text-emerald-300 leading-relaxed">{attachMsg}</p>
+                        )}
+                        {attached.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {attached.map((a) => (
+                              <span
+                                key={a.bakedName}
+                                className="flex items-center gap-1 px-2 h-6 rounded-md bg-sky-500/15 border border-sky-400/30 text-[11px]"
+                              >
+                                {a.sourceClipName} · {a.status === "retargeted" ? "đã khớp" : "trực tiếp"} · từ “{a.sourceName}”
+                                <button
+                                  onClick={() =>
+                                    updateObject(selected.id, {
+                                      clipSources: (selected.clipSources ?? []).filter(
+                                        (s) => !(s.assetId === a.sourceAssetId && s.clipName === a.sourceClipName),
+                                      ),
+                                    })
+                                  }
+                                  aria-label="Gỡ chuyển động"
+                                  className="text-white/40 hover:text-rose-400"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <label className="flex items-center gap-2 text-[11px] text-white/45">
+                          <span className="w-14">File mẫu</span>
+                          <select
+                            value={draftSourceAssetId}
+                            onChange={(e) => void handleSourceAssetChange(e.currentTarget.value)}
+                            className="flex-1 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                          >
+                            <option value="">Chọn mẫu trong thư viện…</option>
+                            {sourceOptions.map((m) => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                        {draftSourceClips.length > 0 && (
+                          <label className="flex items-center gap-2 text-[11px] text-white/45">
+                            <span className="w-14">Chuyển động</span>
+                            <select
+                              value={draftSourceClip}
+                              onChange={(e) => setDraftSourceClip(e.currentTarget.value)}
+                              className="flex-1 h-8 rounded-lg bg-black/50 border border-white/10 px-2 text-[12px] text-white outline-none"
+                            >
+                              {draftSourceClips.map((c) => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => {
+                              if (draftSourceAssetId && draftSourceClip) attachSource(selected, draftSourceAssetId, draftSourceClip);
+                            }}
+                            disabled={!draftSourceAssetId || !draftSourceClip}
+                            className="flex-1 h-8 rounded-lg bg-sky-500/25 border border-sky-400/40 text-[12px] font-medium hover:bg-sky-500/35 disabled:opacity-50"
+                          >
+                            Gắn chuyển động
+                          </button>
+                          <label className="px-3 h-8 leading-8 rounded-lg bg-white/5 border border-white/10 text-[12px] cursor-pointer">
+                            Tải file .glb mới
+                            <input
+                              type="file"
+                              accept=".glb,model/gltf-binary"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.currentTarget.files?.[0];
+                                e.currentTarget.value = "";
+                                if (file) uploadClipFile(file);
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <p className="text-[10.5px] text-white/30 leading-relaxed">
+                          File .glb tải từ Mixamo hay mẫu trong thư viện đều được:
+                          chuyển động tự khớp sang tỉ lệ nhân vật này, đoạn nào
+                          không khớp xương sẽ báo rõ chứ không gắn hỏng.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-white/40 leading-relaxed">
+                        Nhân vật này không có xương nên chưa gắn được chuyển động từ file khác.
+                      </p>
+                    )}
                   </>
                 );
               })()}

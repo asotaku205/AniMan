@@ -57,7 +57,9 @@ export function createMixerState(
   }
   return {
     mixer: new THREE.AnimationMixer(root),
-    clips,
+    // Copy để caller gắn thêm clip (Phase 4: clip từ file khác) không
+    // ghi đè mảng clip dùng chung của modelLoader.
+    clips: [...clips],
     current: null,
     fading: null,
     bind,

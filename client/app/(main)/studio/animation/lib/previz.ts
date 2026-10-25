@@ -86,7 +86,8 @@ export interface PrevizKey {
 
 /** Một đoạn hành động trên timeline (Phase 4): phát clip xương của
  * model trong khoảng [startSec, startSec + durationSec). Clip lấy từ
- * file GLB của model (ví dụ clip Mixamo). */
+ * file GLB của model, hoặc từ file khác gắn thêm (xem clipSources bên
+ * dưới — ví dụ clip Mixamo đã khớp sang nhân vật này). */
 export interface ActionSegment {
   id: string;
   clipName: string;
@@ -96,6 +97,14 @@ export interface ActionSegment {
   loop: boolean;
   /** Tốc độ phát (1 = đúng tốc độ gốc). */
   speed: number;
+}
+
+/** Chuyển động gắn thêm từ một file .glb khác (không phải file của model). */
+export interface ClipSource {
+  /** Mã tài sản file nguồn trong thư viện. */
+  assetId: string;
+  /** Tên chuyển động trong file nguồn. */
+  clipName: string;
 }
 
 export interface PrevizObject {
@@ -109,6 +118,10 @@ export interface PrevizObject {
   poseKeys?: import("./poseTrack").PoseKey[];
   /** Mã tài sản mô hình (chỉ kind "model" dùng) — trỏ vào thư viện tài sản. */
   modelAssetId?: string;
+  /** Chuyển động gắn thêm từ file khác (chỉ kind "model" dùng) — lúc
+   * nạp cảnh, mỗi nguồn được khớp sang xương nhân vật này rồi mới phát
+   * (xem lib/clipRetarget). Lưu cùng dự án nên F5 vẫn còn. */
+  clipSources?: ClipSource[];
   /** Phát sáng 0..1 (S2) — áp emissive cho vật thể 3D. */
   glow?: number;
   color: string;

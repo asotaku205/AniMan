@@ -434,6 +434,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                     onParticlesChange={(particles) =>
                       void apply(updateScene(project, sc.id, { particles }))
                     }
+                    onEnvironmentChange={(environment) =>
+                      void apply(updateScene(project, sc.id, { environment }))
+                    }
                   />
                 )
               ) : (

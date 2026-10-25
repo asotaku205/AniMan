@@ -32,6 +32,9 @@ export interface AnimScene {
   previz?: import("./previz").PrevizScene;
   /** Thời tiết/hiệu ứng không khí của cảnh (S2) — cả 2D lẫn 3D dùng. */
   weather?: import("./layerEffects").SceneWeather | null;
+  /** Phong cảnh của cảnh (giai đoạn B): bầu trời, thời tiết, sương,
+   * mặt nước, địa hình — lưu theo cảnh, previz 3D dùng. */
+  environment?: import("./sceneEnvironment").SceneEnvironment;
   /** Clip âm thanh của cảnh (R2 — phòng âm thanh): hiệu ứng tiếng (tiếng
    * bước chân, tiếng mưa, vỗ tay...) và đoạn nhạc riêng của cảnh. File
    * tiếng nằm ở kho Blob, key = `audio-<clipId>`. */
