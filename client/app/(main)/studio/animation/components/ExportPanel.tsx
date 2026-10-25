@@ -21,6 +21,7 @@ import {
 import {
   formatDuration,
   postSettingsOf,
+  exportScenePostOf,
   projectDurationSec,
   sceneSpeed,
   type AnimProject,
@@ -334,7 +335,9 @@ export function ExportPanel({
     const { width: W, height: H, fps } = resolveExportSize(
       exportPresetOf(project),
     );
-    const film = createPrevizFilmRenderer(W, H);
+    const film = createPrevizFilmRenderer(W, H, {
+      applyScenePost: exportScenePostOf(project),
+    });
     const out = document.createElement("canvas");
     out.width = W;
     out.height = H;
@@ -816,12 +819,27 @@ export function ExportPanel({
                 ))}
               </select>
             </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={exportScenePostOf(project)}
+                onChange={(e) =>
+                  onProjectChange({
+                    ...project,
+                    exportScenePost: e.currentTarget.checked,
+                  })
+                }
+                className="accent-pink-400"
+              />
+              Hậu kỳ cảnh khi xuất phim 3D (phát sáng, mờ hậu cảnh, dư ảnh)
+            </label>
           </div>
           <p className="text-[11px] text-white/35">
             {EXPORT_PRESETS[exportPresetOf(project)].desc} Chọn kiểu xuất sẽ
             đặt lại hậu kỳ mặc định — chỉnh lại sau nếu muốn. Khung dọc
-            9:16 xuất đúng tỉ lệ; khung xem trong trình dựng vẫn giữ tỉ
-            lệ màn hình.
+            9:16 xuất đúng tỉ lệ và khung xem trong trình dựng cũng hiện
+            khung dọc để căn hình. Tắt hậu kỳ cảnh nếu máy yếu — xuất sẽ
+            nhanh hơn nhưng mất hiệu ứng hậu kỳ của từng cảnh.
           </p>
           {postSettingsOf(project).titleCard && (
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px] text-white/55">

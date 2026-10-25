@@ -122,6 +122,11 @@ export interface AnimProject {
   post?: PostSettings;
   /** Kiểu xuất hiệu lực (giai đoạn D) — vắng thì mặc định phim ngắn 16:9. */
   exportPreset?: ExportPresetId;
+  /**
+   * Áp hậu kỳ cảnh khi xuất phim hoàn chỉnh (hoàn thiện xuất phim) —
+   * vắng thì mặc định BẬT; tắt để máy yếu xuất nhanh hơn.
+   */
+  exportScenePost?: boolean;
   /** Cài đặt âm thanh tổng (giai đoạn D) — vắng thì dùng mặc định. */
   master?: AudioMasterSettings;
 }
@@ -153,6 +158,11 @@ export function createAnimScene(name: string, durationSec = 3): AnimScene {
 /** Cài đặt hậu kỳ hiệu lực của dự án (có mặc định cho dự án đời cũ). */
 export function postSettingsOf(project: AnimProject): PostSettings {
   return project.post ?? DEFAULT_POST;
+}
+
+/** Áp hậu kỳ cảnh khi xuất phim hoàn chỉnh không (mặc định BẬT). */
+export function exportScenePostOf(project: AnimProject): boolean {
+  return project.exportScenePost ?? true;
 }
 
 export function createAnimProject(

@@ -11,9 +11,16 @@
  */
 
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { BokehPass } from "three/addons/postprocessing/BokehPass.js";
+import { AfterimagePass } from "three/addons/postprocessing/AfterimagePass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import type { AnimScene } from "./animProject";
 import {
   createPrevizScene,
+  sampleFocus,
   samplePrevizCamera,
   samplePrevizObject,
   type PrevizObjectKind,
@@ -21,6 +28,7 @@ import {
 } from "./previz";
 import { dialogueLineAt } from "./dialogue";
 import { loadModelForScene } from "./modelLoader";
+import { effectiveFilmPost, filmPostActive } from "./filmPost";
 import {
   createWeatherPoints,
   updateWeatherPoints,
@@ -123,14 +131,48 @@ export interface PrevizFilmRenderer {
   dispose: () => void;
 }
 
+/**
+ * Kiểu khai báo của three 0.180 để uniforms của BokehPass là `{}` nên
+ * truy cập trực tiếp bị lỗi type — ép kiểu qua record số khi chỉnh
+ * focus/aperture/maxblur/aspect lúc chạy (cùng cách với PrevizEditor).
+ */
+function bokehUniforms(pass: BokehPass): Record<string, { value: number }> {
+  return pass.uniforms as unknown as Record<string, { value: number }>;
+}
+
 export function createPrevizFilmRenderer(
   width = 960,
   height = 540,
+  opts: { applyScenePost?: boolean } = {},
 ): PrevizFilmRenderer {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);
   const threeScene = new THREE.Scene();
   const shotCam = new THREE.PerspectiveCamera(45, width / height, 0.1, 200);
+
+  // Hậu kỳ cảnh (hoàn thiện xuất phim): cùng bộ xử lý với trình dựng
+  // cảnh — khi mọi hiệu ứng tắt thì vẫn vẽ thẳng như cũ, không đổi hình.
+  const applyScenePost = opts.applyScenePost ?? true;
+  const composer = new EffectComposer(renderer);
+  const renderPass = new RenderPass(threeScene, shotCam);
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(width, height),
+    0.7,
+    0.4,
+    0.85,
+  );
+  const bokehPass = new BokehPass(threeScene, shotCam, {
+    focus: 8,
+    aperture: 0.025,
+    maxblur: 0.01,
+  });
+  const afterimagePass = new AfterimagePass(0.9);
+  composer.addPass(renderPass);
+  composer.addPass(bloomPass);
+  composer.addPass(bokehPass);
+  composer.addPass(afterimagePass);
+  composer.addPass(new OutputPass());
+  bokehUniforms(bokehPass)["aspect"].value = width / height;
 
   threeScene.add(new THREE.AmbientLight(0xffffff, 0.75));
   const sun = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -153,9 +195,14 @@ export function createPrevizFilmRenderer(
   const groups = new Map<string, THREE.Object3D>();
   const characters = new Map<string, CharacterParts>();
   let current: PrevizScene = createPrevizScene();
+  // Đổi cảnh thì khung dư ảnh cũ phải xoá (không để vệt cảnh trước
+  // lem sang cảnh sau): khung đầu của cảnh mới vẽ với damp = 0 rồi
+  // mới trả về damp thật — khung đó vừa là hình đúng vừa xoá tích lũy.
+  let postResetNeeded = false;
 
   const loadScene = async (scene: AnimScene) => {
     current = scene.previz ?? createPrevizScene();
+    postResetNeeded = true;
     syncWeather(scene);
     syncParticles(scene);
     threeScene.background = new THREE.Color(current.backdrop);
@@ -259,7 +306,40 @@ export function createPrevizFilmRenderer(
     const cam = samplePrevizCamera(current.cameraKeys, t);
     shotCam.position.set(cam.position.x, cam.position.y, cam.position.z);
     shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
-    renderer.render(threeScene, shotCam);
+    // Hậu kỳ cảnh: áp đúng cài đặt của cảnh đang xuất; cảnh nào tắt
+    // hết thì vẽ thẳng như cũ (không đổi hình, không chậm thêm).
+    const post = effectiveFilmPost(scene, applyScenePost);
+    if (filmPostActive(post)) {
+      bloomPass.enabled = post.bloom.enabled;
+      bloomPass.strength = post.bloom.strength;
+      bloomPass.radius = post.bloom.radius;
+      bloomPass.threshold = post.bloom.threshold;
+      if (post.bloom.quality === "half") {
+        bloomPass.setSize(width / 2, height / 2);
+      } else {
+        bloomPass.setSize(width, height);
+      }
+      bokehPass.enabled = post.dof.enabled;
+      const uniforms = bokehUniforms(bokehPass);
+      const focusKeys = current.focusKeys;
+      const focusAt =
+        focusKeys && focusKeys.length > 0 ? sampleFocus(focusKeys, t) : null;
+      uniforms["focus"].value = focusAt ?? post.dof.focus;
+      uniforms["aperture"].value = post.dof.aperture;
+      uniforms["maxblur"].value = post.dof.maxblur;
+      afterimagePass.enabled = post.afterimage.enabled;
+      renderPass.camera = shotCam;
+      bokehPass.camera = shotCam;
+      const resetAfterimage = postResetNeeded && post.afterimage.enabled;
+      if (resetAfterimage) afterimagePass.uniforms["damp"].value = 0;
+      composer.render();
+      if (resetAfterimage) {
+        afterimagePass.uniforms["damp"].value = post.afterimage.damp;
+      }
+    } else {
+      renderer.render(threeScene, shotCam);
+    }
+    postResetNeeded = false;
 
     ctx2d.drawImage(renderer.domElement, 0, 0, width, height);
     const line = dialogueLineAt(scene.dialogue ?? [], t);
@@ -282,6 +362,10 @@ export function createPrevizFilmRenderer(
     loadScene,
     drawAt,
     dispose: () => {
+      (composer as unknown as { dispose?: () => void }).dispose?.();
+      (bloomPass as unknown as { dispose?: () => void }).dispose?.();
+      (bokehPass as unknown as { dispose?: () => void }).dispose?.();
+      (afterimagePass as unknown as { dispose?: () => void }).dispose?.();
       renderer.dispose();
     },
   };

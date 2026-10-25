@@ -57,6 +57,7 @@ import {
 } from "../lib/screenplay";
 import { createSceneLayer } from "../lib/timeline";
 import { CAMERA_PRESETS } from "../lib/motionPresets";
+import { exportPresetOf, resolveExportSize } from "../lib/exportPresets";
 
 /**
  * Workspace dự án phim — Slice 1: khung workspace + **bảng phân cảnh**
@@ -496,6 +497,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                   <PrevizEditor
                     key={sc.id}
                     scene={sc}
+                    exportAspect={
+                      resolveExportSize(exportPresetOf(project)).width /
+                      resolveExportSize(exportPresetOf(project)).height
+                    }
                     onChange={(previz) =>
                       void apply(updateScene(project, sc.id, { previz }))
                     }

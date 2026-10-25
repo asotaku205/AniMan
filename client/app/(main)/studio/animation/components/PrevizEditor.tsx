@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { AnimScene } from "../lib/animProject";
 import { sceneSpeed } from "../lib/animProject";
+import { verticalFrame } from "../lib/filmPost";
 import {
   DEFAULT_SCENE_POST,
   clampScenePostSettings,
@@ -51,6 +52,12 @@ import {
   SHOT_PRESETS,
   type ShotPresetId,
 } from "../lib/cameraShots";
+import {
+  clampCameraDrag,
+  frustumFar,
+  frustumLineSegments,
+  rayPlanePoint,
+} from "../lib/cameraRigModel";
 import { videoGenStatus } from "../lib/videoGen";
 import { newDialogueId, type DialogueLine } from "../lib/dialogue";
 import { loadModelForSceneWithClips, loadClipSourceAsset } from "../lib/modelLoader";
@@ -372,8 +379,11 @@ export function PrevizEditor({
   onParticlesChange,
   onEnvironmentChange,
   onScenePostChange,
+  exportAspect,
 }: {
   scene: AnimScene;
+  /** Tỉ lệ khung xuất của dự án (dọc 9:16 thì khung chóp hẹp lại). */
+  exportAspect?: number;
   onChange: (previz: PrevizScene) => void;
   onDialogueChange?: (lines: DialogueLine[]) => void;
   onWeatherChange?: (weather: SceneWeather | null) => void;
@@ -391,10 +401,44 @@ export function PrevizEditor({
   const [playing, setPlaying] = useState(false);
   const [viewMode, setViewMode] = useState<"orbit" | "shot">("orbit");
   const [propsOpen, setPropsOpen] = useState(true);
+  // Tỉ lệ khung xuất hiện tại (sibling dùng cho khung hình chóp của máy
+  // quay) — resize đọc qua ref để không kẹt tỉ lệ lúc mở đầu.
+  const exportAspectRef = useRef(exportAspect);
+  exportAspectRef.current = exportAspect;
   useEffect(() => {
     if (safeFrameRef.current)
-      safeFrameRef.current.style.display = viewMode === "shot" ? "block" : "none";
-  }, [viewMode]);
+      safeFrameRef.current.style.display =
+        viewMode === "shot" ||
+        (exportAspect != null && exportAspect < 1)
+          ? "block"
+          : "none";
+  }, [viewMode, exportAspect]);
+  // Đổi kiểu xuất thì tính lại khung ngay (resize chỉ chạy khi đổi kích
+  // thước ô xem, không chạy khi chỉ đổi tỉ lệ).
+  useEffect(() => {
+    const mount = mountRef.current;
+    const sf = safeFrameRef.current;
+    if (!mount || !sf) return;
+    const w = mount.clientWidth;
+    const h = mount.clientHeight;
+    if (w === 0 || h === 0) return;
+    if (exportAspect != null && exportAspect < 1) {
+      const { frame } = verticalFrame(w, h);
+      sf.style.width = `${frame.width}px`;
+      sf.style.height = `${frame.height}px`;
+      sf.style.display = "block";
+    } else {
+      let tw = w;
+      let th = (w * 9) / 16;
+      if (th > h) {
+        th = h;
+        tw = (h * 16) / 9;
+      }
+      sf.style.width = `${tw}px`;
+      sf.style.height = `${th}px`;
+      sf.style.display = viewMode === "shot" ? "block" : "none";
+    }
+  }, [exportAspect, viewMode]);
   const [selectedId, setSelectedId] = useState<string | null>(
     previz.objects[0]?.id ?? null,
   );
@@ -433,6 +477,10 @@ export function PrevizEditor({
     envPoints: THREE.Points | null;
     waterMesh: THREE.Mesh | null;
     cloudGroup: THREE.Group | null;
+    /** Mô hình máy quay kéo được (chỉ góc tự do): thân + khung chóp + điểm nhìn. */
+    camModel: THREE.Group | null;
+    camFrustum: THREE.LineSegments | null;
+    camTargetHandle: THREE.Mesh | null;
   } | null>(null);
 
   /** Công thức hiệu ứng đã lưu + xem thử (Phase 5). */
@@ -604,6 +652,14 @@ export function PrevizEditor({
   const [shotFocusFrom, setShotFocusFrom] = useState(3);
   const [shotFocusTo, setShotFocusTo] = useState(9);
   const [draftCamDirty, setDraftCamDirty] = useState(false);
+  // Mô hình máy quay kéo được: chế độ dời máy + công tắc hiện mô hình.
+  const [camMoveMode, setCamMoveMode] = useState(false);
+  const [showCamModel, setShowCamModel] = useState(true);
+  const camDragRef = useRef<null | {
+    kind: "pos" | "target";
+    planePoint: THREE.Vector3;
+    planeNormal: THREE.Vector3;
+  }>(null);
 
   useEffect(() => {
     if (!draftDirty && selected) {
@@ -692,6 +748,50 @@ export function PrevizEditor({
     const flashLight = new THREE.AmbientLight(0xffffff, 0);
     threeScene.add(flashLight);
 
+    // Mô hình máy quay kéo được: thân + ống kính + điểm nhìn + khung chóp.
+    // Mô hình xây theo trục +Z (ống kính nhô về +Z) để lookAt hướng về điểm nhìn.
+    const camModel = new THREE.Group();
+    const camBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.26, 0.55),
+      new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6 }),
+    );
+    camBody.userData.camPart = "body";
+    camModel.add(camBody);
+    const camLens = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.09, 0.11, 0.28, 20),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 }),
+    );
+    camLens.rotation.x = Math.PI / 2;
+    camLens.position.z = 0.38;
+    camLens.userData.camPart = "body";
+    camModel.add(camLens);
+    const camRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.11, 0.02, 10, 24),
+      new THREE.MeshBasicMaterial({ color: 0x22d3ee }),
+    );
+    camRing.position.z = 0.52;
+    camRing.userData.camPart = "body";
+    camModel.add(camRing);
+    const camTargetHandle = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xfbbf24 }),
+    );
+    camTargetHandle.userData.camPart = "target";
+    threeScene.add(camModel);
+    threeScene.add(camTargetHandle);
+    // Khung chóp: 12 đoạn × 2 đầu = 24 đỉnh, cập nhật mỗi khung hình.
+    const camFrustumGeo = new THREE.BufferGeometry();
+    camFrustumGeo.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array(24 * 3), 3),
+    );
+    const camFrustum = new THREE.LineSegments(
+      camFrustumGeo,
+      new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.85 }),
+    );
+    camFrustum.frustumCulled = false;
+    threeScene.add(camFrustum);
+
     threeRef.current = {
       renderer,
       scene: threeScene,
@@ -728,6 +828,9 @@ export function PrevizEditor({
       })(),
       weatherPoints: null,
       particlePoints: null,
+      camModel,
+      camFrustum,
+      camTargetHandle,
     };
 
     // Co giãn renderer theo ô chứa (khung R1 thay đổi kích thước theo cửa sổ)
@@ -749,14 +852,21 @@ export function PrevizEditor({
       bokehUniforms(bokehPass)["aspect"].value = orbitCam.aspect;
       const sf = safeFrameRef.current;
       if (sf) {
-        let tw = w;
-        let th = (w * 9) / 16;
-        if (th > h) {
-          th = h;
-          tw = (h * 16) / 9;
+        const aspect = exportAspectRef.current;
+        if (aspect != null && aspect < 1) {
+          const { frame } = verticalFrame(w, h);
+          sf.style.width = `${frame.width}px`;
+          sf.style.height = `${frame.height}px`;
+        } else {
+          let tw = w;
+          let th = (w * 9) / 16;
+          if (th > h) {
+            th = h;
+            tw = (h * 16) / 9;
+          }
+          sf.style.width = `${tw}px`;
+          sf.style.height = `${th}px`;
         }
-        sf.style.width = `${tw}px`;
-        sf.style.height = `${th}px`;
       }
     };
     const ro = new ResizeObserver(resize);
@@ -808,6 +918,45 @@ export function PrevizEditor({
         }
         return;
       }
+      // Dời máy quay: chỉ handle của máy quay ăn chuột, không chọn vật.
+      if (stateRef.current.camMoveMode) {
+        const ctxNow = threeRef.current;
+        if (ctxNow?.camModel && ctxNow?.camTargetHandle) {
+          raycaster.setFromCamera(ndcOf(e), ctxNow.orbitCam);
+          const hits = raycaster.intersectObjects(
+            [ctxNow.camModel, ctxNow.camTargetHandle],
+            true,
+          );
+          let part: string | null = null;
+          for (const hit of hits) {
+            let node: THREE.Object3D | null = hit.object;
+            while (node) {
+              if (typeof node.userData.camPart === "string") {
+                part = node.userData.camPart;
+                break;
+              }
+              node = node.parent;
+            }
+            if (part) break;
+          }
+          if (part === "body" || part === "target") {
+            const st = stateRef.current;
+            const cam = st.draftCamDirty
+              ? { position: st.draftCamPos, target: st.draftCamTarget }
+              : samplePrevizCamera(st.previz.cameraKeys, st.timeSec);
+            const anchor = part === "body" ? cam.position : cam.target;
+            const normal = new THREE.Vector3();
+            ctxNow.orbitCam.getWorldDirection(normal);
+            camDragRef.current = {
+              kind: part === "body" ? "pos" : "target",
+              planePoint: new THREE.Vector3(anchor.x, anchor.y, anchor.z),
+              planeNormal: normal,
+            };
+            controls.enabled = false;
+          }
+        }
+        return;
+      }
       downAt = { x: e.clientX, y: e.clientY };
       const id = pickAt(e);
       if (id) {
@@ -817,6 +966,24 @@ export function PrevizEditor({
       }
     };
     const onPointerMove = (e: PointerEvent) => {
+      const camDrag = camDragRef.current;
+      if (camDrag) {
+        const ctxNow = threeRef.current;
+        if (!ctxNow) return;
+        raycaster.setFromCamera(ndcOf(e), ctxNow.orbitCam);
+        const hit = rayPlanePoint(
+          { x: raycaster.ray.origin.x, y: raycaster.ray.origin.y, z: raycaster.ray.origin.z },
+          { x: raycaster.ray.direction.x, y: raycaster.ray.direction.y, z: raycaster.ray.direction.z },
+          { x: camDrag.planePoint.x, y: camDrag.planePoint.y, z: camDrag.planePoint.z },
+          { x: camDrag.planeNormal.x, y: camDrag.planeNormal.y, z: camDrag.planeNormal.z },
+        );
+        if (!hit) return;
+        const next = clampCameraDrag(hit);
+        if (camDrag.kind === "pos") setDraftCamPos(next);
+        else setDraftCamTarget(next);
+        setDraftCamDirty(true);
+        return;
+      }
       if (paintingRef.current) {
         const ctxNow = threeRef.current;
         if (!ctxNow?.terrainMesh) return;
@@ -842,6 +1009,7 @@ export function PrevizEditor({
       }
     };
     const onPointerUp = () => {
+      camDragRef.current = null;
       if (paintingRef.current) {
         paintingRef.current = false;
         commitBrushRef.current();
@@ -864,6 +1032,28 @@ export function PrevizEditor({
       (bloomPass as unknown as { dispose?: () => void }).dispose?.();
       (bokehPass as unknown as { dispose?: () => void }).dispose?.();
       (afterimagePass as unknown as { dispose?: () => void }).dispose?.();
+      const camCtx = threeRef.current;
+      if (camCtx?.camModel) {
+        threeScene.remove(camCtx.camModel);
+        camCtx.camModel.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          mesh.geometry.dispose();
+          const mat = mesh.material as THREE.Material | THREE.Material[];
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+          else mat?.dispose();
+        });
+      }
+      if (camCtx?.camFrustum) {
+        threeScene.remove(camCtx.camFrustum);
+        camCtx.camFrustum.geometry.dispose();
+        (camCtx.camFrustum.material as THREE.Material).dispose();
+      }
+      if (camCtx?.camTargetHandle) {
+        threeScene.remove(camCtx.camTargetHandle);
+        camCtx.camTargetHandle.geometry.dispose();
+        (camCtx.camTargetHandle.material as THREE.Material).dispose();
+      }
       renderer.dispose();
       mount.removeChild(renderer.domElement);
       threeRef.current = null;
@@ -1317,8 +1507,8 @@ export function PrevizEditor({
   }, [previz]);
 
   // ── Vòng render ─────────────────────────────────────────────────────────────
-  const stateRef = useRef({ previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec, environment });
-  stateRef.current = { previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec, environment };
+  const stateRef = useRef({ previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec, environment, camMoveMode, showCamModel, exportAspect });
+  stateRef.current = { previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, previewFormula, previewStartSec, environment, camMoveMode, showCamModel, exportAspect };
   useEffect(() => {
     let raf = 0;
     const loop = () => {
@@ -1383,6 +1573,35 @@ export function PrevizEditor({
         : samplePrevizCamera(st.previz.cameraKeys, st.timeSec);
       ctx.shotCam.position.set(cam.position.x, cam.position.y, cam.position.z);
       ctx.shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
+      // Mô hình máy quay: chỉ hiện ở góc tự do, bám đúng vị trí/điểm nhìn.
+      if (ctx.camModel && ctx.camFrustum && ctx.camTargetHandle) {
+        const showCam = st.viewMode === "orbit" && st.showCamModel;
+        ctx.camModel.visible = showCam;
+        ctx.camFrustum.visible = showCam;
+        ctx.camTargetHandle.visible = showCam;
+        if (showCam) {
+          ctx.camModel.position.set(cam.position.x, cam.position.y, cam.position.z);
+          ctx.camModel.lookAt(cam.target.x, cam.target.y, cam.target.z);
+          ctx.camTargetHandle.position.set(cam.target.x, cam.target.y, cam.target.z);
+          const aspect = st.exportAspect ?? 16 / 9;
+          const segs = frustumLineSegments(
+            cam.position,
+            cam.target,
+            45,
+            aspect,
+            0.3,
+            frustumFar(cam.position, cam.target),
+          );
+          const attr = ctx.camFrustum.geometry.getAttribute(
+            "position",
+          ) as THREE.BufferAttribute;
+          segs.forEach((s, i) => {
+            attr.setXYZ(i * 2, s[0].x, s[0].y, s[0].z);
+            attr.setXYZ(i * 2 + 1, s[1].x, s[1].y, s[1].z);
+          });
+          attr.needsUpdate = true;
+        }
+      }
       if (ctx.weatherPoints) updateWeatherPoints(ctx.weatherPoints, st.timeSec);
       if (ctx.envPoints) updateWeatherPoints(ctx.envPoints, st.timeSec);
       if (ctx.cloudGroup && st.environment) {
@@ -1689,8 +1908,17 @@ export function PrevizEditor({
               className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border border-dashed border-white/40 rounded-[4px]"
             >
               <span className="absolute top-1 left-2 text-[10px] tracking-wide text-white/60">
-                KHUNG XUẤT 16:9
+                {exportAspect != null && exportAspect < 1
+                  ? "KHUNG XUẤT 9:16"
+                  : "KHUNG XUẤT 16:9"}
               </span>
+              {exportAspect != null && exportAspect < 1 && (
+                <div className="absolute left-[5%] top-[5%] h-[90%] w-[90%] border border-dashed border-white/25 rounded-[2px]">
+                  <span className="absolute bottom-1 right-2 text-[10px] tracking-wide text-white/50">
+                    KHUNG AN TOÀN
+                  </span>
+                </div>
+              )}
             </div>
           </div>
           <div className="mt-3 shrink-0 flex items-center gap-2">
@@ -2534,6 +2762,29 @@ export function PrevizEditor({
             >
               <KeyRound className="w-3.5 h-3.5" /> Đặt key camera tại {timeSec.toFixed(2)}s
             </button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                onClick={() => setCamMoveMode((v) => !v)}
+                className={`px-2.5 h-8 rounded-lg border text-[12px] font-medium ${camMoveMode ? "bg-violet-500/30 border-violet-400/50 text-white" : "bg-white/5 border-white/10 text-white/70 hover:bg-white/10"}`}
+              >
+                {camMoveMode ? "Đang dời máy quay" : "Dời máy quay"}
+              </button>
+              <label className="flex items-center gap-1.5 text-[12px] text-white/60">
+                <input
+                  type="checkbox"
+                  checked={showCamModel}
+                  onChange={(e) => setShowCamModel(e.currentTarget.checked)}
+                  className="accent-violet-400"
+                />
+                Hiện mô hình máy quay
+              </label>
+            </div>
+            {camMoveMode && (
+              <p className="text-[11px] text-white/40 leading-relaxed">
+                Kéo thân máy để dời vị trí, kéo quả cầu vàng ở điểm nhìn để
+                đổi hướng ngắm. Kéo xong bấm "Đặt key camera" để lưu góc này.
+              </p>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {previz.cameraKeys.map((k) => (
                 <span
