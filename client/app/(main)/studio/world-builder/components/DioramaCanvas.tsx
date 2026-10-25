@@ -244,14 +244,23 @@ export function DioramaCanvas({
   const customModelsRef = useRef(customModels);
   customModelsRef.current = customModels;
   const skyLightsRef = useRef<{ sun: THREE.DirectionalLight; hemi: THREE.HemisphereLight } | null>(null);
+  /** Vòm trời gradient: tạo trong init effect theo từng scene (ghi đè
+      ref mỗi lần mount) thay vì guard "tạo 1 lần", để không kẹt ở
+      scene cũ khi canvas remount. */
+  const domeRef = useRef<{
+    mesh: THREE.Mesh;
+    mat: THREE.ShaderMaterial;
+  } | null>(null);
   /** Bầu trời sống (Phase 2): đĩa mặt trời, mặt trăng + pha, sao, mây. */
   const skyDressRef = useRef<{
-    sun: THREE.Sprite;
+    sun: THREE.Group;
     sunMat: THREE.SpriteMaterial;
+    sunCoreMat: THREE.MeshBasicMaterial;
     moon: THREE.Group;
     moonDark: THREE.Mesh;
     stars: THREE.Points;
     clouds: THREE.Sprite[];
+    scene: THREE.Scene;
   } | null>(null);
   const weatherRef = useRef<{ points: THREE.Points; vel: Float32Array; kind: string } | null>(null);
   const flyRef = useRef<{
@@ -277,6 +286,25 @@ export function DioramaCanvas({
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#0d0817");
     scene.fog = new THREE.Fog("#0d0817", 70, 130);
+    // Vòm trời gradient: thay màu nền phẳng bằng chuyển sắc đỉnh-chân
+    // trời, để nhìn từ sa bàn cũng thấy bầu trời chứ không chỉ 1 màu.
+    {
+      const domeMat = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthWrite: false,
+        uniforms: {
+          topColor: { value: new THREE.Color("#3a86d8") },
+          horizonColor: { value: new THREE.Color("#bfe3f5") },
+        },
+        vertexShader: `varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `uniform vec3 topColor; uniform vec3 horizonColor; varying vec3 vDir; void main() { float h = normalize(vDir).y; vec3 col = h >= 0.0 ? mix(horizonColor, topColor, pow(h, 0.55)) : mix(horizonColor, horizonColor * 0.45, pow(-h, 0.5)); gl_FragColor = vec4(col, 1.0); }`,
+      });
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(800, 32, 16), domeMat);
+      dome.renderOrder = -1;
+      dome.frustumCulled = false;
+      scene.add(dome);
+      domeRef.current = { mesh: dome, mat: domeMat };
+    }
     // Ánh sáng môi trường cho vật liệu PBR của model GLB: model thật
     // (da, vải, kim loại) cần phản chiếu môi trường mới ra chất thật.
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -649,6 +677,7 @@ export function DioramaCanvas({
       // Bầu trời sống: mặt trăng hướng về camera, mây trôi rồi quấn lại.
       const dress = skyDressRef.current;
       if (dress) {
+        dress.sun.lookAt(camera.position);
         dress.moon.lookAt(camera.position);
         for (const c of dress.clouds) {
           c.position.x += (c.userData.speed as number) * dt;
@@ -750,6 +779,14 @@ export function DioramaCanvas({
       (ring.material as THREE.Material).dispose();
       renderer.dispose();
       container.removeChild(renderer.domElement);
+      if (domeRef.current) {
+        domeRef.current.mesh.geometry.dispose();
+        domeRef.current.mat.dispose();
+        domeRef.current = null;
+      }
+      // Scene cũ chết theo cleanup — giữ ref bầu trời là lần mount sau
+      // tưởng đã có mà không vẽ lại (đúng kiểu "chỉ thấy 1 màu nền").
+      skyDressRef.current = null;
       threeRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1105,8 +1142,10 @@ export function DioramaCanvas({
         sky.weather === "rain" ? 0x9fc4e8 : 0xffffff,
       );
     }
-    // Bầu trời sống (Phase 2): tạo 1 lần, cập nhật theo giờ.
-    if (!skyDressRef.current) {
+    // Bầu trời sống (Phase 2): tạo 1 lần cho mỗi scene, cập nhật theo
+    // giờ. Guard cũ chỉ kiểm tra ref nên nếu scene đã đổi (remount)
+    // mà ref còn thì bầu trời kẹt ở scene chết — kiểm tra cả scene.
+    if (!skyDressRef.current || skyDressRef.current.scene !== t.scene) {
       const cv = document.createElement("canvas");
       cv.width = 128;
       cv.height = 128;
@@ -1119,8 +1158,15 @@ export function DioramaCanvas({
       ctx.fillRect(0, 0, 128, 128);
       const glowTex = new THREE.CanvasTexture(cv);
       const sunMat = new THREE.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, fog: false });
-      const sun = new THREE.Sprite(sunMat);
-      sun.scale.setScalar(70);
+      const sunGlow = new THREE.Sprite(sunMat);
+      sunGlow.scale.setScalar(110);
+      // Đĩa đặc: quầng mềm một mình dễ bị nuốt khi nền sáng hoặc khi
+      // ảnh nén — đĩa đặc nhìn là thấy ngay, không thể lẫn vào nền.
+      const sunCoreMat = new THREE.MeshBasicMaterial({ color: "#fff8e0", fog: false, transparent: true, opacity: 1 });
+      const sunCore = new THREE.Mesh(new THREE.CircleGeometry(16, 32), sunCoreMat);
+      sunCore.position.z = 0.1;
+      const sun = new THREE.Group();
+      sun.add(sunGlow, sunCore);
       t.scene.add(sun);
       const moon = new THREE.Group();
       const moonBright = new THREE.Mesh(
@@ -1148,27 +1194,45 @@ export function DioramaCanvas({
       sg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
       const stars = new THREE.Points(
         sg,
-        new THREE.PointsMaterial({ color: 0xffffff, size: 1.8, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false }),
+        new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false }),
       );
       t.scene.add(stars);
       const crng = mulberry32(7);
       const clouds: THREE.Sprite[] = [];
-      for (let i = 0; i < 16; i += 1) {
+      for (let i = 0; i < 24; i += 1) {
         const m = new THREE.SpriteMaterial({ map: glowTex, color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, fog: false });
         const sp = new THREE.Sprite(m);
         sp.position.set((crng() - 0.5) * 280, 55 + crng() * 30, (crng() - 0.5) * 280);
-        sp.scale.set(30 + crng() * 30, 12 + crng() * 10, 1);
-        sp.userData = { speed: 0.6 + crng() * 0.9, base: 0.45 + crng() * 0.3 };
+        sp.scale.set(50 + crng() * 50, 18 + crng() * 14, 1);
+        sp.userData = { speed: 0.6 + crng() * 0.9, base: 0.6 + crng() * 0.25 };
         t.scene.add(sp);
         clouds.push(sp);
       }
-      skyDressRef.current = { sun, sunMat, moon, moonDark, stars, clouds };
+      skyDressRef.current = { sun, sunMat, sunCoreMat, moon, moonDark, stars, clouds, scene: t.scene };
     }
     const d = skyDressRef.current!;
     const day = sky.time >= 6 && sky.time <= 18;
+    const dome = domeRef.current;
+    if (dome) {
+      const warm = sky.time < 8 || sky.time > 16;
+      if (sky.weather === "fog") {
+        dome.mat.uniforms.topColor.value.set("#9aa5b5");
+        dome.mat.uniforms.horizonColor.value.set("#c8ccd4");
+      } else if (!day) {
+        dome.mat.uniforms.topColor.value.set("#030712");
+        dome.mat.uniforms.horizonColor.value.set("#1b2340");
+      } else if (warm) {
+        dome.mat.uniforms.topColor.value.set("#5b7fc4");
+        dome.mat.uniforms.horizonColor.value.set("#ffb066");
+      } else {
+        dome.mat.uniforms.topColor.value.set("#3a86d8");
+        dome.mat.uniforms.horizonColor.value.set("#bfe3f5");
+      }
+    }
     const sunDir = new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el));
     d.sun.position.copy(sunDir).multiplyScalar(260);
     d.sunMat.color.set(info.sunColor);
+    d.sunCoreMat.color.set(info.sunColor);
     d.sun.visible = day;
     const nightT = sky.time >= 18 ? sky.time - 18 : sky.time + 6;
     const mAz = (nightT / 12) * Math.PI;
