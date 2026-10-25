@@ -38,6 +38,13 @@ import {
   updateParticlePoints,
 } from "./particlePoints";
 import { createTerrainGeometry } from "./terrainMesh";
+import { EffectPoints } from "./effectPlayer";
+import {
+  effectShakeFlash,
+  resolveActiveEffects,
+  type EffectEvent,
+  type EffectFormula,
+} from "./effectFormula";
 import { createTerrainGrid } from "./terrainBrush";
 import {
   cloudDriftX,
@@ -137,6 +144,8 @@ export interface PrevizFilmRenderer {
   canvas: HTMLCanvasElement;
   loadScene: (scene: AnimScene) => Promise<void>;
   drawAt: (scene: AnimScene, t: number) => void;
+  /** Đổi bộ công thức hiệu ứng (thư viện) rồi dựng lại nhóm hạt cảnh đang nạp. */
+  setEffectFormulas: (formulas: EffectFormula[]) => void;
   dispose: () => void;
 }
 
@@ -152,7 +161,7 @@ function bokehUniforms(pass: BokehPass): Record<string, { value: number }> {
 export function createPrevizFilmRenderer(
   width = 960,
   height = 540,
-  opts: { applyScenePost?: boolean } = {},
+  opts: { applyScenePost?: boolean; effectFormulas?: EffectFormula[] } = {},
 ): PrevizFilmRenderer {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);
@@ -227,6 +236,8 @@ export function createPrevizFilmRenderer(
     syncEnvironment(scene);
     syncWeather(scene);
     syncParticles(scene);
+    syncEffectGroups();
+    effectSceneLoaded = true;
     for (const group of groups.values()) threeScene.remove(group);
     groups.clear();
     characters.clear();
@@ -377,6 +388,32 @@ export function createPrevizFilmRenderer(
     }
   };
 
+  // Hiệu ứng timeline (đợt 1): cùng bộ vẽ EffectPoints + cùng spec hạt có
+  // seed như trình dựng, nên cùng thời điểm t thì xem thử/xuất phim ra
+  // cùng hình hạt với trình dựng. Công thức đi qua tham số (không đọc
+  // IndexedDB trong renderer) để còn chạy được ở xuất phim.
+  let effectFormulas: EffectFormula[] = [...(opts.effectFormulas ?? [])];
+  const effectGroups = new Map<
+    string,
+    { points: EffectPoints; event: EffectEvent; formula: EffectFormula }
+  >();
+  let effectSceneLoaded = false;
+  const syncEffectGroups = () => {
+    for (const g of effectGroups.values()) {
+      threeScene.remove(g.points.group);
+      g.points.dispose();
+    }
+    effectGroups.clear();
+    for (const ev of current.effectEvents ?? []) {
+      const formula = effectFormulas.find((f) => f.id === ev.effectId);
+      if (!formula) continue; // sự kiện thiếu công thức: bỏ qua, không crash
+      const points = new EffectPoints(formula);
+      points.group.position.set(ev.position.x, ev.position.y, ev.position.z);
+      threeScene.add(points.group);
+      effectGroups.set(ev.id, { points, event: ev, formula });
+    }
+  };
+
   let weatherPoints: THREE.Points | null = null;
   const syncWeather = (scene: AnimScene) => {
     if (weatherPoints) {
@@ -443,6 +480,37 @@ export function createPrevizFilmRenderer(
     const cam = samplePrevizCamera(current.cameraKeys, t);
     shotCam.position.set(cam.position.x, cam.position.y, cam.position.z);
     shotCam.lookAt(cam.target.x, cam.target.y, cam.target.z);
+    // Hiệu ứng timeline: chỉ nhóm đang hoạt động mới hiện + cập nhật
+    // (đúng resolveActiveEffects); rung camera đúng công thức trình dựng
+    // (camera phim là camera cú máy nên lệch nhỏ này không vỡ cú máy).
+    const effectEvents = current.effectEvents ?? [];
+    const activeEffects = new Map(
+      resolveActiveEffects(effectEvents, effectFormulas, t).map((a) => [
+        a.event.id,
+        a,
+      ]),
+    );
+    for (const [id, g] of effectGroups) {
+      const a = activeEffects.get(id);
+      if (!a) {
+        g.points.group.visible = false;
+        continue;
+      }
+      g.points.group.visible = true;
+      g.points.update(t - g.event.startSec, g.event.burst, g.event.durationSec);
+    }
+    const { shake: effectShake, flash: effectFlash } = effectShakeFlash(
+      effectEvents,
+      t,
+    );
+    if (effectShake > 0) {
+      shotCam.position.x +=
+        (Math.sin(t * 47.3) + Math.sin(t * 31.7) * 0.6) * 0.12 * effectShake;
+      shotCam.position.y +=
+        (Math.sin(t * 39.1 + 2) + Math.sin(t * 27.9) * 0.6) *
+        0.12 *
+        effectShake;
+    }
     // Hậu kỳ cảnh: áp đúng cài đặt của cảnh đang xuất; cảnh nào tắt
     // hết thì vẽ thẳng như cũ (không đổi hình, không chậm thêm).
     const post = effectiveFilmPost(scene, applyScenePost);
@@ -479,6 +547,14 @@ export function createPrevizFilmRenderer(
     postResetNeeded = false;
 
     ctx2d.drawImage(renderer.domElement, 0, 0, width, height);
+    // Chớp sáng sự kiện: phủ trắng toàn khung đúng độ mạnh như trình dựng
+    // (mặt phẳng trắng trước camera, opacity flash * 0.85).
+    if (effectFlash > 0.01) {
+      ctx2d.save();
+      ctx2d.fillStyle = `rgba(255, 255, 255, ${(effectFlash * 0.85).toFixed(3)})`;
+      ctx2d.fillRect(0, 0, width, height);
+      ctx2d.restore();
+    }
     const line = dialogueLineAt(scene.dialogue ?? [], t);
     if (line && line.text.trim()) {
       ctx2d.save();
@@ -498,7 +574,16 @@ export function createPrevizFilmRenderer(
     canvas,
     loadScene,
     drawAt,
+    setEffectFormulas: (formulas: EffectFormula[]) => {
+      effectFormulas = [...formulas];
+      if (effectSceneLoaded) syncEffectGroups();
+    },
     dispose: () => {
+      for (const g of effectGroups.values()) {
+        threeScene.remove(g.points.group);
+        g.points.dispose();
+      }
+      effectGroups.clear();
       disposeEnvObjects();
       terrainMesh.geometry.dispose();
       (terrainMesh.material as THREE.Material).dispose();

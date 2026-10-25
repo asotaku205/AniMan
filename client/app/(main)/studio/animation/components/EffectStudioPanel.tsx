@@ -34,6 +34,20 @@ function cloneFormula(f: EffectFormula): EffectFormula {
   return JSON.parse(JSON.stringify(f)) as EffectFormula;
 }
 
+/** Màu giữa 2 màu hex — hiển thị mặc định cho ô "Màu giữa". */
+function mixHex(a: string, b: string): string {
+  const px = (h: string) => {
+    const v = h.replace("#", "");
+    const full = v.length === 3 ? v.split("").map((c) => c + c).join("") : v;
+    const n = parseInt(full, 16);
+    return Number.isNaN(n) ? [255, 255, 255] : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const [r1, g1, b1] = px(a);
+  const [r2, g2, b2] = px(b);
+  const hx = (n: number) => Math.round(n).toString(16).padStart(2, "0");
+  return `#${hx((r1 + r2) / 2)}${hx((g1 + g2) / 2)}${hx((b1 + b2) / 2)}`;
+}
+
 function numInput(
   label: string,
   value: number,
@@ -252,6 +266,65 @@ export function EffectStudioPanel({
                         onChange={(e) => updateLayer(idx, { glow: e.currentTarget.checked })}
                       />
                       Phát sáng
+                    </label>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <label className="flex-1 text-[11px] text-white/45">
+                      Hình hạt
+                      <select
+                        value={l.texture ?? "dot"}
+                        onChange={(e) => updateLayer(idx, { texture: e.currentTarget.value as EffectLayer["texture"] })}
+                        className="mt-0.5 w-full h-7 rounded-lg bg-black/40 border border-white/10 px-1 text-[12px] text-white outline-none"
+                      >
+                        <option value="dot">Chấm tròn</option>
+                        <option value="star">Ngôi sao</option>
+                        <option value="streak">Vệt sáng</option>
+                        <option value="custom">Tải ảnh lên</option>
+                      </select>
+                    </label>
+                    {numInput("Xoay (°/s)", l.spin ?? 0, (v) => updateLayer(idx, { spin: v }))}
+                  </div>
+                  {(l.texture ?? "dot") === "custom" && (
+                    <div className="flex gap-1.5 items-end">
+                      <label className="flex-1 text-[11px] text-white/45">
+                        Ảnh hạt
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.currentTarget.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = () => updateLayer(idx, { textureDataUrl: String(reader.result) });
+                            reader.readAsDataURL(file);
+                          }}
+                          className="mt-0.5 w-full h-7 rounded-lg bg-black/40 border border-white/10 px-1 text-[12px] text-white outline-none"
+                        />
+                      </label>
+                      {l.textureDataUrl && (
+                        <button
+                          onClick={() => updateLayer(idx, { textureDataUrl: undefined })}
+                          className="h-7 px-2 rounded-lg bg-white/5 border border-white/10 text-[11px] text-white/60"
+                        >
+                          Gỡ ảnh
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    {numInput("Cản gió", l.drag ?? 0, (v) => updateLayer(idx, { drag: Math.max(0, v) }))}
+                    {numInput("Nhiễu", l.turbulence ?? 0, (v) => updateLayer(idx, { turbulence: Math.max(0, v) }))}
+                  </div>
+                  <div className="flex gap-1.5 items-end">
+                    {numInput("Cỡ giữa", l.sizeMid ?? (l.size[0] + l.size[1]) / 2, (v) => updateLayer(idx, { sizeMid: v }))}
+                    <label className="flex-1 text-[11px] text-white/45">
+                      Màu giữa
+                      <input
+                        type="color"
+                        value={l.colorMid ?? mixHex(l.colorStart, l.colorEnd)}
+                        onChange={(e) => updateLayer(idx, { colorMid: e.currentTarget.value })}
+                        className="mt-0.5 w-full h-7 rounded-lg bg-black/40 border border-white/10 px-1"
+                      />
                     </label>
                   </div>
                   <button

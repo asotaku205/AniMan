@@ -33,8 +33,10 @@ import { createPrevizFilmRenderer } from "../lib/previzFilmRender";
 import {
   bgmBlobKey,
   deleteVoiceBlob,
+  listAnimAssets,
   saveVoiceBlob,
 } from "../lib/animStorage";
+import type { EffectFormula } from "../lib/effectFormula";
 import {
   EXPORT_PRESETS,
   EXPORT_PRESET_LIST,
@@ -335,8 +337,18 @@ export function ExportPanel({
     const { width: W, height: H, fps } = resolveExportSize(
       exportPresetOf(project),
     );
+    // Công thức hiệu ứng từ thư viện (luồn qua tham số, renderer thuần).
+    const effectFormulas: EffectFormula[] = [];
+    try {
+      for (const a of await listAnimAssets()) {
+        if (a.kind === "effect") effectFormulas.push(a.formula);
+      }
+    } catch {
+      // Thư viện hiệu ứng lỗi — xuất tiếp không có hiệu ứng.
+    }
     const film = createPrevizFilmRenderer(W, H, {
       applyScenePost: exportScenePostOf(project),
+      effectFormulas,
     });
     const out = document.createElement("canvas");
     out.width = W;

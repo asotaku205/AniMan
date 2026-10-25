@@ -10,6 +10,9 @@
 
 export type EmitterShape = "point" | "cone" | "sphere";
 
+/** Hình hạt: chấm tròn cũ · sao 4 cánh · vệt dài dọc · ảnh tự tải. */
+export type EffectTexture = "dot" | "star" | "streak" | "custom";
+
 export interface EffectLayer {
   /** point: chùm hẹp hướng lên · cone: chùm rộng · sphere: mọi hướng. */
   shape: EmitterShape;
@@ -30,6 +33,21 @@ export interface EffectLayer {
   spread: number;
   /** Độ mờ đỉnh (0..1). */
   opacity: number;
+  // --- Field đợt 2 (đều tùy chọn, có mặc định = hành vi cũ) ---
+  /** Hình hạt, mặc định "dot" = chấm tròn như trước. */
+  texture?: EffectTexture;
+  /** Ảnh hạt khi texture = "custom" (data URL, lưu trong công thức). */
+  textureDataUrl?: string;
+  /** Xoay hạt quanh tâm (độ/giây), mặc định 0 = không xoay. */
+  spin?: number;
+  /** Cản không khí: vận tốc giảm theo e^-drag·tuổi, mặc định 0. */
+  drag?: number;
+  /** Nhiễu: biên độ dao động sin quanh quỹ đạo, mặc định 0. */
+  turbulence?: number;
+  /** Cỡ giữa đời (nội suy 3 điểm); mặc định = giữa tuyến tính cũ. */
+  sizeMid?: number;
+  /** Màu giữa đời (nội suy 3 điểm); mặc định = giữa tuyến tính cũ. */
+  colorMid?: string;
 }
 
 export interface EffectFormula {
@@ -119,6 +137,103 @@ export interface ParticleSpec {
   life: number;
   burstDelay: number;
   sizeMul: number;
+  /** Pha nhiễu riêng từng hạt (3 trục), rút từ seed. */
+  phase: [number, number, number];
+}
+
+/** Hình hạt của lớp (mặc định chấm tròn cũ). */
+export function layerTexture(layer: EffectLayer): EffectTexture {
+  return layer.texture ?? "dot";
+}
+
+/** Tốc độ xoay hạt (độ/giây), mặc định 0. */
+export function layerSpin(layer: EffectLayer): number {
+  return layer.spin ?? 0;
+}
+
+/** Cản không khí, mặc định 0 = không cản. */
+export function layerDrag(layer: EffectLayer): number {
+  return layer.drag ?? 0;
+}
+
+/** Biên độ nhiễu, mặc định 0 = không nhiễu. */
+export function layerTurbulence(layer: EffectLayer): number {
+  return layer.turbulence ?? 0;
+}
+
+/** Cỡ giữa đời; mặc định là điểm giữa tuyến tính cũ. */
+export function layerSizeMid(layer: EffectLayer): number {
+  return layer.sizeMid ?? (layer.size[0] + layer.size[1]) / 2;
+}
+
+/** Màu giữa đời; mặc định là điểm giữa tuyến tính cũ. */
+export function layerColorMid(layer: EffectLayer): [number, number, number] {
+  if (layer.colorMid) return hexToRgb(layer.colorMid);
+  const c0 = hexToRgb(layer.colorStart);
+  const c1 = hexToRgb(layer.colorEnd);
+  return [(c0[0] + c1[0]) / 2, (c0[1] + c1[1]) / 2, (c0[2] + c1[2]) / 2];
+}
+
+/**
+ * Nội suy 3 điểm theo p (0..1): nửa đầu đi đầu→giữa, nửa sau đi
+ * giữa→cuối. Khi giữa là điểm giữa tuyến tính thì trùng tuyến tính cũ.
+ */
+export function interp3(a: number, mid: number, b: number, p: number): number {
+  return p <= 0.5 ? lerp(a, mid, p * 2) : lerp(mid, b, (p - 0.5) * 2);
+}
+
+export interface ActiveEffect {
+  event: EffectEvent;
+  formula: EffectFormula;
+}
+
+/**
+ * Sự kiện đang hoạt động tại thời điểm t (giây trong cảnh): nổ thì
+ * hết sau tuổi thọ dài nhất, rải đều thì hết sau thời lượng + tuổi
+ * thọ dài nhất. Sự kiện thiếu công thức bị bỏ qua, không crash.
+ */
+export function resolveActiveEffects(
+  events: EffectEvent[],
+  formulas: EffectFormula[],
+  t: number,
+): ActiveEffect[] {
+  const out: ActiveEffect[] = [];
+  for (const event of events) {
+    const formula = formulas.find((f) => f.id === event.effectId);
+    if (!formula) continue;
+    const local = t - event.startSec;
+    const end = event.burst
+      ? formulaMaxLife(formula)
+      : event.durationSec + formulaMaxLife(formula);
+    if (local >= 0 && local <= end) out.push({ event, formula });
+  }
+  return out;
+}
+
+/**
+ * Rung camera + chớp sáng tại thời điểm t — đúng công thức trình dựng
+ * đang dùng: rung giảm dần trong thời lượng sự kiện, chớp chỉ trong
+ * 0.3s đầu rồi tắt.
+ */
+export function effectShakeFlash(
+  events: EffectEvent[],
+  t: number,
+): { shake: number; flash: number } {
+  let shake = 0;
+  let flash = 0;
+  for (const event of events) {
+    const local = t - event.startSec;
+    if (local >= 0 && local <= event.durationSec) {
+      shake = Math.max(
+        shake,
+        event.shake * (1 - local / Math.max(0.1, event.durationSec)),
+      );
+    }
+    if (event.flash > 0 && local >= 0 && local <= 0.3) {
+      flash = Math.max(flash, event.flash * (1 - local / 0.3));
+    }
+  }
+  return { shake, flash };
 }
 
 /** Tham số cố định của mọi hạt trong một lớp (rút từ seed). */
@@ -138,6 +253,8 @@ export function layerParticles(
       life: lerp(layer.life[0], layer.life[1], rng()),
       burstDelay: rng() * 0.15,
       sizeMul: 0.7 + rng() * 0.6,
+      // Rút cuối cùng: không đổi thứ tự rút của các field trước đó.
+      phase: [rng() * 2 * Math.PI, rng() * 2 * Math.PI, rng() * 2 * Math.PI],
     });
   }
   return out;
@@ -148,6 +265,8 @@ export interface ParticleState {
   size: number;
   color: [number, number, number];
   alpha: number;
+  /** Góc xoay hạt quanh tâm (radian) tại thời điểm này. */
+  angle: number;
 }
 
 function smoothstep(a: number, b: number, x: number): number {
@@ -174,14 +293,31 @@ export function particleStateAt(
   const p = spec.life > 0 ? age / spec.life : 1;
   const c0 = hexToRgb(layer.colorStart);
   const c1 = hexToRgb(layer.colorEnd);
+  const cm = layerColorMid(layer);
+  // Cản gió: quãng đi theo (1 - e^-d·tuổi)/d; d = 0 thì đúng speed·tuổi cũ.
+  const drag = layerDrag(layer);
+  const travel =
+    drag > 0
+      ? (spec.speed * (1 - Math.exp(-drag * age))) / drag
+      : spec.speed * age;
+  // Nhiễu: dao động sin quanh quỹ đạo, biên độ = turbulence, pha riêng.
+  const tb = layerTurbulence(layer);
+  const mid = layerSizeMid(layer);
   return {
     pos: [
-      spec.dir[0] * spec.speed * age,
-      spec.dir[1] * spec.speed * age + 0.5 * layer.gravity * age * age,
-      spec.dir[2] * spec.speed * age,
+      spec.dir[0] * travel + tb * Math.sin(age * 3.1 + spec.phase[0]),
+      spec.dir[1] * travel +
+        0.5 * layer.gravity * age * age +
+        tb * Math.sin(age * 2.7 + spec.phase[1]),
+      spec.dir[2] * travel + tb * Math.sin(age * 3.7 + spec.phase[2]),
     ],
-    size: lerp(layer.size[0], layer.size[1], p) * spec.sizeMul,
-    color: [lerp(c0[0], c1[0], p), lerp(c0[1], c1[1], p), lerp(c0[2], c1[2], p)],
+    size: interp3(layer.size[0], mid, layer.size[1], p) * spec.sizeMul,
+    color: [
+      interp3(c0[0], cm[0], c1[0], p),
+      interp3(c0[1], cm[1], c1[1], p),
+      interp3(c0[2], cm[2], c1[2], p),
+    ],
     alpha: layer.opacity * Math.min(1, p / 0.1) * (1 - smoothstep(0.7, 1, p)),
+    angle: (layerSpin(layer) * Math.PI) / 180 * age,
   };
 }

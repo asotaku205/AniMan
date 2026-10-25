@@ -16,6 +16,8 @@ import {
 } from "../lib/animatic";
 import { drawSceneFrame } from "../lib/renderFrame";
 import { createPrevizFilmRenderer } from "../lib/previzFilmRender";
+import { listAnimAssets } from "../lib/animStorage";
+import type { EffectFormula } from "../lib/effectFormula";
 import {
   createFilmPreviewAudio,
   dialogueAtWallTime,
@@ -71,6 +73,30 @@ export function AnimaticPlayer({
   const audioReadyRef = useRef(false);
   const perfBaseRef = useRef<{ stamp: number; from: number } | null>(null);
   const filmRef = useRef<ReturnType<typeof createPrevizFilmRenderer> | null>(null);
+  // Công thức hiệu ứng từ thư viện (luồn vào renderer phim qua tham số,
+  // không để renderer đọc IndexedDB) — nạp 1 lần khi mở trang xem thử.
+  const [effectFormulas, setEffectFormulas] = useState<EffectFormula[]>([]);
+  const effectFormulasRef = useRef<EffectFormula[]>([]);
+  useEffect(() => {
+    let alive = true;
+    listAnimAssets()
+      .then((assets) => {
+        if (!alive) return;
+        const fs: EffectFormula[] = [];
+        for (const a of assets) if (a.kind === "effect") fs.push(a.formula);
+        effectFormulasRef.current = fs;
+        setEffectFormulas(fs);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  // Công thức về sau thì đẩy vào renderer đang chạy + renderer nạp trước.
+  useEffect(() => {
+    filmRef.current?.setEffectFormulas(effectFormulas);
+    preloadRef.current?.renderer.setEffectFormulas(effectFormulas);
+  }, [effectFormulas]);
   const filmSceneRef = useRef<string | null>(null);
   const filmLoadingRef = useRef<string | null>(null);
   // Renderer nạp trước cảnh 3D kế tiếp để chuyển đoạn không khựng hình.
@@ -204,7 +230,10 @@ export function AnimaticPlayer({
     if (project.kind === "2d") {
       drawSceneFrame(ctx, scene, tInScene, W, H, (url) => imagesRef.current.get(url) ?? null);
     } else {
-      if (!filmRef.current) filmRef.current = createPrevizFilmRenderer(W, H);
+      if (!filmRef.current)
+        filmRef.current = createPrevizFilmRenderer(W, H, {
+          effectFormulas: effectFormulasRef.current,
+        });
       // Cảnh kế tiếp đã nạp trước xong thì đổi sang, khỏi chờ nạp lại.
       const pre = preloadRef.current;
       if (
@@ -326,7 +355,9 @@ export function AnimaticPlayer({
     )
       return;
     preloadRef.current?.renderer.dispose();
-    const renderer = createPrevizFilmRenderer(W, H);
+    const renderer = createPrevizFilmRenderer(W, H, {
+      effectFormulas: effectFormulasRef.current,
+    });
     const entry = { renderer, sceneId: next.id, scene: next, ready: false };
     preloadRef.current = entry;
     void renderer
