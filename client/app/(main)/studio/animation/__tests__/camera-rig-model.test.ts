@@ -5,6 +5,7 @@ import {
   frustumCorners,
   frustumFar,
   frustumLineSegments,
+  panCameraDrag,
   rayPlanePoint,
 } from "../lib/cameraRigModel";
 
@@ -148,5 +149,35 @@ describe("mô hình máy quay", () => {
   it("độ dài khung chóp: xa hơn điểm nhìn 2m, tối thiểu 4m", () => {
     approx(frustumFar(POS, TARGET), len(sub(TARGET, POS)) + 2);
     expect(frustumFar({ x: 0, y: 1, z: 0 }, { x: 0, y: 1, z: 0.5 })).toBe(4);
+  });
+});
+
+describe("kéo thân máy (pan)", () => {
+  it("máy + điểm nhìn tịnh tiến cùng delta, hướng nhìn giữ nguyên", () => {
+    const r = panCameraDrag(POS, TARGET, { x: 0, y: 1.6, z: 6 }, { x: 2, y: 2.6, z: 4 });
+    approx(r.position.x, 2);
+    approx(r.position.y, 2.6);
+    approx(r.position.z, 4);
+    approx(r.target.x, 2);
+    approx(r.target.y, 2.1);
+    approx(r.target.z, -2);
+    // Vector hướng nhìn trước/sau kéo phải trùng nhau.
+    const before = sub(TARGET, POS);
+    const after = sub(r.target, r.position);
+    approx(after.x - before.x, 0);
+    approx(after.y - before.y, 0);
+    approx(after.z - before.z, 0);
+  });
+  it("chạm giới hạn kẹp: điểm nhìn chỉ dời đúng phần vị trí dời được", () => {
+    const r = panCameraDrag(POS, TARGET, { x: 0, y: 1.6, z: 6 }, { x: 100, y: 1.6, z: 6 });
+    approx(r.position.x, 14);
+    approx(r.target.x, 14);
+    approx(r.target.y, 1.1);
+    approx(r.target.z, 0);
+  });
+  it("không dời chuột thì máy và điểm nhìn đứng yên", () => {
+    const r = panCameraDrag(POS, TARGET, { x: 0, y: 1.6, z: 6 }, { x: 0, y: 1.6, z: 6 });
+    approx(r.position.x, POS.x);
+    approx(r.target.x, TARGET.x);
   });
 });

@@ -160,3 +160,30 @@ export function clampCameraDrag(pos: Vec3Like): Vec3Like {
     z: Math.max(-14, Math.min(14, pos.z)),
   };
 }
+
+/**
+ * Kéo thân máy (pan): máy + điểm nhìn tịnh tiến cùng nhau theo delta
+ * chuột trên mặt phẳng kéo, hướng nhìn giữ nguyên tuyệt đối — kể cả khi
+ * vị trí chạm giới hạn kẹp (điểm nhìn chỉ dời đúng bằng phần vị trí dời
+ * được thật, nên vector hướng nhìn không đổi).
+ */
+export function panCameraDrag(
+  startPos: Vec3Like,
+  startTarget: Vec3Like,
+  grabPoint: Vec3Like,
+  hit: Vec3Like,
+): { position: Vec3Like; target: Vec3Like } {
+  const position = clampCameraDrag({
+    x: startPos.x + (hit.x - grabPoint.x),
+    y: startPos.y + (hit.y - grabPoint.y),
+    z: startPos.z + (hit.z - grabPoint.z),
+  });
+  return {
+    position,
+    target: {
+      x: startTarget.x + (position.x - startPos.x),
+      y: startTarget.y + (position.y - startPos.y),
+      z: startTarget.z + (position.z - startPos.z),
+    },
+  };
+}

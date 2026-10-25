@@ -54,6 +54,7 @@ import {
 } from "../lib/cameraShots";
 import {
   clampCameraDrag,
+  panCameraDrag,
   frustumFar,
   frustumLineSegments,
   rayPlanePoint,
@@ -672,6 +673,11 @@ export function PrevizEditor({
     kind: "pos" | "target";
     planePoint: THREE.Vector3;
     planeNormal: THREE.Vector3;
+    /** Vị trí + điểm nhìn lúc bắt đầu kéo (pan: cả hai tịnh tiến cùng nhau). */
+    startPos: THREE.Vector3;
+    startTarget: THREE.Vector3;
+    /** Điểm chuột chạm mặt phẳng kéo lúc bắt đầu kéo. */
+    grabPoint: THREE.Vector3;
   }>(null);
 
   useEffect(() => {
@@ -965,10 +971,21 @@ export function PrevizEditor({
             const anchor = part === "body" ? cam.position : cam.target;
             const normal = new THREE.Vector3();
             ctxNow.orbitCam.getWorldDirection(normal);
+            const grab = rayPlanePoint(
+              { x: raycaster.ray.origin.x, y: raycaster.ray.origin.y, z: raycaster.ray.origin.z },
+              { x: raycaster.ray.direction.x, y: raycaster.ray.direction.y, z: raycaster.ray.direction.z },
+              { x: anchor.x, y: anchor.y, z: anchor.z },
+              { x: normal.x, y: normal.y, z: normal.z },
+            );
             camDragRef.current = {
               kind: part === "body" ? "pos" : "target",
               planePoint: new THREE.Vector3(anchor.x, anchor.y, anchor.z),
               planeNormal: normal,
+              startPos: new THREE.Vector3(cam.position.x, cam.position.y, cam.position.z),
+              startTarget: new THREE.Vector3(cam.target.x, cam.target.y, cam.target.z),
+              grabPoint: grab
+                ? new THREE.Vector3(grab.x, grab.y, grab.z)
+                : new THREE.Vector3(anchor.x, anchor.y, anchor.z),
             };
             controls.enabled = false;
           }
@@ -996,9 +1013,17 @@ export function PrevizEditor({
           { x: camDrag.planeNormal.x, y: camDrag.planeNormal.y, z: camDrag.planeNormal.z },
         );
         if (!hit) return;
-        const next = clampCameraDrag(hit);
-        if (camDrag.kind === "pos") setDraftCamPos(next);
-        else setDraftCamTarget(next);
+        if (camDrag.kind === "pos") {
+          // Pan: máy + điểm nhìn tịnh tiến cùng nhau, hướng nhìn giữ nguyên.
+          const panned = panCameraDrag(
+            { x: camDrag.startPos.x, y: camDrag.startPos.y, z: camDrag.startPos.z },
+            { x: camDrag.startTarget.x, y: camDrag.startTarget.y, z: camDrag.startTarget.z },
+            { x: camDrag.grabPoint.x, y: camDrag.grabPoint.y, z: camDrag.grabPoint.z },
+            hit,
+          );
+          setDraftCamPos(panned.position);
+          setDraftCamTarget(panned.target);
+        } else setDraftCamTarget(hit);
         setDraftCamDirty(true);
         setDraftCamTimeSec(stateRef.current.timeSec);
         return;
@@ -2811,7 +2836,8 @@ export function PrevizEditor({
             </div>
             {camMoveMode && (
               <p className="text-[11px] text-white/40 leading-relaxed">
-                Kéo thân máy để dời vị trí, kéo quả cầu vàng ở điểm nhìn để
+                Kéo thân máy để dời cả máy quay và điểm nhìn cùng nhau
+                (hướng nhìn giữ nguyên), kéo quả cầu vàng ở điểm nhìn để
                 đổi hướng ngắm. Kéo xong bấm "Đặt key camera" để lưu góc này.
               </p>
             )}

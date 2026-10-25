@@ -37,6 +37,15 @@ import {
   createParticlePoints,
   updateParticlePoints,
 } from "./particlePoints";
+import { createTerrainGeometry } from "./terrainMesh";
+import { createTerrainGrid } from "./terrainBrush";
+import {
+  cloudDriftX,
+  cloudLayout,
+  lightningIntensity,
+  resolveFilmEnvironment,
+  waterLevelAt,
+} from "./filmEnvironment";
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
@@ -178,6 +187,10 @@ export function createPrevizFilmRenderer(
   const sun = new THREE.DirectionalLight(0xffffff, 1.6);
   sun.position.set(5, 9, 4);
   threeScene.add(sun);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x332244, 0);
+  threeScene.add(hemi);
+  const flashLight = new THREE.AmbientLight(0xffffff, 0);
+  threeScene.add(flashLight);
   threeScene.add(new THREE.GridHelper(30, 30, 0x554477, 0x332a4d));
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(30, 30),
@@ -186,6 +199,14 @@ export function createPrevizFilmRenderer(
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.01;
   threeScene.add(ground);
+  // Mặt đất phong cảnh (dựng từ lưới cao độ, đúng như trình dựng);
+  // cảnh không có environment thì ẩn đi, giữ mặt đất phẳng cũ.
+  const terrainMesh = new THREE.Mesh(
+    createTerrainGeometry(createTerrainGrid()),
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
+  );
+  terrainMesh.visible = false;
+  threeScene.add(terrainMesh);
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -203,9 +224,9 @@ export function createPrevizFilmRenderer(
   const loadScene = async (scene: AnimScene) => {
     current = scene.previz ?? createPrevizScene();
     postResetNeeded = true;
+    syncEnvironment(scene);
     syncWeather(scene);
     syncParticles(scene);
-    threeScene.background = new THREE.Color(current.backdrop);
     for (const group of groups.values()) threeScene.remove(group);
     groups.clear();
     characters.clear();
@@ -232,6 +253,113 @@ export function createPrevizFilmRenderer(
         groups.set(obj.id, mesh);
         threeScene.add(mesh);
       }
+    }
+  };
+
+  let cloudGroup: THREE.Group | null = null;
+  let cloudMat: THREE.Material | null = null;
+  let waterMesh: THREE.Mesh | null = null;
+  let envPoints: THREE.Points | null = null;
+
+  const disposeEnvObjects = () => {
+    if (cloudGroup) {
+      threeScene.remove(cloudGroup);
+      cloudGroup.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (mesh.isMesh) mesh.geometry.dispose();
+      });
+      cloudGroup = null;
+    }
+    if (cloudMat) {
+      cloudMat.dispose();
+      cloudMat = null;
+    }
+    if (waterMesh) {
+      threeScene.remove(waterMesh);
+      waterMesh.geometry.dispose();
+      (waterMesh.material as THREE.Material).dispose();
+      waterMesh = null;
+    }
+    if (envPoints) {
+      threeScene.remove(envPoints);
+      envPoints.geometry.dispose();
+      (envPoints.material as THREE.Material).dispose();
+      envPoints = null;
+    }
+  };
+
+  // Môi trường phong cảnh: áp đúng như trình dựng (trời, nắng, sương,
+  // mây, nước, mưa/tuyết). Cảnh không có environment giữ đúng fallback
+  // cũ: nền backdrop + mặt đất phẳng + không sương/mây/nước.
+  const syncEnvironment = (scene: AnimScene) => {
+    disposeEnvObjects();
+    const res = resolveFilmEnvironment(scene.environment, current.backdrop);
+    threeScene.background = new THREE.Color(res.background);
+    threeScene.fog = res.fog
+      ? new THREE.Fog(res.background, res.fog.near, res.fog.far)
+      : null;
+    sun.color.set(res.sunColor);
+    sun.intensity = res.sunIntensity;
+    sun.position.set(
+      res.sunPosition[0],
+      res.sunPosition[1],
+      res.sunPosition[2],
+    );
+    hemi.intensity = res.hemiIntensity;
+    flashLight.intensity = 0;
+    const env = scene.environment;
+    if (!env) {
+      terrainMesh.visible = false;
+      ground.visible = true;
+      return;
+    }
+    terrainMesh.geometry.dispose();
+    terrainMesh.geometry = createTerrainGeometry(env.terrain);
+    terrainMesh.visible = true;
+    ground.visible = false;
+    const layout = cloudLayout(env.weather);
+    cloudMat = new THREE.MeshStandardMaterial({
+      color: layout.color,
+      transparent: true,
+      opacity: 0.9,
+      roughness: 1,
+    });
+    cloudGroup = new THREE.Group();
+    for (const pos of layout.clouds) {
+      const cloud = new THREE.Group();
+      for (let k = 0; k < 3; k += 1) {
+        const puff = new THREE.Mesh(
+          new THREE.SphereGeometry(2 + (k % 2), 10, 8),
+          cloudMat,
+        );
+        puff.position.set(k * 2.2 - 2.2, (k % 2) * 0.5, 0);
+        puff.scale.y = 0.45;
+        cloud.add(puff);
+      }
+      cloud.position.set(pos.x, pos.y, pos.z);
+      cloudGroup.add(cloud);
+    }
+    threeScene.add(cloudGroup);
+    if (env.waterLevel >= 0) {
+      waterMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(30, 30),
+        new THREE.MeshStandardMaterial({
+          color: "#3a7bd5",
+          transparent: true,
+          opacity: 0.65,
+          roughness: 0.2,
+        }),
+      );
+      waterMesh.rotation.x = -Math.PI / 2;
+      waterMesh.position.y = env.waterLevel;
+      threeScene.add(waterMesh);
+    }
+    if (env.weather === "rain") {
+      envPoints = createWeatherPoints({ type: "rain", intensity: 0.8 });
+      threeScene.add(envPoints);
+    } else if (env.weather === "snow") {
+      envPoints = createWeatherPoints({ type: "snow", intensity: 0.6 });
+      threeScene.add(envPoints);
     }
   };
 
@@ -266,6 +394,15 @@ export function createPrevizFilmRenderer(
   const drawAt = (scene: AnimScene, t: number) => {
     if (particlePts) updateParticlePoints(particlePts, t);
     if (weatherPoints) updateWeatherPoints(weatherPoints, t);
+    if (envPoints) updateWeatherPoints(envPoints, t);
+    const env = scene.environment;
+    if (cloudGroup && env) {
+      cloudGroup.position.x = cloudDriftX(t, env.weather);
+    }
+    if (waterMesh && env && env.waterLevel >= 0) {
+      waterMesh.position.y = waterLevelAt(env.waterLevel, t);
+    }
+    flashLight.intensity = lightningIntensity(t, env?.weather ?? null);
     for (const obj of current.objects) {
       const group = groups.get(obj.id);
       if (!group) continue;
@@ -362,6 +499,9 @@ export function createPrevizFilmRenderer(
     loadScene,
     drawAt,
     dispose: () => {
+      disposeEnvObjects();
+      terrainMesh.geometry.dispose();
+      (terrainMesh.material as THREE.Material).dispose();
       (composer as unknown as { dispose?: () => void }).dispose?.();
       (bloomPass as unknown as { dispose?: () => void }).dispose?.();
       (bokehPass as unknown as { dispose?: () => void }).dispose?.();
