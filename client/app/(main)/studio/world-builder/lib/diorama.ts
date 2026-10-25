@@ -911,6 +911,54 @@ export function skySun(sky: SkySettings): {
   return { elevation, sunIntensity, sunColor, skyBg, hemiIntensity };
 }
 
+/**
+ * Logic thời tiết của bầu trời: một kiểu thời tiết phải kéo theo cả
+ * hệ quả của nó thì mới "chuẩn logic" — mưa không thể chỉ rơi hạt
+ * trong khi trời vẫn nắng gắt và mây thưa.
+ * - cloudCover: tỉ lệ mây hiện ra (mưa = kín trời, nắng = thưa).
+ * - cloudDark: 0 = mây trắng, 1 = mây xám đen.
+ * - sunFactor: nắng còn lại (mưa dông chỉ còn ~20%).
+ * - wind: hệ số gió — mây trôi nhanh hơn, hạt mưa bay xiên.
+ * - lightning: chỉ mưa dông mới có sấm sét (chớp sáng).
+ * - fogNear/fogFar: tầm nhìn xa (sương mù dày nhất, mưa giảm tầm nhìn).
+ */
+export interface WeatherParams {
+  cloudCover: number;
+  cloudDark: number;
+  sunFactor: number;
+  wind: number;
+  lightning: boolean;
+  fogNear: number;
+  fogFar: number;
+}
+
+export function weatherParams(weather: SkySettings["weather"]): WeatherParams {
+  switch (weather) {
+    case "clear":
+      return { cloudCover: 0.4, cloudDark: 0, sunFactor: 1, wind: 1, lightning: false, fogNear: 70, fogFar: 130 };
+    case "fog":
+      return { cloudCover: 0.55, cloudDark: 0.25, sunFactor: 0.35, wind: 0.4, lightning: false, fogNear: 12, fogFar: 45 };
+    case "rain":
+      return { cloudCover: 1, cloudDark: 0.75, sunFactor: 0.22, wind: 2.2, lightning: true, fogNear: 40, fogFar: 100 };
+    case "snow":
+      return { cloudCover: 0.9, cloudDark: 0.45, sunFactor: 0.4, wind: 1.4, lightning: false, fogNear: 50, fogFar: 110 };
+  }
+}
+
+/** Dòng mô tả ngắn cho thanh công cụ: người xem thấy ngay hệ quả. */
+export function weatherLabel(weather: SkySettings["weather"]): string {
+  switch (weather) {
+    case "clear":
+      return "Nắng · Ít mây · Gió nhẹ";
+    case "fog":
+      return "Sương mù · Nắng yếu · Gió nhẹ";
+    case "rain":
+      return "Mưa dông · Kín mây đen · Gió mạnh · Sấm sét";
+    case "snow":
+      return "Tuyết · Nhiều mây · Gió vừa";
+  }
+}
+
 /** Pha mặt trăng 0..1 theo ngày thật (0 = trăng non, 0.5 = trăng tròn),
  * chu kỳ 29.53 ngày, neo vào trăng non 06/01/2000. Không cần lưu state. */
 export function moonPhase(date: Date = new Date()): number {

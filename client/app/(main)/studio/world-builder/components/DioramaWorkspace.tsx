@@ -58,6 +58,7 @@ import {
   snapToGrid,
   sortedEvents,
   starterPlacements,
+  weatherLabel,
   type AssetStatus,
   type CustomModel,
   type ModelPart,
@@ -645,6 +646,9 @@ export function DioramaWorkspace() {
           >
             Về sa bàn
           </button>
+          <span className="text-[11px] text-white/50 whitespace-nowrap" title="Hệ quả logic của kiểu thời tiết đang chọn">
+            {weatherLabel(state.sky.weather)}
+          </span>
           <select
             value={state.sky.season}
             onChange={(e) => setState({ ...state, sky: { ...state.sky, season: e.target.value as typeof state.sky.season } })}

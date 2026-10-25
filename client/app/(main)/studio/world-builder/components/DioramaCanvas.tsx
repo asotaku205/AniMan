@@ -22,6 +22,7 @@ import {
   moonPhase,
   placementFootprint,
   skySun,
+  weatherParams,
   placementParts,
   snapToGrid,
   type CustomModel,
@@ -84,6 +85,8 @@ interface Props {
   onPlace: (x: number, z: number) => void;
   onMove: (id: string, x: number, z: number) => void;
 }
+
+const FLASH_WHITE = new THREE.Color("#ffffff");
 
 function disposeObject(obj: THREE.Object3D) {
   obj.traverse((child) => {
@@ -251,6 +254,9 @@ export function DioramaCanvas({
     mesh: THREE.Mesh;
     mat: THREE.ShaderMaterial;
   } | null>(null);
+  /** Màu vòm gốc (sky effect ghi lại): loop chớp sáng mượn nó để
+      sáng lên rồi trả về, không cần biết trời đang là kiểu gì. */
+  const domeBaseRef = useRef<{ top: THREE.Color; horizon: THREE.Color } | null>(null);
   /** Bầu trời sống (Phase 2): đĩa mặt trời, mặt trăng + pha, sao, mây. */
   const skyDressRef = useRef<{
     sun: THREE.Group;
@@ -262,7 +268,9 @@ export function DioramaCanvas({
     clouds: THREE.Sprite[];
     scene: THREE.Scene;
   } | null>(null);
-  const weatherRef = useRef<{ points: THREE.Points; vel: Float32Array; kind: string } | null>(null);
+  const weatherRef = useRef<{ points: THREE.Points; vel: Float32Array; kind: string; wind: number } | null>(null);
+  /** Đèn chớp sấm sét (chỉ mưa dông): bật trong tích tắc, tắt ngay. */
+  const flashRef = useRef<{ nextAt: number; until: number; light: THREE.AmbientLight | null }>({ nextAt: 0, until: 0, light: null });
   const flyRef = useRef<{
     fromPos: THREE.Vector3; fromTarget: THREE.Vector3;
     toPos: THREE.Vector3; toTarget: THREE.Vector3; start: number;
@@ -364,7 +372,11 @@ export function DioramaCanvas({
       points.visible = false;
       points.frustumCulled = false;
       scene.add(points);
-      weatherRef.current = { points, vel, kind: "clear" };
+      weatherRef.current = { points, vel, kind: "clear", wind: 1 };
+      // Đèn chớp sấm sét: chỉ bật trong tích tắc khi mưa dông.
+      const flashLight = new THREE.AmbientLight(0xffffff, 0);
+      scene.add(flashLight);
+      flashRef.current.light = flashLight;
     }
 
     // Đế sa bàn: khối đế sâu 6m, mặt trên nằm NGAY DƯỚI đáy địa
@@ -679,10 +691,27 @@ export function DioramaCanvas({
       if (dress) {
         dress.sun.lookAt(camera.position);
         dress.moon.lookAt(camera.position);
+        // Gió đẩy mây: mưa dông mây trôi nhanh gấp đôi, sương mù lờ đờ.
+        const wind = weatherRef.current?.wind ?? 1;
         for (const c of dress.clouds) {
-          c.position.x += (c.userData.speed as number) * dt;
+          c.position.x += (c.userData.speed as number) * wind * dt;
           if (c.position.x > 150) c.position.x = -150;
         }
+      }
+      // Sấm sét (chỉ khi mưa dông): chớp sáng ngẫu nhiên mỗi 4–12s,
+      // lần đầu 1,5s sau khi chuyển sang mưa để thấy ngay. Đèn môi
+      // trường sáng cả sa bàn; vòm trời cũng sáng theo rồi trả về
+      // màu gốc (shader vòm không ăn đèn nên phải chỉnh tay).
+      const fl = flashRef.current;
+      const fw = weatherRef.current;
+      const flashing = !!(fw && fw.kind === "rain" && now >= fl.nextAt ? (fl.until = now + 130, fl.nextAt = now + 4000 + Math.random() * 8000, true) : fw && fw.kind === "rain" && now < fl.until);
+      if (fl.light) fl.light.intensity = flashing ? 2.2 : 0;
+      const dm = domeRef.current;
+      const base = domeBaseRef.current;
+      if (dm && base) {
+        const f = flashing ? 0.7 : 0;
+        dm.mat.uniforms.topColor.value.copy(base.top).lerp(FLASH_WHITE, f);
+        dm.mat.uniforms.horizonColor.value.copy(base.horizon).lerp(FLASH_WHITE, f);
       }
       // Pan bằng phím: dời cả camera lẫn điểm nhìn cùng một vector.
       if (keysDown.size > 0) {
@@ -737,6 +766,10 @@ export function DioramaCanvas({
         const speed = w.kind === "rain" ? 16 : 2.5;
         for (let i = 0; i < w.vel.length; i += 1) {
           arr[i * 3 + 1] -= speed * w.vel[i] * 0.016;
+          // Gió đẩy hạt xiên: mưa xiên mạnh, tuyết bay nhẹ.
+          arr[i * 3] += (w.wind ?? 1) * (w.kind === "rain" ? 3 : 0.8) * 0.016;
+          if (arr[i * 3] > 30) arr[i * 3] = -30;
+          if (arr[i * 3] < -30) arr[i * 3] = 30;
           if (w.kind === "snow") arr[i * 3] += Math.sin(performance.now() / 900 + i) * 0.008;
           if (arr[i * 3 + 1] < 0) {
             arr[i * 3 + 1] = 30;
@@ -1121,22 +1154,26 @@ export function DioramaCanvas({
     const lights = skyLightsRef.current;
     if (!t || !lights) return;
     const info = skySun(sky);
+    const wp = weatherParams(sky.weather);
     const az = ((sky.time - 6) / 12) * Math.PI;
     const el = Math.max(0.05, info.elevation);
     lights.sun.position.set(Math.cos(az) * Math.cos(el) * 40, Math.sin(el) * 40, Math.sin(az) * Math.cos(el) * 40);
-    lights.sun.intensity = info.sunIntensity;
+    // Nắng còn lại sau mây: mưa dông chỉ còn ~20% nắng ban ngày.
+    lights.sun.intensity = info.sunIntensity * wp.sunFactor;
     lights.sun.color.set(info.sunColor);
     lights.hemi.intensity = info.hemiIntensity;
     t.scene.background = new THREE.Color(info.skyBg);
     const fog = t.scene.fog as THREE.Fog | null;
     if (fog) {
-      fog.color.set(sky.weather === "fog" ? "#c8ccd4" : info.skyBg);
-      fog.near = sky.weather === "fog" ? 12 : 70;
-      fog.far = sky.weather === "fog" ? 45 : 130;
+      fog.color.set(sky.weather === "fog" ? "#c8ccd4" : sky.weather === "rain" ? "#7d8a99" : sky.weather === "snow" ? "#dfe9f0" : info.skyBg);
+      fog.near = wp.fogNear;
+      fog.far = wp.fogFar;
     }
     const w = weatherRef.current;
     if (w) {
+      if (w.kind !== "rain" && sky.weather === "rain") flashRef.current.nextAt = performance.now() + 1500;
       w.kind = sky.weather;
+      w.wind = wp.wind;
       w.points.visible = sky.weather === "rain" || sky.weather === "snow";
       (w.points.material as THREE.PointsMaterial).color.set(
         sky.weather === "rain" ? 0x9fc4e8 : 0xffffff,
@@ -1215,24 +1252,30 @@ export function DioramaCanvas({
     const dome = domeRef.current;
     if (dome) {
       const warm = sky.time < 8 || sky.time > 16;
+      let top = "#3a86d8";
+      let horizon = "#bfe3f5";
       if (sky.weather === "fog") {
-        dome.mat.uniforms.topColor.value.set("#9aa5b5");
-        dome.mat.uniforms.horizonColor.value.set("#c8ccd4");
+        top = "#9aa5b5"; horizon = "#c8ccd4";
       } else if (!day) {
-        dome.mat.uniforms.topColor.value.set("#030712");
-        dome.mat.uniforms.horizonColor.value.set("#1b2340");
+        top = "#030712"; horizon = "#1b2340";
+      } else if (sky.weather === "rain") {
+        top = "#3d4a5c"; horizon = "#6b7686";
+      } else if (sky.weather === "snow") {
+        top = "#6f9cc0"; horizon = "#dfe9f0";
       } else if (warm) {
-        dome.mat.uniforms.topColor.value.set("#5b7fc4");
-        dome.mat.uniforms.horizonColor.value.set("#ffb066");
-      } else {
-        dome.mat.uniforms.topColor.value.set("#3a86d8");
-        dome.mat.uniforms.horizonColor.value.set("#bfe3f5");
+        top = "#5b7fc4"; horizon = "#ffb066";
       }
+      dome.mat.uniforms.topColor.value.set(top);
+      dome.mat.uniforms.horizonColor.value.set(horizon);
+      domeBaseRef.current = { top: new THREE.Color(top), horizon: new THREE.Color(horizon) };
     }
     const sunDir = new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el));
     d.sun.position.copy(sunDir).multiplyScalar(260);
     d.sunMat.color.set(info.sunColor);
     d.sunCoreMat.color.set(info.sunColor);
+    // Nắng yếu khi nhiều mây: đĩa mờ đi theo, không còn chói như trời quang.
+    d.sunMat.opacity = 0.3 + 0.7 * wp.sunFactor;
+    d.sunCoreMat.opacity = 0.35 + 0.65 * wp.sunFactor;
     d.sun.visible = day;
     const nightT = sky.time >= 18 ? sky.time - 18 : sky.time + 6;
     const mAz = (nightT / 12) * Math.PI;
@@ -1246,7 +1289,12 @@ export function DioramaCanvas({
     const darkness = !day ? 1 : sky.time < 7 || sky.time > 17 ? 0.4 : 0;
     (d.stars.material as THREE.PointsMaterial).opacity = darkness * 0.9;
     const cloudBase = day ? 1 : 0.3;
-    for (const c of d.clouds) {
+    const dark = new THREE.Color("#ffffff").lerp(new THREE.Color("#5b6470"), wp.cloudDark);
+    for (let i = 0; i < d.clouds.length; i += 1) {
+      const c = d.clouds[i];
+      // Mưa = kín trời, nắng = thưa: mây thừa ẩn hẳn, không chỉ mờ đi.
+      c.visible = i < Math.round(d.clouds.length * wp.cloudCover);
+      c.material.color.copy(dark);
       c.material.opacity = (c.userData.base as number) * cloudBase;
     }
     if (!day) {

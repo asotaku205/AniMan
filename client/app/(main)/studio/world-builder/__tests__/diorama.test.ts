@@ -248,6 +248,28 @@ describe("Phase 2: bầu trời sống", () => {
   });
 });
 
+describe("logic thời tiết", () => {
+  it("mưa kín mây đen, gió mạnh, có sấm, nắng yếu nhất; nắng thưa mây, nắng đủ", async () => {
+    const d = await import("../lib/diorama");
+    const rain = d.weatherParams("rain");
+    const clear = d.weatherParams("clear");
+    const snow = d.weatherParams("snow");
+    const fog = d.weatherParams("fog");
+    expect(rain.cloudCover).toBe(1);
+    expect(rain.cloudCover).toBeGreaterThan(snow.cloudCover);
+    expect(snow.cloudCover).toBeGreaterThan(clear.cloudCover);
+    expect(rain.cloudDark).toBeGreaterThan(snow.cloudDark);
+    expect(rain.sunFactor).toBeLessThan(fog.sunFactor);
+    expect(fog.sunFactor).toBeLessThan(clear.sunFactor);
+    expect(rain.wind).toBeGreaterThan(snow.wind);
+    expect(snow.wind).toBeGreaterThan(clear.wind);
+    expect(rain.lightning).toBe(true);
+    expect(clear.lightning).toBe(false);
+    expect(snow.lightning).toBe(false);
+    expect(fog.fogFar).toBeLessThan(clear.fogFar);
+  });
+});
+
 describe("W9: sinh cảnh quan theo vùng", () => {
   it("núi nâng tâm cao, hồ hạ tâm + có nước, đảo có vành cát", async () => {
     const t = await import("../lib/terrain");
