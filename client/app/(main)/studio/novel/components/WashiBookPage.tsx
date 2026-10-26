@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Plus } from "lucide-react";
 import { StickyNotesMargin } from "./StickyNotesMargin";
 import { BIBLE_KIND_LABEL } from "../lib/novel";
+import { joinSceneText, pageMetrics, paginateText } from "../lib/pagination";
 import type { NovelStudioState } from "../hooks/useNovelStudio";
 
 interface MentionState {
@@ -42,7 +43,7 @@ function Page({ children, right, theme }: { children: React.ReactNode; right?: b
   const t = PAGE_THEME[theme];
   return (
     <div
-      className={`relative aspect-[3/4] p-10 ${right ? "rounded-r-[6px]" : "rounded-l-[6px]"}`}
+      className={`relative aspect-[3/4] overflow-hidden p-10 ${right ? "rounded-r-[6px]" : "rounded-l-[6px]"}`}
       style={{
         backgroundColor: t.bg,
         color: t.text,
@@ -221,6 +222,80 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.writeMode]);
 
+  // Phan trang che do Quyen sach (chi doc): moi canh duoc chia thanh cac
+  // trang vua khung trang co dinh, moi trai hien thi 2 trang. Sua van ban
+  // thuc hien o che do Mac dinh, noi hai o soan thao van ton tai.
+  const [spreadIdx, setSpreadIdx] = useState(0);
+  const wantLastSpreadRef = useRef(false);
+  const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bookMetrics = pageMetrics(s.displayFontSize, s.displayLineHeight);
+  const bookPages = useMemo(() => {
+    if (!s.selectedScene) return [""];
+    return paginateText(
+      joinSceneText(s.selectedScene.contentLeft, s.selectedScene.contentRight),
+      bookMetrics.charsPerLine,
+      bookMetrics.linesPerPage,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    s.selectedScene?.contentLeft,
+    s.selectedScene?.contentRight,
+    s.displayFontSize,
+    s.displayLineHeight,
+  ]);
+  const maxSpread = Math.max(0, Math.ceil(bookPages.length / 2) - 1);
+  const safeSpread = Math.min(spreadIdx, maxSpread);
+  const leftPageNo = safeSpread * 2 + 1;
+  const rightPageNo = Math.min(safeSpread * 2 + 2, bookPages.length);
+  const pageLabel =
+    rightPageNo > leftPageNo
+      ? `Trang ${leftPageNo}-${rightPageNo} / ${bookPages.length}`
+      : `Trang ${leftPageNo} / ${bookPages.length}`;
+  useEffect(() => {
+    const sc = s.selectedScene;
+    if (!sc) {
+      setSpreadIdx(0);
+      return;
+    }
+    if (wantLastSpreadRef.current) {
+      wantLastSpreadRef.current = false;
+      const m = pageMetrics(s.displayFontSize, s.displayLineHeight);
+      const pg = paginateText(
+        joinSceneText(sc.contentLeft, sc.contentRight),
+        m.charsPerLine,
+        m.linesPerPage,
+      );
+      setSpreadIdx(Math.max(0, Math.ceil(pg.length / 2) - 1));
+    } else {
+      setSpreadIdx(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.selectedScene?.id]);
+  const showSpreadFlip = (content: string, dir: 1 | -1) => {
+    if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current);
+    setFlip({ content, dir, key: Date.now() });
+    flipTimeoutRef.current = setTimeout(() => setFlip(null), 750);
+  };
+  const goNextSpread = () => {
+    if (safeSpread < maxSpread) {
+      showSpreadFlip(bookPages[safeSpread * 2 + 1] ?? "", 1);
+      setSpreadIdx(safeSpread + 1);
+    } else if (nextScene) {
+      flipDirRef.current = 1;
+      s.selectScene(nextScene.id);
+    }
+  };
+  const goPrevSpread = () => {
+    if (safeSpread > 0) {
+      showSpreadFlip(bookPages[safeSpread * 2] ?? "", -1);
+      setSpreadIdx(safeSpread - 1);
+    } else if (prevScene) {
+      wantLastSpreadRef.current = true;
+      flipDirRef.current = -1;
+      s.selectScene(prevScene.id);
+    }
+  };
+
   if (s.loading) {
     return (
       <div className="relative mx-auto w-full max-w-7xl rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 p-8 text-amber-100/70 text-sm">
@@ -314,6 +389,9 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
         transition={{ duration: 1 }}
         className="relative [perspective:1500px]"
       >
+        <div style={{ fontFamily: "Shippori Mincho, serif" }} className="text-sm tracking-widest mb-6 text-center font-medium opacity-80 text-amber-100">
+          {s.selectedChapter?.title ?? ""} - {s.selectedScene.title}
+        </div>
         <div
           className="relative grid grid-cols-2 rounded-[8px] shadow-[0_60px_120px_-30px_rgba(0,0,0,0.8)] [transform-style:preserve-3d]"
           style={{ transform: "rotateX(6deg)" }}
@@ -323,33 +401,21 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
 
           {/* Left page */}
           <Page theme={s.displayTheme}>
-            <div style={{ fontFamily: "Shippori Mincho, serif" }} className="text-sm tracking-widest mb-6 text-center font-medium opacity-80">
-              {s.selectedChapter?.title ?? ""} — {s.selectedScene.title}
-            </div>
             <div
-              ref={s.leftRef}
-              contentEditable
-              suppressContentEditableWarning
-              onInput={handleInput}
-              onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
               style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
-              className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
-            />
+              className={`${EDITOR_SIZE[s.displayFontSize]} whitespace-pre-wrap break-words`}
+            >
+              {bookPages[safeSpread * 2] ?? ""}
+            </div>
           </Page>
 
           {/* Right page */}
           <Page right theme={s.displayTheme}>
             <div
-              ref={s.rightRef}
-              contentEditable
-              suppressContentEditableWarning
-              onInput={handleInput}
-              onKeyDown={(e) => { if (e.key === "Escape") setMention(null); }}
               style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
-              className={`${EDITOR_SIZE[s.displayFontSize]} outline-none min-h-[360px] focus:bg-black/5 rounded px-1`}
-            />
-            <div className="mt-10 text-right" style={{ fontFamily: "Shippori Mincho, serif" }}>
-              <span className="text-xs opacity-60">— SakuraStream · Cảnh {currentIdx + 1}/{sceneOrder.length}</span>
+              className={`${EDITOR_SIZE[s.displayFontSize]} whitespace-pre-wrap break-words`}
+            >
+              {bookPages[safeSpread * 2 + 1] ?? ""}
             </div>
           </Page>
           {flip && (
@@ -463,31 +529,56 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
       </div>
       )}
 
-      {/* Nút lật trang — chuyển cảnh kề nhau (chế độ quyển có animation lật) */}
-      <div className="mt-8 flex justify-center gap-3">
-        <button
-          type="button"
-          disabled={!prevScene}
-          onClick={() => {
-            flipDirRef.current = -1;
-            if (prevScene) s.selectScene(prevScene.id);
-          }}
-          className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
-        >
-          ← Cảnh trước
-        </button>
-        <button
-          type="button"
-          disabled={!nextScene}
-          onClick={() => {
-            flipDirRef.current = 1;
-            if (nextScene) s.selectScene(nextScene.id);
-          }}
-          className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
-        >
-          Cảnh sau →
-        </button>
-      </div>
+      {s.writeMode === "book" ? (
+        <div className="mt-8 flex flex-col items-center gap-2">
+          <div className="flex justify-center gap-3">
+            <button
+              type="button"
+              disabled={safeSpread === 0 && !prevScene}
+              onClick={goPrevSpread}
+              className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
+            >
+              Trang trước
+            </button>
+            <button
+              type="button"
+              disabled={safeSpread === maxSpread && !nextScene}
+              onClick={goNextSpread}
+              className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
+            >
+              Trang sau
+            </button>
+          </div>
+          <span className="text-xs text-amber-100/60">
+            Cảnh {currentIdx + 1}/{sceneOrder.length} | {pageLabel}
+          </span>
+        </div>
+      ) : (
+        <div className="mt-8 flex justify-center gap-3">
+          <button
+            type="button"
+            disabled={!prevScene}
+            onClick={() => {
+              flipDirRef.current = -1;
+              if (prevScene) s.selectScene(prevScene.id);
+            }}
+            className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
+          >
+            ← Cảnh trước
+          </button>
+          <button
+            type="button"
+            disabled={!nextScene}
+            onClick={() => {
+              flipDirRef.current = 1;
+              if (nextScene) s.selectScene(nextScene.id);
+            }}
+            className="h-9 px-4 rounded-lg bg-amber-200/10 border border-amber-200/30 text-amber-100 text-xs hover:bg-amber-200/20 transition disabled:opacity-40"
+          >
+            Cảnh sau →
+          </button>
+        </div>
+      )}
 
       {mention && suggestions.length > 0 && (
         <div
