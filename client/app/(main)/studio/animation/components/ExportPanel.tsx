@@ -327,11 +327,11 @@ export function ExportPanel({
     if (cancelRef.current) return;
     setDoneNote(
       mix
-        ? `Đã xuất phim kèm tiếng: ${audioPlan.clips.length} dòng thoại có giọng${
+        ? `Đã xuất phim kèm tiếng: ${audioPlan.clips.length} clip tiếng${
             project.bgm ? " + nhạc nền" : ""
           }${
             audioPlan.missing.length > 0
-              ? ` (${audioPlan.missing.length} dòng chưa có giọng — chỉ hiện phụ đề)`
+              ? ` (${audioPlan.missing.length} dòng chưa có giọng, chỉ hiện phụ đề)`
               : ""
           }.`
         : "Đã xuất phim (chưa có tiếng — hãy thu giọng cho các dòng thoại để phim có tiếng).",
@@ -341,7 +341,9 @@ export function ExportPanel({
     const a = document.createElement("a");
     a.href = url;
     a.download = `${project.name.replace(/\s+/g, "-")}.webm`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   };
 
@@ -523,7 +525,7 @@ export function ExportPanel({
     if (cancelRef.current) return;
     setDoneNote(
       mix
-        ? `Đã xuất phim 3D hoàn chỉnh kèm tiếng: ${audioPlan.clips.length} dòng thoại có giọng${
+        ? `Đã xuất phim 3D hoàn chỉnh kèm tiếng: ${audioPlan.clips.length} clip tiếng${
             project.bgm ? " + nhạc nền" : ""
           }.`
         : "Đã xuất phim 3D hoàn chỉnh (chưa có tiếng — hãy thu giọng cho các dòng thoại để phim có tiếng).",
@@ -533,7 +535,9 @@ export function ExportPanel({
     const a = document.createElement("a");
     a.href = url;
     a.download = `${project.name.replace(/\s+/g, "-")}.webm`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   };
 
