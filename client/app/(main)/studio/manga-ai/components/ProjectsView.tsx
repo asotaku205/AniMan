@@ -22,6 +22,10 @@ import {
   X,
 } from "lucide-react";
 import type { MangaProject } from "../hooks/useMangaProjects";
+import {
+  parseMangaSample,
+  type MangaSample,
+} from "../lib/sampleLoader";
 
 interface ProjectsViewProps {
   projects: MangaProject[];
@@ -31,6 +35,7 @@ interface ProjectsViewProps {
   onOpenStoryBoard: (id: string) => void;
   onOpenPublish: (id: string) => void;
   onCreateProject: (title: string, genre: string, description: string) => MangaProject;
+  onImportSampleProject: (sample: MangaSample) => Promise<MangaProject>;
   onDeleteProject: (id: string) => void;
 }
 
@@ -54,6 +59,7 @@ export function ProjectsView({
   onOpenStoryBoard,
   onOpenPublish,
   onCreateProject,
+  onImportSampleProject,
   onDeleteProject,
 }: ProjectsViewProps) {
   const [search, setSearch] = useState("");
@@ -69,6 +75,67 @@ export function ProjectsView({
 
   // Modal xác nhận xóa
   const [projectToDelete, setProjectToDelete] = useState<MangaProject | null>(null);
+
+  // Hộp thoại mở dự án mẫu (tải file mẫu khi mở để hiện số liệu thật)
+  const [sampleOpen, setSampleOpen] = useState(false);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const [sampleError, setSampleError] = useState<string | null>(null);
+  const [sampleData, setSampleData] = useState<MangaSample | null>(null);
+  const sampleStats = useMemo(() => {
+    if (!sampleData) return null;
+    let pages = 0;
+    let lines = 0;
+    let unattributed = 0;
+    for (const ch of sampleData.chapters) {
+      pages += ch.pages.length;
+      for (const pg of ch.pages) {
+        for (const pn of pg.panels) {
+          for (const ln of pn.lines) {
+            lines += 1;
+            if ((ln.kind === "spoken" || ln.kind === "inner") && !ln.speaker) {
+              unattributed += 1;
+            }
+          }
+        }
+      }
+    }
+    return { pages, lines, unattributed };
+  }, [sampleData]);
+
+  const openSampleDialog = async () => {
+    setSampleOpen(true);
+    setSampleBusy(true);
+    setSampleError(null);
+    setSampleData(null);
+    try {
+      const res = await fetch("/samples/thu-gui-thanh-pho-tren-may-manga.json");
+      if (!res.ok) throw new Error("Không tải được file dự án mẫu.");
+      setSampleData(parseMangaSample(await res.json()));
+    } catch (err) {
+      setSampleError(
+        err instanceof Error ? err.message : "Không mở được dự án mẫu.",
+      );
+    } finally {
+      setSampleBusy(false);
+    }
+  };
+
+  const confirmSample = async () => {
+    if (!sampleData) return;
+    setSampleBusy(true);
+    setSampleError(null);
+    try {
+      const created = await onImportSampleProject(sampleData);
+      setSampleOpen(false);
+      onOpenDraw(created.id);
+    } catch (err) {
+      setSampleError(
+        err instanceof Error ? err.message : "Không mở được dự án mẫu.",
+      );
+    } finally {
+      setSampleBusy(false);
+    }
+  };
 
   // Thống kê nhanh
   const stats = useMemo(() => {
@@ -162,6 +229,13 @@ export function ProjectsView({
             >
               <Plus size={16} />
               Tạo Dự án Mới
+            </button>
+            <button
+              onClick={() => void openSampleDialog()}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold text-sm transition-all"
+            >
+              <BookOpen size={16} />
+              Mở dự án mẫu
             </button>
           </div>
         </div>
@@ -601,6 +675,64 @@ export function ProjectsView({
                 className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-semibold shadow-lg shadow-red-600/30 transition-colors"
               >
                 Xác nhận Xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hộp thoại Mở dự án mẫu */}
+      {sampleOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#180d2b] border border-white/10 rounded-3xl p-6 shadow-2xl">
+            <h3 className="text-white font-bold text-sm">Mở dự án mẫu</h3>
+            <p className="text-white/70 text-xs mt-2 leading-relaxed">
+              <strong className="text-white">
+                Thư Gửi Thành Phố Trên Mây
+              </strong>
+              <br />
+              Bản manga mẫu đã có kịch bản: lời thoại đặt sẵn theo khung,
+              tranh vẽ để trống để bạn vẽ trong panel. Mở ra một bản riêng
+              để vẽ tiếp. Các dự án bạn đã có vẫn giữ nguyên.
+            </p>
+            {sampleStats && (
+              <p className="text-white/60 text-xs mt-2 leading-relaxed">
+                {sampleData?.chapters.length} chương, {sampleStats.pages}{" "}
+                trang, {sampleStats.lines} dòng thoại, trong đó{" "}
+                {sampleStats.unattributed} dòng chưa rõ người nói.
+              </p>
+            )}
+            {sampleStats && sampleStats.unattributed > 0 && (
+              <p className="text-white/50 text-xs mt-1 leading-relaxed">
+                Dòng chưa rõ người nói sẽ hiện không kèm tên, bạn gắn tên
+                khi sửa trong panel.
+              </p>
+            )}
+            {sampleError && (
+              <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                {sampleError}
+              </p>
+            )}
+            <div className="flex items-center justify-end gap-2.5 mt-5">
+              <button
+                type="button"
+                disabled={sampleBusy}
+                onClick={() => setSampleOpen(false)}
+                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                Để sau
+              </button>
+              <button
+                type="button"
+                disabled={sampleBusy || !sampleData}
+                onClick={() => void confirmSample()}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 text-white text-xs font-semibold shadow-lg shadow-pink-500/25 transition-all disabled:opacity-50"
+              >
+                {sampleBusy && !sampleData
+                  ? "Đang tải mẫu..."
+                  : sampleBusy
+                    ? "Đang mở..."
+                    : "Mở bản mẫu"}
               </button>
             </div>
           </div>

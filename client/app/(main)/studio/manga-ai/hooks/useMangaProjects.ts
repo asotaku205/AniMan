@@ -15,6 +15,7 @@ import {
 } from "../lib/mangaStorage";
 
 import type { LayerItem } from "../data";
+import { importMangaSample, type MangaSample } from "../lib/sampleLoader";
 
 export interface MangaProjectPage {
   pageNumber: number;
@@ -140,6 +141,20 @@ export function useMangaProjects() {
       return newProj;
     },
     [projects, selectProject],
+  );
+
+  /**
+   * Mở dự án mẫu thành bản copy mới (mã mới, không đè bản cũ), rồi chọn
+   * thẳng bản đó để vẽ tiếp. Lỗi để nơi gọi hiển thị trong hộp thoại.
+   */
+  const importSampleProject = useCallback(
+    async (sample: MangaSample): Promise<MangaProject> => {
+      const records = await importMangaSample(sample);
+      setProjects((prev) => [records.project, ...prev]);
+      selectProject(records.project.id);
+      return records.project;
+    },
+    [selectProject],
   );
 
   // Cập nhật thông tin dự án
@@ -295,6 +310,7 @@ export function useMangaProjects() {
     isLoaded,
     selectProject,
     createProject,
+    importSampleProject,
     updateProject,
     deleteProject,
     savePageData,

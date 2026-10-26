@@ -11,6 +11,8 @@
  * - v3 (Đợt C): thêm store `assets` — thư viện tài sản dùng chung mọi dự
  *   án (nhân vật 3D, mẫu phong cảnh, hình 2D).
  * - v4 (Rig Pro): thêm store `poses` — thư viện dáng tự tạo của Phòng Rig.
+ * - Khôi phục kết nối: thao tác gặp lỗi kết nối đã đóng thì bỏ kết nối
+ *   cũ, mở lại kết nối mới và thử lại một lần; lỗi khác vẫn reject như cũ.
  */
 
 import type { AnimProject } from "./animProject";
@@ -90,13 +92,49 @@ function request<T>(
   });
 }
 
+/**
+ * Lỗi cho thấy kết nối IndexedDB đã đóng: Chrome báo InvalidStateError
+ * kèm thông điệp "connection is closing", fake-indexeddb báo cùng tên
+ * lỗi với thông điệp DOM chung. Chỉ lỗi này mới được mở lại và thử lại;
+ * lỗi khác (sai dữ liệu, hết quota) vẫn reject như cũ.
+ */
+function isConnectionClosedError(err: unknown): boolean {
+  if (err instanceof Error) {
+    if (err.name === "InvalidStateError") return true;
+    if (/connection is closing/i.test(err.message)) return true;
+  }
+  return false;
+}
+
+/**
+ * Chạy một thao tác qua kết nối dùng chung. Nếu kết nối đã đóng mà
+ * module không hay biết (không qua versionchange), lần chạy đầu ném
+ * InvalidStateError; khi đó bỏ kết nối cũ đã lưu, mở lại kết nối mới
+ * và thử lại đúng một lần. Lần thử lại vẫn lỗi thì reject như cũ để
+ * tầng UI báo lỗi rõ thay vì giữ thay đổi chỉ trong state.
+ */
+async function transact<T>(
+  storeName: string,
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  try {
+    const db = await openDb();
+    return await request(db, storeName, mode, run);
+  } catch (err) {
+    if (!isConnectionClosedError(err)) throw err;
+    dbPromise = null;
+    const db = await openDb();
+    return await request(db, storeName, mode, run);
+  }
+}
+
 // ── Dự án phim ───────────────────────────────────────────────────────────────
 
 export async function listAnimProjects(): Promise<AnimProject[]> {
   if (!isBrowser) return [];
-  const db = await openDb();
   const all =
-    (await request<AnimProject[]>(db, STORE_PROJECTS, "readonly", (s) =>
+    (await transact<AnimProject[]>(STORE_PROJECTS, "readonly", (s) =>
       s.getAll(),
     )) ?? [];
   return all.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -104,10 +142,8 @@ export async function listAnimProjects(): Promise<AnimProject[]> {
 
 export async function getAnimProject(id: string): Promise<AnimProject | null> {
   if (!isBrowser) return null;
-  const db = await openDb();
   return (
-    (await request<AnimProject | undefined>(
-      db,
+    (await transact<AnimProject | undefined>(
       STORE_PROJECTS,
       "readonly",
       (s) => s.get(id),
@@ -117,14 +153,12 @@ export async function getAnimProject(id: string): Promise<AnimProject | null> {
 
 export async function saveAnimProject(project: AnimProject): Promise<void> {
   if (!isBrowser) return;
-  const db = await openDb();
-  await request(db, STORE_PROJECTS, "readwrite", (s) => s.put(project));
+  await transact(STORE_PROJECTS, "readwrite", (s) => s.put(project));
 }
 
 export async function deleteAnimProject(id: string): Promise<void> {
   if (!isBrowser) return;
-  const db = await openDb();
-  await request(db, STORE_PROJECTS, "readwrite", (s) => s.delete(id));
+  await transact(STORE_PROJECTS, "readwrite", (s) => s.delete(id));
 }
 
 // ── File tiếng: bản thu giọng + nhạc nền (Blob) ────────────────────────────
@@ -136,15 +170,13 @@ export function bgmBlobKey(projectId: string): string {
 
 export async function saveVoiceBlob(key: string, blob: Blob): Promise<void> {
   if (!isBrowser) return;
-  const db = await openDb();
-  await request(db, STORE_VOICE_BLOBS, "readwrite", (s) => s.put(blob, key));
+  await transact(STORE_VOICE_BLOBS, "readwrite", (s) => s.put(blob, key));
 }
 
 export async function loadVoiceBlob(key: string): Promise<Blob | null> {
   if (!isBrowser) return null;
-  const db = await openDb();
   return (
-    (await request<Blob | undefined>(db, STORE_VOICE_BLOBS, "readonly", (s) =>
+    (await transact<Blob | undefined>(STORE_VOICE_BLOBS, "readonly", (s) =>
       s.get(key),
     )) ?? null
   );
@@ -152,17 +184,15 @@ export async function loadVoiceBlob(key: string): Promise<Blob | null> {
 
 export async function deleteVoiceBlob(key: string): Promise<void> {
   if (!isBrowser) return;
-  const db = await openDb();
-  await request(db, STORE_VOICE_BLOBS, "readwrite", (s) => s.delete(key));
+  await transact(STORE_VOICE_BLOBS, "readwrite", (s) => s.delete(key));
 }
 
 // ── Thư viện tài sản dùng chung (Đợt C) ─────────────────────────────────────
 
 export async function listAnimAssets(): Promise<AnimAsset[]> {
   if (!isBrowser) return [];
-  const db = await openDb();
   const all =
-    (await request<AnimAsset[]>(db, STORE_ASSETS, "readonly", (s) =>
+    (await transact<AnimAsset[]>(STORE_ASSETS, "readonly", (s) =>
       s.getAll(),
     )) ?? [];
   return all.sort((a, b) => a.createdAt - b.createdAt);
@@ -170,23 +200,20 @@ export async function listAnimAssets(): Promise<AnimAsset[]> {
 
 export async function saveAnimAsset(asset: AnimAsset): Promise<void> {
   if (!isBrowser) return;
-  const db = await openDb();
-  await request(db, STORE_ASSETS, "readwrite", (s) => s.put(asset));
+  await transact(STORE_ASSETS, "readwrite", (s) => s.put(asset));
 }
 
 export async function deleteAnimAsset(id: string): Promise<void> {
   if (!isBrowser) return;
-  const db = await openDb();
-  await request(db, STORE_ASSETS, "readwrite", (s) => s.delete(id));
+  await transact(STORE_ASSETS, "readwrite", (s) => s.delete(id));
 }
 
 // ── Thư viện dáng tự tạo (Rig Pro) ────────────────────────────────────────
 
 export async function listSavedPoses(): Promise<SavedPose[]> {
   if (!isBrowser) return [];
-  const db = await openDb();
   const all =
-    (await request<SavedPose[]>(db, STORE_POSES, "readonly", (s) =>
+    (await transact<SavedPose[]>(STORE_POSES, "readonly", (s) =>
       s.getAll(),
     )) ?? [];
   return all.sort((a, b) => b.createdAt - a.createdAt);
@@ -194,14 +221,12 @@ export async function listSavedPoses(): Promise<SavedPose[]> {
 
 export async function savePoseEntry(pose: SavedPose): Promise<void> {
   if (!isBrowser) return;
-  const db = await openDb();
-  await request(db, STORE_POSES, "readwrite", (s) => s.put(pose));
+  await transact(STORE_POSES, "readwrite", (s) => s.put(pose));
 }
 
 export async function deletePoseEntry(id: string): Promise<void> {
   if (!isBrowser) return;
-  const db = await openDb();
-  await request(db, STORE_POSES, "readwrite", (s) => s.delete(id));
+  await transact(STORE_POSES, "readwrite", (s) => s.delete(id));
 }
 
 /**

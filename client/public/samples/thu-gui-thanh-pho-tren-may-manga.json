@@ -1,0 +1,2928 @@
+{
+  "format": "animan-manga-sample",
+  "version": 1,
+  "title": "Thư Gửi Thành Phố Trên Mây",
+  "genre": "Phiêu lưu, đời thường",
+  "description": "Bản manga chuyển thể từ tiểu thuyết Thư Gửi Thành Phố Trên Mây: 8 chương, 48 trang, lời thoại giữ câu đắt nhất của novel.",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "Thư không tên (chuyển thể novel chương 1 + 2)",
+      "pages": [
+        {
+          "number": 1,
+          "title": "Buổi sáng ở Trạm Mây",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn cảnh",
+              "visual": "Thành phố nổi trên biển mây buổi sáng, nhà buộc dây neo vào cột đá, tháp bưu điện ở giữa, chuông gió treo trước cửa. SFX: leng keng.",
+              "lines": [
+                {
+                  "kind": "sfx",
+                  "text": "leng keng"
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "cận",
+              "visual": "Chiếc chuông gió nhỏ rung trong gió, nắng xuyên qua. Không thoại.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai chạy trên đường mây, túi thư vải xanh đập vào hông, miệng mấp máy đếm. Thoại (nội tâm): \"Một, hai, ba...\"",
+              "lines": [
+                {
+                  "kind": "inner",
+                  "speaker": "Mai",
+                  "text": "Một, hai, ba..."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai dừng trước cổng chợ, lấy từ đáy túi ra một phong bì cũ không tem. Tay cô hơi run.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Phong bì, dòng chữ viết tay run run: \"Gửi người giữ đèn.\" Thoại (nội tâm Mai): \"Không tên người nhận. Không địa chỉ. Không gì khác.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "dòng chữ viết tay run run",
+                  "text": "Gửi người giữ đèn."
+                },
+                {
+                  "kind": "inner",
+                  "speaker": "Mai",
+                  "text": "Không tên người nhận. Không địa chỉ. Không gì khác."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "title": "Chợ quên",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Chợ sáng trên sân đá, sạp hàng buộc dây vào cột. Mùi bánh nướng vẽ bằng vệt khói mỏng, nhạt hơn mọi ngày.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bà Bảy chìa tay nhận thư, tay kia trở bánh. Bà Bảy: \"Mai! Thư của bà đâu?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Bảy",
+                  "text": "Mai! Thư của bà đâu?"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "cận",
+              "visual": "Bà Bảy khựng lại nhìn vỉ bánh, mặt bối rối. Bà Bảy: \"Bánh này... nướng bao lâu thì vàng nhỉ?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Bảy",
+                  "text": "Bánh này... nướng bao lâu thì vàng nhỉ?"
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai chạy chậm lại, ngoái nhìn bà Bảy nói nhỏ một mình. Bà Bảy (nhỏ): \"Mùi này... mùi này là mùi gì nhỉ?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Bảy",
+                  "text": "Mùi này... mùi này là mùi gì nhỉ?"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Mặt Mai, ánh mắt lo lắng. Thoại (nội tâm): \"Người bán bánh mà quên mùi bánh của mình thì không còn là chuyện già rồi, lẩm cẩm nữa.\"",
+              "lines": [
+                {
+                  "kind": "inner",
+                  "speaker": "Mai",
+                  "text": "Người bán bánh mà quên mùi bánh của mình thì không còn là chuyện già rồi, lẩm cẩm nữa."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "title": "Bưu điện và người bạn",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Bà Sáu ngồi ghi sổ, chữ đẹp và đều, đưa xấp thư cho Mai. Bà Sáu: \"Mai này. Nếu có bức thư nào không có tên, thì con cứ giao như mọi thư khác. Thư nào cũng có người chờ.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Sáu",
+                  "text": "Mai này. Nếu có bức thư nào không có tên, thì con cứ giao như mọi thư khác. Thư nào cũng có người chờ."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "cận",
+              "visual": "Mai nhìn bà Sáu, nhận ra giọng bà khác mọi ngày, như đang dặn một điều mà chính bà cũng sợ mình sẽ quên.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bin ngồi vặn cánh quạt cho Gió Nhỏ, con chim máy đậu lờ đờ trên vai cậu. Bin: \"Sáng nay tớ suýt quên tên nó. Tớ nhìn nó mà nghĩ: con chim này tên gì nhỉ?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Sáng nay tớ suýt quên tên nó. Tớ nhìn nó mà nghĩ: con chim này tên gì nhỉ?"
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai nhìn Bin, nhìn chim máy, rồi nhìn xuống túi thư. Mai: \"Bin này, nếu một ngày cậu quên hết mọi thứ, thì cậu muốn tớ làm gì?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Bin này, nếu một ngày cậu quên hết mọi thứ, thì cậu muốn tớ làm gì?"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Bin cười, vỗ ngực. Bin: \"Thì cậu nhắc tớ chứ sao. Cậu là người nhắc giỏi nhất Trạm Mây.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Thì cậu nhắc tớ chứ sao. Cậu là người nhắc giỏi nhất Trạm Mây."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 4,
+          "title": "Buổi chiều ở bưu điện",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Chiều, Mai giao xong 12 thư có tên, quay về bưu điện. Bà Sáu ngồi ghi sổ, bút dừng giữa chừng trên một cái tên, nhìn rất lâu.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "cận",
+              "visual": "Tay Mai nắm quai túi, dưới đáy túi là bức thư không tên. Thoại (nội tâm): \"Từ sáng tới giờ, mình đã tập nói câu này không biết bao nhiêu lần.\"",
+              "lines": [
+                {
+                  "kind": "inner",
+                  "speaker": "Mai",
+                  "text": "Từ sáng tới giờ, mình đã tập nói câu này không biết bao nhiêu lần."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai đứng trước bàn bà Sáu, nói rõ ràng. Mai: \"Bà ơi, bức thư gửi người giữ đèn... con nhận giao. Dù phải lên tới Hải Đăng, con cũng sẽ giao.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Bà ơi, bức thư gửi người giữ đèn... con nhận giao. Dù phải lên tới Hải Đăng, con cũng sẽ giao."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "cận",
+              "visual": "Bà Sáu mở ngăn kéo, đặt vào tay Mai một chiếc chìa khóa đồng đã xỉn màu. Bà Sáu: \"Đây là chìa khóa cổng sau của Hải Đăng. Bà giữ hộ ông Tư từ lâu lắm rồi, phòng khi ông ấy... quên.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Sáu",
+                  "text": "Đây là chìa khóa cổng sau của Hải Đăng. Bà giữ hộ ông Tư từ lâu lắm rồi, phòng khi ông ấy... quên."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Bà Sáu nắm tay Mai, chặt hơn mọi ngày. Bà Sáu: \"Đi sớm. Đừng để thư chờ qua đêm. Thư mà chờ qua đêm ở Trạm Mây dạo này... nó hay bị quên lắm.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Sáu",
+                  "text": "Đi sớm. Đừng để thư chờ qua đêm. Thư mà chờ qua đêm ở Trạm Mây dạo này... nó hay bị quên lắm."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 5,
+          "title": "Đêm không ngủ",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Đêm, Mai nằm nghe chuông bưu điện kêu leng keng trong gió, mắt mở, không ngủ được. Montage nhỏ trong khung: mùi bánh, tên chim máy, một cái tên trong sổ, mỗi thứ một ô nhỏ mờ dần.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bảng tên phố Mây Trắng, chữ \"Trắng\" mờ hẳn, chỉ còn chữ \"Mây\". Một người đàn ông đứng gãi đầu trước bảng.",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "chữ",
+                  "text": "Trắng"
+                },
+                {
+                  "kind": "written",
+                  "source": "chữ",
+                  "text": "Mây"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bé Mây hát sai lời ru, ngẩng lên hỏi mẹ: \"Sao con hát kỳ vậy? Mẹ ơi, bài này hát thế nào?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bé Mây",
+                  "text": "Sao con hát kỳ vậy? Mẹ ơi, bài này hát thế nào?"
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai ngồi dậy, lấy cuốn sổ nhỏ của riêng mình, ghi danh sách những thứ thành phố đã quên, chữ to dần ở dòng cuối. Chữ trong sổ: \"Ngày mai, mình đi Hải Đăng. Mình sẽ không để thành phố quên thêm nữa.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong sổ",
+                  "text": "Ngày mai, mình đi Hải Đăng. Mình sẽ không để thành phố quên thêm nữa."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "toàn nhỏ",
+              "visual": "Ngoài cửa sổ, biển mây trôi lặng lẽ, ánh đèn Hải Đăng sáng đều như một con mắt vàng không chớp.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 6,
+          "title": "Lời hẹn ở đầu cầu",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Sáng sớm, Mai khoác túi lên vai, chạy xuống cầu thang. Bin đứng chờ dưới đường, tay cầm bánh bao còn nóng. Bin: \"Tớ mang cho cậu này. Bà Bảy cho đấy.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Tớ mang cho cậu này. Bà Bảy cho đấy."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin hạ giọng, mặt nghiêm lại. Bin: \"Sáng nay bà ấy hỏi tớ: bánh bao nhân gì thì ngon? Bà ấy bán bánh bao mười năm rồi mà còn hỏi câu đó.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Sáng nay bà ấy hỏi tớ: bánh bao nhân gì thì ngon? Bà ấy bán bánh bao mười năm rồi mà còn hỏi câu đó."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Hai đứa đi cùng nhau, Mai nhìn bảng phố, nhìn bé Mây, nhìn ông cụ ôm thư cũ. Mai: \"Tớ không thể nhắc cả thành phố được, Bin à. Tớ chỉ là người giao thư thôi.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Tớ không thể nhắc cả thành phố được, Bin à. Tớ chỉ là người giao thư thôi."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Bin vỗ vào túi đồ nghề, nói chắc nịch. Bin: \"Thì cậu giao thư đi. Thư là để nhắc mà. Cậu lên Hải Đăng thì phải qua cầu Mây. Tớ đi với cậu. Tớ sửa cầu, cậu giao thư. Chia việc như mọi lần.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Thì cậu giao thư đi. Thư là để nhắc mà. Cậu lên Hải Đăng thì phải qua cầu Mây. Tớ đi với cậu. Tớ sửa cầu, cậu giao thư. Chia việc như mọi lần."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "toàn, khung lớn cuối chương",
+              "visual": "Hai đứa đứng ở đầu cầu Mây lúc chuông đầu tiên vang lên, phía xa là Hải Đăng trắng giữa biển mây. Mai: \"Sáng mai, giờ chuông đầu tiên, gặp nhau ở đầu cầu Mây. Đừng trễ. Và nhớ sạc pin cho Gió Nhỏ.\" SFX: leng keng.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Sáng mai, giờ chuông đầu tiên, gặp nhau ở đầu cầu Mây. Đừng trễ. Và nhớ sạc pin cho Gió Nhỏ."
+                },
+                {
+                  "kind": "sfx",
+                  "text": "leng keng"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "title": "Cầu Mây và đèn chớp tắt (chuyển thể novel chương 3 + 4 + 5)",
+      "pages": [
+        {
+          "number": 1,
+          "title": "Buổi sáng trên cầu",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Giờ chuông đầu tiên, Mai đứng ở đầu cầu Mây, con đường mây nén chặt hai bên buộc dây thừng vào cột đá, biển mây trôi dưới chân.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin tới sau đúng ba phút, thở hổn hển, Gió Nhỏ đậu trên vai, cánh quạt quay chậm như còn ngái ngủ. Bin: \"Tớ sạc đầy pin rồi. Đầy một trăm phần trăm. Lần này nó bay được xa lắm. Tớ hứa.\" Mai (cười): \"Cậu hứa lần nào cũng vậy.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Tớ sạc đầy pin rồi. Đầy một trăm phần trăm. Lần này nó bay được xa lắm. Tớ hứa."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Cậu hứa lần nào cũng vậy."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Hai đứa bước lên cầu, hơi nước bám vào mặt, vào tóc, vào phong bì thư trong túi. Mai lấy tay che túi lại theo phản xạ.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Đi được khoảng một trăm bước, cầu rung vì một đoạn ván mây đã lỏng. Bin quỳ xuống, cờ lê và cuộn dây trong tay, buộc lại thoăn thoắt, miệng lẩm bẩm tên từng dụng cụ.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Mai lấy sổ ra, ghi một dòng, chữ nhỏ. Chữ trong sổ: \"Mây đào nhạt màu. Cầu Mây lỏng ván. Gió đêm có tiếng trống rỗng.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong sổ",
+                  "text": "Mây đào nhạt màu. Cầu Mây lỏng ván. Gió đêm có tiếng trống rỗng."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "title": "Gió Nhỏ rơi",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Quá trưa, đoạn cầu cao nhất, Hải Đăng trắng hiện ra ở cuối thành phố, đứng một mình giữa biển mây.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin tung Gió Nhỏ lên trời, nó vỗ cánh quạt, lượn một vòng, rồi bay về phía Hải Đăng do thám đường. Mai nín thở nhìn theo.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung, gây cấn",
+              "visual": "Gió Nhỏ khựng lại giữa trời, rồi rơi chao đảo như một chiếc lá. Bin rên lên: \"Không! Lại hết pin!\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Không! Lại hết pin!"
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung, hành động",
+              "visual": "Mai chạy tới mép cầu, nhoài người ra, tay vươn dài. Bin túm lấy quai túi của cô, hét lên: \"Cẩn thận!\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Cẩn thận!"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Gió Nhỏ rơi đúng vào lòng bàn tay Mai. Cô ôm nó vào ngực, thở hổn hển. Bin mở nắp pin, mặt trắng bệch. Bin: \"Pin vẫn còn một vạch. Nó không hết pin. Nó bị gió quật. Gió trên cao mạnh hơn tớ tính.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Pin vẫn còn một vạch. Nó không hết pin. Nó bị gió quật. Gió trên cao mạnh hơn tớ tính."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "title": "Trạm Nghỉ tối đèn",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Chiều xuống, mây đổi màu từ trắng sang xám hồng rồi xám hẳn. Trạm Nghỉ hiện ra: chòi nhỏ trên cụm mây đặc, bếp lò, ghế gỗ, hàng đèn lồng treo trước cửa, tất cả đều tối om.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bà Cúc tóc bạc ngồi trước bếp lò đã tắt, nheo mắt nhìn hai đứa trẻ bước vào, như đang cố nhớ xem họ là ai, hoặc mình là ai. Bà Cúc: \"Các cháu... đi đâu?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Cúc",
+                  "text": "Các cháu... đi đâu?"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bin xem xét bếp lò: củi còn đầy, đá lửa còn đó, mọi thứ đều sẵn, chỉ thiếu một người nhớ cách nhóm lửa.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai ngồi xuống bên bếp, làm cùng bà, vừa làm vừa nói. Mai: \"Bà ơi, bà làm cùng cháu nhé. Đầu tiên mình xếp củi nhỏ ở dưới, đúng không ạ?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Bà ơi, bà làm cùng cháu nhé. Đầu tiên mình xếp củi nhỏ ở dưới, đúng không ạ?"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Lửa cháy lên, ánh lửa soi mặt bà Cúc, mắt bà sáng lên như có ai đó vừa thắp một ngọn đèn bên trong bà. Bà Cúc: \"Ta nhớ rồi. Mỗi tối, ta thắp đèn lồng cho người đi đường khỏi lạc. Đèn lồng là để người ta tìm được đường về.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Cúc",
+                  "text": "Ta nhớ rồi. Mỗi tối, ta thắp đèn lồng cho người đi đường khỏi lạc. Đèn lồng là để người ta tìm được đường về."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 4,
+          "title": "Sổ khách và ánh sáng",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Bà Cúc đứng dậy, run run đi thắp từng chiếc đèn lồng trước cửa. Ánh đèn vàng ấm lan ra mặt mây, Trạm Nghỉ giống một ngôi nhà trở lại.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bà Cúc lôi cuốn sổ khách bìa da đã sờn ra, lật từng trang: trang chữ còn rõ, trang chữ mờ một nửa, trang trống một nửa với vài cái tên viết dở, đứt quãng.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "cận",
+              "visual": "Mai cầm bút, viết tên mình và tên Bin vào trang mới, chữ nắn nót, ghi rõ ngày, rõ việc: lên Hải Đăng giao thư, đêm nay nghỉ ở trạm, mai đi tiếp.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Tối, bà Cúc nấu cháo, kể chuyện ngày xưa khi cầu Mây còn mới, thỉnh thoảng dừng lại, cau mày, rồi nhớ ra nhờ mùi cháo, tiếng gió, ánh đèn.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "cận, huyền ảo",
+              "visual": "Trước khi ngủ, Mai đặt bức thư không tên lên bàn dưới ánh đèn lồng, không mở, chỉ nhìn. Mực trên phong bì hơi sáng lên khi ánh đèn chiếu vào, dòng chữ \"Gửi người giữ đèn\" như ấm lên một chút. Thoại (nội tâm Mai): \"Bên trong có một điều gì đó đang đáp lại ánh sáng.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "chữ",
+                  "text": "Gửi người giữ đèn"
+                },
+                {
+                  "kind": "inner",
+                  "speaker": "Mai",
+                  "text": "Bên trong có một điều gì đó đang đáp lại ánh sáng."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 5,
+          "title": "Ngày thứ ba",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Ngày thứ ba, đường mây càng lên cao càng hẹp, một bên là biển mây trắng xóa, một bên là vách đá của đảo nổi. Gió Nhỏ bay hăng trên đầu, pin đầy, gió xuôi.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Buổi trưa, Bin dừng lại, cau mày nhìn ba lô của mình. Bin: \"Mai này, cái cờ lê to của tớ... tớ để đâu rồi? Rõ ràng sáng nay tớ còn cầm mà.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Mai này, cái cờ lê to của tớ... tớ để đâu rồi? Rõ ràng sáng nay tớ còn cầm mà."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "cận",
+              "visual": "Mai giúp cậu tìm, cờ lê nằm ngay ngăn ngoài của ba lô, chỗ Bin vẫn luôn để. Bin nhìn nó, cười gượng.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai hỏi nhỏ, Bin đáp ngay rồi dừng lại giữa chừng. Mai: \"Cậu còn nhớ đường về nhà không?\" Bin: \"Nhớ chứ. Qua cầu Mây, rẽ trái ở Trạm Nghỉ, rồi... rồi sao nữa nhỉ?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Cậu còn nhớ đường về nhà không?"
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Nhớ chứ. Qua cầu Mây, rẽ trái ở Trạm Nghỉ, rồi... rồi sao nữa nhỉ?"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Hai đứa im lặng. Mai nắm tay bạn. Mai: \"Không sao. Tớ nhớ. Tớ sẽ dẫn cậu về. Cậu chỉ cần nhớ một việc thôi: đi cùng tớ lên Hải Đăng.\" Bin siết lại tay cô: \"Việc đó thì tớ không quên đâu.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Không sao. Tớ nhớ. Tớ sẽ dẫn cậu về. Cậu chỉ cần nhớ một việc thôi: đi cùng tớ lên Hải Đăng."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Việc đó thì tớ không quên đâu."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 6,
+          "title": "Đèn chớp tắt",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Chiều xuống, Hải Đăng hiện ra rõ hơn, tháp đá trắng, cửa sổ nhỏ xếp theo đường xoắn ốc, đèn lớn trên đỉnh như một con mắt thủy tinh mờ. Mai đếm bước thành tiếng để Bin nghe theo: \"Một, hai, ba...\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Một, hai, ba..."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "toàn, gây sốc",
+              "visual": "Khi hai đứa còn cách chân tháp khoảng năm mươi bước, trời bỗng tối sầm lại một lúc, không phải vì mây đen, mà vì ánh sáng xung quanh như bị ai đó vặn nhỏ đi. Ánh đèn Hải Đăng chớp tắt, chỉ một lần, một cái chớp ngắn như một người chớp mắt, rồi sáng lại.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "cận",
+              "visual": "Hai đứa đứng sững, miệng há hốc nhìn lên. Bin (thì thào): \"Vừa rồi... đèn tắt à?\" Mai: \"Ừ. Một lần. Lần đầu tiên.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Vừa rồi... đèn tắt à?"
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Ừ. Một lần. Lần đầu tiên."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Tối, cắm trại dưới chân tháp. Bin nhóm lửa, lần này cậu nhớ đủ các bước vì Mai ngồi cạnh nhắc từng bước. Ăn xong, Bin ngủ sớm. Mai ngồi nhìn tháp đèn, tay ôm túi thư, nghĩ về ba ngày vừa qua.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "toàn, khung lớn cuối chương, kịch tính ngầm",
+              "visual": "Đêm, Mai đã ngủ thiếp đi cạnh đống lửa tàn một nửa. Trên đỉnh tháp, ánh đèn lại chớp tắt thêm một lần nữa, lâu hơn lần đầu một chút, mà cô không nhìn thấy. Không thoại, chỉ có ánh đèn chớp tắt trong bóng tối và dòng chữ nhỏ ở góc khung: \"Lần thứ hai.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "dòng chữ nhỏ ở góc khung",
+                  "text": "Lần thứ hai."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "title": "Đoạn cầu gãy và người giữ đèn (chuyển thể novel chương 6 + 7)",
+      "pages": [
+        {
+          "number": 1,
+          "title": "Buổi sáng ngày thứ tư",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Sáng sớm, lửa trại đã tàn, chỉ còn vài hòn than đỏ le lói dưới lớp tro xám. Bin ngủ cuộn tròn trong chăn mỏng, Gió Nhỏ đậu trên ba lô, cánh quạt cụp xuống như một bông hoa héo.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Mai ngồi một mình nhìn biển mây buổi sáng, lấy sổ ra viết, chữ hơi run vì lạnh. Chữ trong sổ: \"Ngày thứ tư. Đèn chớp tắt lần thứ hai trong đêm. Mình không còn nhiều thời gian.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong sổ",
+                  "text": "Ngày thứ tư. Đèn chớp tắt lần thứ hai trong đêm. Mình không còn nhiều thời gian."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bin ngóc đầu dậy, mắt còn nhắm một bên. Bin: \"Đoạn cầu gãy? Ai nói với cậu là có đoạn cầu gãy?\" Mai: \"Không ai nói. Tớ đoán. Đêm qua gió lớn như vậy, cầu Mây kiểu gì cũng có đoạn hỏng.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Đoạn cầu gãy? Ai nói với cậu là có đoạn cầu gãy?"
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Không ai nói. Tớ đoán. Đêm qua gió lớn như vậy, cầu Mây kiểu gì cũng có đoạn hỏng."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "toàn",
+              "visual": "Gần trưa, trước mặt hai đứa, con đường mây đứt hẳn một đoạn dài khoảng mười bước chân. Bên dưới là biển mây trắng xóa, sâu không thấy đáy. Bên kia đoạn gãy, cầu lại tiếp tục, uốn lên phía tháp.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Bin huýt sáo một tiếng dài, mở túi đồ nghề, lôi ra cuộn dây thừng, móc sắt, ròng rọc nhỏ. Bin: \"Mình đu dây qua. Tớ bắn móc sang bên kia, móc vào cột đá, rồi mình đu từng người một.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Mình đu dây qua. Tớ bắn móc sang bên kia, móc vào cột đá, rồi mình đu từng người một."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "title": "Đu dây qua vực",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Hai đứa cãi nhau xem ai đu trước, không ai chịu nhường ai, cuối cùng thống nhất bằng cách oẳn tù tì. Mai thắng hai lần liên tiếp, Bin nhìn cô đầy nghi ngờ.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung, hành động",
+              "visual": "Bin bắn móc. Lần đầu, móc bay chưa tới đã rơi xuống biển mây, mất hút. Lần thứ hai, móc vướng vào dây neo rồi tuột. Lần thứ ba, móc bám được vào cột đá bên kia, kêu một tiếng \"cạch\" khô khốc. Bin kéo thử ba lần, dây căng, móc không nhúc nhích.",
+              "lines": [
+                {
+                  "kind": "sfx",
+                  "text": "cạch"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung, hành động",
+              "visual": "Mai bước tới mép cầu, nhìn xuống biển mây một lần cuối rồi ngẩng lên, nhìn thẳng sang bên kia. Bin buộc đai vải quanh người cô. Bin: \"Nghe này: cậu đu, đừng nhìn xuống. Nhìn thẳng sang bên kia. Đếm nhịp như cậu vẫn đếm bước. Một, hai, ba, đu.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Nghe này: cậu đu, đừng nhìn xuống. Nhìn thẳng sang bên kia. Đếm nhịp như cậu vẫn đếm bước. Một, hai, ba, đu."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung, gây cấn",
+              "visual": "Gió quật vào người Mai ngay nhịp đầu tiên, mạnh đến mức cô suýt buông tay. Cô siết chặt dây, nghiến răng, đếm thành tiếng để át tiếng gió: \"Một, hai, ba, bốn...\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Một, hai, ba, bốn..."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Tay Mai chạm được vào cột đá bên kia, cô hét lên, giọng khản đi vì gió: \"Qua rồi! Bin, qua đi! Dây chắc lắm!\" Bin đu sau, mang theo cả ba lô và Gió Nhỏ, giữa dây gặp một cơn gió mạnh bất ngờ, chao đảo, ba lô suýt tuột khỏi vai, rồi cuối cùng cũng sang tới nơi, mặt trắng bệch nhưng vẫn cười toe.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Qua rồi! Bin, qua đi! Dây chắc lắm!"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "title": "Nghỉ và bóng người lạ",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Hai đứa ngồi thở trên đoạn cầu bên kia, chân vẫn còn run. Bin chia bánh khô, một nửa cho mình, một nửa cho Gió Nhỏ.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin bỗng nói nhỏ, không nhìn Mai, thú nhận mình sợ khi Mai đu trước, tim đập như trống, sợ dây tuột, sợ móc bung, sợ gió mạnh hơn một chút nữa.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bin kể chuyện học dây từ cha, người làm nghề sửa mái nhà, ngày nào cũng buộc dây vào người rồi mới leo lên cao. Bin: \"Cha tớ dạy: dây không giữ người. Người giữ dây.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Cha tớ dạy: dây không giữ người. Người giữ dây."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai đáp lại, giọng chắc chắn. Mai: \"Lúc tớ đu, tới giữa dây, gió quật mạnh nhất, tớ suýt buông tay. Tớ bám tiếp vì tớ nghe tiếng cậu đếm phía sau. Một, hai, ba. Tớ nghĩ: đếm tới mười là sang tới nơi.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Lúc tớ đu, tới giữa dây, gió quật mạnh nhất, tớ suýt buông tay. Tớ bám tiếp vì tớ nghe tiếng cậu đếm phía sau. Một, hai, ba. Tớ nghĩ: đếm tới mười là sang tới nơi."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "toàn, bí ẩn",
+              "visual": "Hai đứa đứng dậy, phủi mây bám trên áo, nhìn về phía trước. Ở một khúc quanh phía xa, có một bóng người đang đứng nhìn về phía hai đứa: cao, gầy, mặc áo khoác dài, tay chống một cây gậy, đứng im, không vẫy, không gọi, chỉ đứng nhìn.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 4,
+          "title": "Người giữ đèn",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Hai đứa tới gần, bóng người không di chuyển. Tới khi chỉ còn cách khoảng hai mươi bước, Mai mới nhìn rõ: một ông già cao gầy, áo khoác dài màu xám, tóc bạc trắng bay nhẹ trong gió, mắt sâu và sáng.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "cận",
+              "visual": "Ông nhìn Mai, rồi nhìn túi thư của cô, rồi nhìn thẳng vào mắt cô, nói giọng khàn nhưng rõ từng chữ. Ông Tư: \"Cháu mang thư tới.\" Thoại (nội tâm Mai): \"Không phải câu hỏi. Là câu khẳng định.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Cháu mang thư tới."
+                },
+                {
+                  "kind": "inner",
+                  "speaker": "Mai",
+                  "text": "Không phải câu hỏi. Là câu khẳng định."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai sững người, Bin há hốc miệng. Mai: \"Thư đó là của ta.\" (lời ông Tư, khung thoại lớn) Ông Tư: \"Ta là Tư. Người giữ đèn. Bốn mươi năm rồi, người ta chỉ gọi ta là người giữ đèn. Tới mức có lúc chính ta cũng quên mất tên mình là Tư.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Thư đó là của ta."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Ta là Tư. Người giữ đèn. Bốn mươi năm rồi, người ta chỉ gọi ta là người giữ đèn. Tới mức có lúc chính ta cũng quên mất tên mình là Tư."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Ông quay người, chậm rãi bước tiếp về phía Hải Đăng, ra hiệu cho hai đứa đi theo, vừa đi vừa kể. Ông Tư: \"Hai mươi năm trước, cũng có một cơn bão như thế này. Tới ngày thứ tư, vợ ta, bà Lan, tỉnh dậy và hỏi ta một câu: 'Ông là ai?'\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Hai mươi năm trước, cũng có một cơn bão như thế này. Tới ngày thứ tư, vợ ta, bà Lan, tỉnh dậy và hỏi ta một câu: 'Ông là ai?'"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Bin hít một hơi mạnh, Mai cảm thấy ngực mình thắt lại. Ông Tư: \"Ta đã kể cho bà ấy nghe mọi thứ: lần đầu gặp nhau dưới mưa mây, đám cưới nhỏ trên sân bưu điện, những bức thư ta viết cho bà ấy hồi còn trẻ. Bà ấy nghe, gật đầu, cười, rồi hôm sau lại hỏi: 'Ông là ai?' Ký ức không trở về theo lời kể. Nó chỉ trở về khi có một khoảnh khắc sống lại thật.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Ta đã kể cho bà ấy nghe mọi thứ: lần đầu gặp nhau dưới mưa mây, đám cưới nhỏ trên sân bưu điện, những bức thư ta viết cho bà ấy hồi còn trẻ. Bà ấy nghe, gật đầu, cười, rồi hôm sau lại hỏi: 'Ông là ai?' Ký ức không trở về theo lời kể. Nó chỉ trở về khi có một khoảnh khắc sống lại thật."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 5,
+          "title": "Vì sao thư được viết",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Ông Tư dừng lại, nhìn về phía tháp đèn đã gần hơn nhiều. Ông Tư: \"Thư ở Trạm Mây mang theo ký ức của người gửi. Ta đã gấp vào phong bì đó ký ức rõ nhất của ta: buổi chiều đầu tiên ta gặp bà Lan, dưới mưa mây, khi bà ấy che ô giấy cho một người lạ là ta.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Thư ở Trạm Mây mang theo ký ức của người gửi. Ta đã gấp vào phong bì đó ký ức rõ nhất của ta: buổi chiều đầu tiên ta gặp bà Lan, dưới mưa mây, khi bà ấy che ô giấy cho một người lạ là ta."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin thắc mắc, giọng đầy khó hiểu. Bin: \"Thế sao ông không tự mang thư đi? Ông đứng đây, thư thì ở chỗ Mai, chỉ cần ông cầm lấy mà đi...\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Thế sao ông không tự mang thư đi? Ông đứng đây, thư thì ở chỗ Mai, chỉ cần ông cầm lấy mà đi..."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Ông Tư trầm giọng xuống, im lặng một lúc lâu rồi nói nhỏ hơn. Ông Tư: \"Vì ta không thể rời đèn. Đèn cần người giữ. Nếu ta rời đi, đèn tắt. Nếu đèn tắt, thư lạc. Và vì ta đã thử rồi. Mười năm trước, ta đã mang một bức thư khác đi tìm bà ấy. Đi được nửa đường, ta quên mất mình đang đi đâu.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Vì ta không thể rời đèn. Đèn cần người giữ. Nếu ta rời đi, đèn tắt. Nếu đèn tắt, thư lạc. Và vì ta đã thử rồi. Mười năm trước, ta đã mang một bức thư khác đi tìm bà ấy. Đi được nửa đường, ta quên mất mình đang đi đâu."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Ông Tư kể cách viết thư: mỗi đêm sau khi thắp đèn xong, viết một dòng, chỉ một dòng, sáng hôm sau đọc lại dòng đó rồi mới viết dòng tiếp theo, vì sợ viết một mạch thì sáng ra quên mất mình đã viết gì. Một tháng, ba mươi dòng, là ba mươi đêm còn nhớ bà Lan.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Mai hỏi câu hỏi từ sáng đầu tiên tới giờ cô vẫn mang theo. Mai: \"Thế sao ông không ghi tên bà Lan lên phong bì? Sao ông lại ghi 'người giữ đèn'?\" Ông Tư (cười buồn mà hiền): \"Vì ta sợ một ngày chính ta cũng quên tên bà ấy. Nhưng 'người giữ đèn' thì khác. Chừng nào còn đèn, còn có người giữ đèn. Chừng nào còn người giữ đèn, thư còn có người nhận.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Thế sao ông không ghi tên bà Lan lên phong bì? Sao ông lại ghi 'người giữ đèn'?"
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Vì ta sợ một ngày chính ta cũng quên tên bà ấy. Nhưng 'người giữ đèn' thì khác. Chừng nào còn đèn, còn có người giữ đèn. Chừng nào còn người giữ đèn, thư còn có người nhận."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 6,
+          "title": "Bão Quên lộ diện",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Mai nhìn ông Tư rất lâu, rồi nói giọng chắc chắn. Mai: \"Ông ơi, cháu sẽ giao bức thư này. Cháu hứa. Dù đèn có tắt, dù bão có tới, cháu vẫn sẽ giao tới tay bà Lan.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Ông ơi, cháu sẽ giao bức thư này. Cháu hứa. Dù đèn có tắt, dù bão có tới, cháu vẫn sẽ giao tới tay bà Lan."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Ông Tư gật đầu chậm rãi, như người đã chờ đợi quá lâu để còn tin vào lời hứa một cách dễ dàng, nhưng vẫn chọn tin lần này.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "toàn, choáng ngợp",
+              "visual": "Ông Tư chỉ tay về phía chân trời. Ở đó, mây không còn trắng nữa. Chúng xám lại theo một kiểu xám rất lạ: xám mà không có bóng, xám như một tờ giấy bị tẩy hết chữ. Vùng xám đó đang lan tới, chậm rãi, không ồn ào, như một người đi bộ trong sương.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Ông Tư nói tên nó lần đầu tiên, giọng trầm. Ông Tư: \"Đó là Bão Quên. Nó không gầm rú. Nó chỉ lặng lẽ tới và lấy đi từng thứ một. Khi nó tới Trạm Mây, cháu sẽ không còn nhớ đường về nhà đâu, cậu bé ạ.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Đó là Bão Quên. Nó không gầm rú. Nó chỉ lặng lẽ tới và lấy đi từng thứ một. Khi nó tới Trạm Mây, cháu sẽ không còn nhớ đường về nhà đâu, cậu bé ạ."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "toàn, khung lớn cuối chương",
+              "visual": "Mai nhìn vùng mây xám, rồi nhìn ông Tư, rồi đặt tay lên túi thư. Bin nuốt nước bọt, nhìn Mai. Mai: \"Thế thì mình không còn thời gian để đi chậm nữa. Đi thôi.\" Phía sau lưng ba người, bức tường xám vẫn lặng lẽ tiến tới, gần thêm một chút nữa.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Thế thì mình không còn thời gian để đi chậm nữa. Đi thôi."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "title": "Thợ cầu, phà mây và lệnh quay về (chuyển thể novel chương 8 + 9 + 10)",
+      "pages": [
+        {
+          "number": 1,
+          "title": "Ngã ba và thợ cầu",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Tới một ngã ba của đường mây, ông Tư dừng lại, chỉ tay về phía một con đường nhỏ hơn, dốc hơn, dẫn lên một cái chòi gỗ nằm cheo leo bên vách đá. Ông Tư: \"Chú Ba ở đó. Thợ cầu. Đường chính phía trước có một đoạn ván mục, đi bộ không qua được đâu.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Chú Ba ở đó. Thợ cầu. Đường chính phía trước có một đoạn ván mục, đi bộ không qua được đâu."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Ông Tư quay đi, trước khi khuất sau khúc quanh, ông ngoái lại nhìn Mai một lần nữa. Ông Tư: \"Nhớ nhé, cháu gái. Thư không chờ được. Nhưng người giao thư thì phải về được. Đừng đổi mạng lấy thư.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Nhớ nhé, cháu gái. Thư không chờ được. Nhưng người giao thư thì phải về được. Đừng đổi mạng lấy thư."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Cái chòi gỗ hiện ra sau một tảng đá: mái lợp ván, trước cửa treo đủ thứ dây, móc, ròng rọc, và một tấm bảng gỗ viết nguệch ngoạc: \"Cầu hỏng, tìm chú Ba.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "bảng gỗ viết nguệch ngoạc",
+                  "text": "Cầu hỏng, tìm chú Ba."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Chú Ba ngồi sửa một cái ròng rọc, tay đầy dầu mỡ, miệng ngậm một cây đinh. Thấy hai đứa, chú nhả đinh ra, hỏi gọn lỏn: \"Đi đâu?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Đi đâu?"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Chú Ba gật đầu, không ngạc nhiên, rồi lục trong chòi lôi ra hai cái móc đai tốt hơn hẳn cái đai vải Bin tự buộc, và một cuộn dây ngắn nhưng chắc. Chú Ba: \"Đoạn ván mục đó nằm ở chỗ cầu cong qua vực Gió. Đi bộ thì ván sập. Đu dây thì không có chỗ móc. Cách duy nhất là đi phà. Phà của chị Thu.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chú Ba",
+                  "text": "Đoạn ván mục đó nằm ở chỗ cầu cong qua vực Gió. Đi bộ thì ván sập. Đu dây thì không có chỗ móc. Cách duy nhất là đi phà. Phà của chị Thu."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "title": "Ròng rọc và đèn ở cầu",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Chú Ba nhìn Mai, nói thêm một câu, giọng chậm hơn. Chú Ba: \"Cháu là người giao thư mang bức thư không tên, đúng không? Ông Tư ghé đây sáng nay, trước khi gặp các cháu. Ông ấy dặn chú: nếu có một cô bé giao thư đi qua, thì đưa đồ tốt nhất cho nó. Ông ấy nói, giọng ông ấy run run, là lần này thư phải tới được.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chú Ba",
+                  "text": "Cháu là người giao thư mang bức thư không tên, đúng không? Ông Tư ghé đây sáng nay, trước khi gặp các cháu. Ông ấy dặn chú: nếu có một cô bé giao thư đi qua, thì đưa đồ tốt nhất cho nó. Ông ấy nói, giọng ông ấy run run, là lần này thư phải tới được."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin không đi ngay, cậu nhìn cái ròng rọc trong tay chú Ba, rồi hỏi giọng của một người thợ hỏi một người thợ khác. Bin: \"Chú ơi, ròng rọc này bánh xe mòn không đều, một bên mòn hơn một bên. Dây hay bị lệch sang một phía, đúng không chú?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Chú ơi, ròng rọc này bánh xe mòn không đều, một bên mòn hơn một bên. Dây hay bị lệch sang một phía, đúng không chú?"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bin lắp miếng đệm dự phòng trong túi đồ nghề vào, xoay bánh xe, chạy êm hơn hẳn. Chú Ba gật gù, cười lần đầu tiên từ lúc hai đứa tới. Chú Ba: \"Người giữ cầu với người chế máy, thực ra cùng một nghề cả thôi: giữ cho thứ gì đó chạy được đúng đường của nó.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chú Ba",
+                  "text": "Người giữ cầu với người chế máy, thực ra cùng một nghề cả thôi: giữ cho thứ gì đó chạy được đúng đường của nó."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Chú Ba chỉ vào một chiếc đèn lồng treo trước cửa chòi, giống hệt những chiếc đèn lồng ở Trạm Nghỉ. Chú Ba: \"Thấy không, chú cũng thắp đèn. Đèn này chú thắp ba mươi năm rồi, chưa tắt một đêm nào. Các cháu đi xuống bến, nhìn thấy đèn này từ xa thì cứ đi theo ánh đèn mà tới, đừng đi theo tiếng gió, tiếng gió hay lừa người lắm.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chú Ba",
+                  "text": "Thấy không, chú cũng thắp đèn. Đèn này chú thắp ba mươi năm rồi, chưa tắt một đêm nào. Các cháu đi xuống bến, nhìn thấy đèn này từ xa thì cứ đi theo ánh đèn mà tới, đừng đi theo tiếng gió, tiếng gió hay lừa người lắm."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung, hành động",
+              "visual": "Đường xuống bến phà dốc và trơn, sương vực bám vào đá cả đêm. Mai trượt chân một cái, suýt ngã ngửa ra sau, may mà Bin đi ngay phía sau, kịp nắm lấy quai túi của cô mà kéo lại. Gió Nhỏ bay lên trước dò đường, rồi bay về đậu lên vai Bin, kêu lạch cạch vài tiếng như báo cáo.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "title": "Phà và tin của ông Kính",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Tới nơi, hai đứa thấy một chiếc phà gỗ dài, buồm vải căng gió, đang neo ở mép vực. Trên phà, chị Thu tóc cột cao, tay cầm dây buồm, đang quát mấy người khuân hàng: \"Cột chặt vào! Gió đổi hướng là hàng bay xuống vực hết đấy!\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Cột chặt vào! Gió đổi hướng là hàng bay xuống vực hết đấy!"
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Chị Thu nhìn Mai từ đầu tới chân, rồi nhìn túi thư, rồi bật cười. Chị Thu: \"À, cô bé giao thư. Chú Ba nhắn bằng còi hiệu sáng nay rồi. Lên phà đi. Nhưng nhớ: lên phà thì nghe lời chị tuyệt đối. Gió dưới vực không báo trước đâu.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chị Thu",
+                  "text": "À, cô bé giao thư. Chú Ba nhắn bằng còi hiệu sáng nay rồi. Lên phà đi. Nhưng nhớ: lên phà thì nghe lời chị tuyệt đối. Gió dưới vực không báo trước đâu."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Phà rời bến, chị Thu đứng ở lái, một tay giữ dây buồm, một tay chỉ về phía trước, đọc như một bản tin thời tiết đã thuộc lòng. Chị Thu: \"Vực Gió có ba luồng gió. Luồng đầu xuôi, đẩy phà đi. Luồng thứ hai ngang, đẩy phà lệch. Luồng thứ ba, nguy hiểm nhất, là luồng ngược: nó thổi từ phía tháp về. Gặp luồng ngược thì ngồi xuống, bám chặt, đừng đứng lên.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chị Thu",
+                  "text": "Vực Gió có ba luồng gió. Luồng đầu xuôi, đẩy phà đi. Luồng thứ hai ngang, đẩy phà lệch. Luồng thứ ba, nguy hiểm nhất, là luồng ngược: nó thổi từ phía tháp về. Gặp luồng ngược thì ngồi xuống, bám chặt, đừng đứng lên."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Tới giữa vực, chị Thu giơ tay lên: \"Tới Cột Tín Hiệu rồi.\" Trên một cột đá nhô lên khỏi mây, có một cái hộp sắt nhỏ và một lá cờ vàng. Chị Thu cho phà áp sát cột, lấy hộp, đọc nhanh rồi đưa cho Mai một tờ giấy gấp tư.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Tới Cột Tín Hiệu rồi."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Tờ giấy, chữ viết tay vội vã nhưng rõ ràng. Chữ trong giấy: \"Gửi người giao thư. Bão tới trong ba ngày nữa, tính từ sáng nay. Nó đi chậm nhưng không dừng. Nhớ: thư phải do đúng người mở, ở dưới ánh đèn. Người khác mở thì chỉ là giấy. Ông Kính, Đài Quan Sát.\" Chị Thu (dặn miệng thêm): \"Khi bão tới gần, người ta sẽ quên cả những thứ mình yêu nhất. Lúc đó, đừng cố nhớ bằng đầu. Hãy nhớ bằng chân. Cứ đi tiếp, chân sẽ nhớ đường thay cho đầu.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong giấy",
+                  "text": "Gửi người giao thư. Bão tới trong ba ngày nữa, tính từ sáng nay. Nó đi chậm nhưng không dừng. Nhớ: thư phải do đúng người mở, ở dưới ánh đèn. Người khác mở thì chỉ là giấy. Ông Kính, Đài Quan Sát."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Chị Thu",
+                  "text": "Khi bão tới gần, người ta sẽ quên cả những thứ mình yêu nhất. Lúc đó, đừng cố nhớ bằng đầu. Hãy nhớ bằng chân. Cứ đi tiếp, chân sẽ nhớ đường thay cho đầu."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 4,
+          "title": "Luồng ngược",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Phà đi thêm một đoạn, chị Thu gọi Mai lại gần lái, chỉ cho cô xem những vết sẹo trên mạn phà, những chỗ gỗ đã được vá lại nhiều lần. Chị Thu: \"Mỗi chỗ vá là một lần gió đổi hướng bất ngờ mà chị không kịp trở tay. Bài học của chị là: gió đổi thì buồm phải đổi theo, đừng cãi gió. Người lái phà giỏi không phải là người thắng được gió, mà là người biết thua gió đúng lúc.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chị Thu",
+                  "text": "Mỗi chỗ vá là một lần gió đổi hướng bất ngờ mà chị không kịp trở tay. Bài học của chị là: gió đổi thì buồm phải đổi theo, đừng cãi gió. Người lái phà giỏi không phải là người thắng được gió, mà là người biết thua gió đúng lúc."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin phát hiện một cái chốt neo ở mạn phà bị lỏng, không nói gì, chỉ lấy cờ lê ra siết lại, thử kéo vài lần cho chắc. Chị Thu gật đầu hài lòng: \"Cậu sửa mà không cần ai nhắc, như vậy mới là thợ giỏi.\" Mai thấy tai Bin hơi đỏ lên vì được khen.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chị Thu",
+                  "text": "Cậu sửa mà không cần ai nhắc, như vậy mới là thợ giỏi."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung, gây cấn",
+              "visual": "Tới đoạn giữa vực, luồng ngược tới, không báo trước. Một cơn gió mạnh từ phía tháp thổi ngược lại, buồm phồng ngược, phà chao đảo. Mai và Bin ngồi thụp xuống, bám chặt mạn phà. Hàng hóa kêu loảng xoảng. Gió Nhỏ bị thổi bạt khỏi dây buồm, lộn hai vòng trên không rồi mới bám lại được.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Chị Thu vẫn đứng ở lái, hai tay giữ dây, miệng hét át tiếng gió. Chị Thu: \"Bám chặt! Đừng buông! Luồng này qua nhanh thôi!\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chị Thu",
+                  "text": "Bám chặt! Đừng buông! Luồng này qua nhanh thôi!"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Luồng ngược qua đi sau vài chục giây dài như cả buổi. Phà lại êm. Bin thở phào, mặt hơi tái nhưng vẫn cười: \"Thấy chưa, chị Thu nói đúng hết.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Thấy chưa, chị Thu nói đúng hết."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 5,
+          "title": "Chìa khóa đèn dự phòng",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Khi phà cập bến phía bên kia vực, chị Thu gọi Mai lại, đưa cho cô một cái gói vải nhỏ, buộc dây cẩn thận. Chị Thu: \"Ông Tư gửi cho cháu, nhờ chị đưa. Ông ấy ghé bến sáng qua, trước khi về tháp. Ông ấy bảo: nếu đèn chính tắt, cháu thắp đèn này.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Chị Thu",
+                  "text": "Ông Tư gửi cho cháu, nhờ chị đưa. Ông ấy ghé bến sáng qua, trước khi về tháp. Ông ấy bảo: nếu đèn chính tắt, cháu thắp đèn này."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "cận",
+              "visual": "Mai mở gói ra. Bên trong là một chiếc chìa khóa đồng nhỏ, giống hệt chiếc chìa khóa cổng sau mà bà Sáu đưa cô hôm nào, nhưng nhỏ hơn và sáng hơn, và một mẩu giấy: \"Chìa khóa đèn dự phòng. Giữ cẩn thận. Đừng để rơi.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "mẩu giấy",
+                  "text": "Chìa khóa đèn dự phòng. Giữ cẩn thận. Đừng để rơi."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai nắm chặt chìa khóa trong tay, hiểu ra: ông Tư không đi cùng hai đứa nữa, nhưng ông vẫn đang đi cùng theo cách của ông, bằng những thứ ông để lại trên đường: lời dặn của chú Ba, phà của chị Thu, tin của ông Kính, và bây giờ là chìa khóa này.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai và Bin rời phà, bước lên con đường dốc dẫn về phía tháp. Phía sau lưng, phà lại rời bến, buồm căng gió, nhỏ dần trên biển mây. Phía trước, vùng mây xám đã gần hơn hôm qua một chút nữa.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Đường từ bến phà lên tháp dốc hơn Mai tưởng, có đoạn hai đứa phải bò bằng cả tay lẫn chân, bám vào những bụi cây mây mọc trên vách đá. Bin đi trước một đoạn, vừa đi vừa dọn đá rơi khỏi đường cho Mai. Gió Nhỏ bay trên đầu, thỉnh thoảng sà xuống đậu lên vai Mai.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 6,
+          "title": "Lệnh quay về",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Tới một khúc quanh, Bin dừng lại đột ngột, giơ tay ra hiệu im lặng. Trên đường, có một người đang đứng chặn: trạc mười chín tuổi, đồng phục giao thư màu xanh đậm, vai đeo túi da mới cứng, chân đi giày chạy sáng bóng, khoanh tay, ánh mắt vừa tò mò vừa khó chịu. Khải: \"Mai, đúng không? Tớ là Khải. Hội Đồng Trạm cử tớ tới đây.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Khải",
+                  "text": "Mai, đúng không? Tớ là Khải. Hội Đồng Trạm cử tớ tới đây."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Khải rút từ túi áo ra một tờ giấy đóng dấu đỏ, chữ ký của ông Phát, Trưởng trạm. Khải: \"Cầu Mây và đường lên Hải Đăng tạm đóng vì lý do an toàn. Bão sắp tới. Hội Đồng yêu cầu mọi người quay về. Kể cả cô.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Khải",
+                  "text": "Cầu Mây và đường lên Hải Đăng tạm đóng vì lý do an toàn. Bão sắp tới. Hội Đồng yêu cầu mọi người quay về. Kể cả cô."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai trả giấy lại, giọng bình tĩnh hơn cô tưởng, rồi nói từng chữ một, lần đầu tiên trong chuyến đi cô cảm thấy giận thật sự. Mai: \"Thư của cậu thì chờ được. Vì thư của cậu chỉ có giấy. Thư của tớ thì không. Vì thư của tớ có ký ức trong đó. Và ký ức thì không chờ được. Nó chờ là nó mất.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Thư của cậu thì chờ được. Vì thư của cậu chỉ có giấy. Thư của tớ thì không. Vì thư của tớ có ký ức trong đó. Và ký ức thì không chờ được. Nó chờ là nó mất."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Khải im lặng rất lâu, rồi gấp tờ lệnh lại, nhét vào túi áo, giọng nhỏ hơn hẳn. Khải: \"Cậu nói đúng một nửa. Thư của tớ... tháng trước, có một bức thư tớ giao trễ ba ngày vì tớ mải chạy nhanh để phá kỷ lục. Người nhận mở thư ra và khóc. Không phải vì thư tới trễ. Mà vì người gửi đã quên mất mình viết gì trong thư. Lúc đó tớ mới hiểu: nhanh mà rỗng thì cũng như không giao.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Khải",
+                  "text": "Cậu nói đúng một nửa. Thư của tớ... tháng trước, có một bức thư tớ giao trễ ba ngày vì tớ mải chạy nhanh để phá kỷ lục. Người nhận mở thư ra và khóc. Không phải vì thư tới trễ. Mà vì người gửi đã quên mất mình viết gì trong thư. Lúc đó tớ mới hiểu: nhanh mà rỗng thì cũng như không giao."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "toàn, khung lớn cuối chương",
+              "visual": "Khải bước sang một bên, nhường đường, rồi đi cùng hai đứa thêm một đoạn tới khúc quanh nhìn thấy cầu thang xoắn, chỉ đoạn bậc sứt phía tay trái và dặn đi sát phía tay phải. Khi mặt trời lặn, hai đứa tới chân tháp thật, nơi cầu thang xoắn bắt đầu đi lên. Mai lấy chìa khóa đèn dự phòng ra, nắm chặt trong tay. Phía chân trời, vùng mây xám không còn là một vệt xám ở xa nữa, mà là một bức tường xám, lặng lẽ, đang tiến tới. Mai: \"Ngày mai mình lên tháp. Đêm nay ngủ ở đây, giữ sức.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Ngày mai mình lên tháp. Đêm nay ngủ ở đây, giữ sức."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "title": "Bão tới và thành phố quên dần (chuyển thể novel chương 11 + 12)",
+      "pages": [
+        {
+          "number": 1,
+          "title": "Trời xám không có bóng",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Buổi chiều, trời không tối theo cách trời vẫn tối. Mây xám ngay từ lúc còn sớm, xám theo một kiểu xám rất lạ: xám không có bóng, không có chỗ đậm, chỗ nhạt, không có vệt sáng nào lọt qua, như một tờ giấy bị ai đó lấy tẩy chà đều tay.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Mai hít một hơi sâu, rồi một hơi nữa, chỉ thấy lạnh. Gió thổi qua mặt hai đứa mà trống rỗng, như thổi qua một căn phòng không có đồ đạc. Bin ngẩng lên từ ba lô, Gió Nhỏ đậu trên vai, cánh quạt quay chậm, rồi dừng, rồi lại quay, như không biết gió đang thổi hướng nào.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Từ đây nhìn về Trạm Mây, chuông bưu điện vẫn kêu, nhưng nhịp lạc đi: lúc nhanh, lúc chậm, lúc ngắt giữa chừng như người hát quên mất câu tiếp theo. Mai đứng nghe, bất giác đếm theo nhịp chuông, và nhận ra mình không đếm được, vì nhịp không có quy luật nào để đếm.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "toàn",
+              "visual": "Dưới chân đồi, một đàn chim mây bay tán loạn, không thành đội hình. Mọi ngày, chim mây bay theo hình chữ V, đều và đẹp. Hôm nay, chúng bay lung tung, con này rẽ trái, con kia rẽ phải, như thể chúng quên mất mình đang bay đi đâu.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Mai lấy sổ ra, tay hơi run, ghi một dòng. Chữ trong sổ: \"Chiều ngày bão tới. Trời xám không có bóng. Gió không có mùi. Chuông lạc nhịp. Chim bay không thành đội hình.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong sổ",
+                  "text": "Chiều ngày bão tới. Trời xám không có bóng. Gió không có mùi. Chuông lạc nhịp. Chim bay không thành đội hình."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "title": "Ngã ba và con đường thẳng",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Tới ngã ba đường, có một cái chòi chắn gió nhỏ. Mai ra hiệu dừng lại, không phải để nghỉ, mà để quyết định. Một đường vòng xuống thung lũng, kín gió hơn nhưng dài hơn gần một ngày đường. Đường còn lại đi thẳng lên dốc, nhanh hơn, nhưng trống trải, gió quật trực tiếp.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin nói, giọng không chắc chắn. Bin: \"Đi đường vòng thì an toàn hơn. Nhưng đi đường vòng thì bão đuổi kịp mình trước khi mình tới đèn.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Đi đường vòng thì an toàn hơn. Nhưng đi đường vòng thì bão đuổi kịp mình trước khi mình tới đèn."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai nhìn hai con đường, rồi nhìn bức tường xám phía sau, rồi nhìn túi thư của mình. Cô nghĩ tới bà Sáu, tới câu bà vẫn nói: thư trễ một ngày, ký ức trễ cả đời. Mai: \"Đi đường thẳng. Gió mạnh thì mình đi chậm lại, bám dây mà đi. Nhưng không đi vòng.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Đi đường thẳng. Gió mạnh thì mình đi chậm lại, bám dây mà đi. Nhưng không đi vòng."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Bin mở ba lô, lấy ra một cuộn dây thừng nhỏ, buộc một đầu vào thắt lưng mình, đầu còn lại vào thắt lưng Mai. Mai lấy trong túi ra một cái khăn tay nhỏ màu đỏ, buộc vào quai túi, để nếu có lúc nào đó cô quên mất túi nào là túi thư của mình, cô vẫn nhận ra nó nhờ màu đỏ.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Hai đứa đi trên đường thẳng, gió quật từng cơn. Có lúc gió mạnh tới mức cả hai phải ngồi xuống như Bin dặn, bám chặt vào mây, đợi cơn gió qua đi. Mỗi lần gió lặng một chút, Mai lại đứng dậy trước, đếm bước thành tiếng để Bin nghe theo: \"Một, hai, ba, bốn.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Một, hai, ba, bốn."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "title": "Thành phố tắt đèn dần",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Tới cuối buổi chiều, hai đứa lên tới đỉnh dốc. Từ đây, Trạm Mây hiện ra rõ hơn, và ánh đèn trong thành phố, vốn vẫn sáng vàng mỗi khi chiều xuống, hôm nay mờ đi rất nhiều. Không phải tắt hẳn, mà mờ, như những ngọn đèn bị phủ một lớp bụi xám. Có nhà còn sáng, có nhà đã tối.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Lên tới đỉnh dốc, một cơn gió xám quật thẳng vào mặt hai đứa. Cả hai ngồi thụp xuống sau một tảng đá, đợi cơn gió qua đi. Khi đứng dậy, Mai bỗng hỏi, giọng hoang mang: \"Bin này, từ bưu điện tới chợ là bao nhiêu bước nhỉ?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Bin này, từ bưu điện tới chợ là bao nhiêu bước nhỉ?"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bin nhìn cô, sững người, rồi đáp ngay, không do dự, giọng chắc nịch. Bin: \"Một trăm hai mươi. Cậu đếm cho tớ nghe suốt chín năm, tớ thuộc rồi, cậu quên thì tớ nhớ thay cậu.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Một trăm hai mươi. Cậu đếm cho tớ nghe suốt chín năm, tớ thuộc rồi, cậu quên thì tớ nhớ thay cậu."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "cận",
+              "visual": "Mai lặp lại ba lần, tới lần thứ ba, con số lại bám chắc trong đầu cô. Cô lấy sổ ra, viết ngay một dòng, chữ hơi run. Chữ trong sổ: \"Bão lấy của mình một con số đầu tiên: số bước từ bưu điện tới chợ. Bin nhắc lại được.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong sổ",
+                  "text": "Bão lấy của mình một con số đầu tiên: số bước từ bưu điện tới chợ. Bin nhắc lại được."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Mai đứng nhìn thành phố rất lâu, rồi quay đầu nhìn về phía thành phố lần cuối, đếm thầm những ô cửa sổ còn sáng đèn, rồi thì thầm nhỏ tới mức Bin đứng cạnh cũng không nghe thấy: \"Chờ tôi nhé. Tôi đi mang đèn về cho mọi người. Tôi sẽ về, cùng với ánh sáng.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Chờ tôi nhé. Tôi đi mang đèn về cho mọi người. Tôi sẽ về, cùng với ánh sáng."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 4,
+          "title": "Đêm trong chòi trú bão",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Đêm đó, hai đứa trú trong một căn chòi chắn gió lớn hơn cái chòi ở ngã ba. Khi hai đứa tới nơi, trong chòi đã có người: một gia đình bốn người, hai vợ chồng và hai đứa trẻ, đang ngồi quanh một bếp lửa nhỏ, mang theo vài túi đồ và một con chó nhỏ cứ rúc vào chân chủ mà run.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Người chồng nói, giọng mệt mỏi. Người chồng: \"Chúng tôi đi từ sáng. Đường về... đường về nhà thì chúng tôi quên mất rồi. Không phải quên hẳn, mà là nhớ không trọn. Nhớ được tới chợ, rồi không nhớ rẽ trái hay rẽ phải nữa.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Chúng tôi đi từ sáng. Đường về... đường về nhà thì chúng tôi quên mất rồi. Không phải quên hẳn, mà là nhớ không trọn. Nhớ được tới chợ, rồi không nhớ rẽ trái hay rẽ phải nữa."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Người vợ ôm đứa con nhỏ vào lòng, giọng nghẹn lại. Người vợ: \"Con tôi hỏi: mẹ ơi, nhà mình ở đâu? Tôi trả lời không được. Tôi nhớ nhà có cửa màu xanh, có cây trước sân, nhưng không nhớ nó ở phố nào. Một người mẹ mà không nhớ nhà mình ở đâu thì còn gì nữa.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Con tôi hỏi: mẹ ơi, nhà mình ở đâu? Tôi trả lời không được. Tôi nhớ nhà có cửa màu xanh, có cây trước sân, nhưng không nhớ nó ở phố nào. Một người mẹ mà không nhớ nhà mình ở đâu thì còn gì nữa."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai ngồi xuống cạnh bếp lửa, đưa cho họ ít bánh khô còn lại trong ba lô. Đứa trẻ lớn hơn nhìn túi thư xanh của cô, hỏi: \"Chị ơi, chị giao thư à? Thư có giúp người ta nhớ lại không?\" Mai định nói có, nhưng cổ họng nghẹn lại, cô chỉ gật đầu, một cái gật đầu mà chính cô cũng không chắc là thật hay là để an ủi đứa trẻ.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Chị ơi, chị giao thư à? Thư có giúp người ta nhớ lại không?"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Khuya hơn, Mai ra ngồi cạnh bếp lửa cùng người mẹ chưa ngủ được. Cô lấy sổ ra, viết chậm rãi, rõ ràng, từng chữ một, rồi xé trang đó ra khỏi sổ, đưa cho người mẹ. Chữ trong trang giấy: \"Nhà của bà: cửa màu xanh, cây trước sân, mùi bánh buổi sáng từ nhà bên. Ghi lại để bà đọc mỗi sáng cho tới khi nhớ lại tên phố.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong trang giấy",
+                  "text": "Nhà của bà: cửa màu xanh, cây trước sân, mùi bánh buổi sáng từ nhà bên. Ghi lại để bà đọc mỗi sáng cho tới khi nhớ lại tên phố."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 5,
+          "title": "Khải và những bức thư chưa giao",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Khuya hơn nữa, có tiếng bước chân ngoài cửa. Khải bước vào, người ướt sương, vai đeo một túi thư căng phồng. Cậu ta nhìn thấy Mai thì khựng lại, rồi thở ra một hơi dài, ngồi phịch xuống cạnh bếp lửa. Khải: \"Mai, cậu còn giao thư được à? Tớ thì chịu rồi.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Khải",
+                  "text": "Mai, cậu còn giao thư được à? Tớ thì chịu rồi."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Khải mở túi thư ra. Bên trong là một xấp thư chưa giao, phong bì nào cũng còn nguyên. Khải: \"Tớ đi giao từ sáng. Nhưng tới nơi thì không giao được. Có nhà thì chủ nhà quên mất mình có chờ thư. Có nhà thì tớ quên mất địa chỉ, đứng trước cửa mà không nhớ phong bì này là của nhà nào.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Khải",
+                  "text": "Tớ đi giao từ sáng. Nhưng tới nơi thì không giao được. Có nhà thì chủ nhà quên mất mình có chờ thư. Có nhà thì tớ quên mất địa chỉ, đứng trước cửa mà không nhớ phong bì này là của nhà nào."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Khải nhìn vào bếp lửa, nói tiếp, chậm rãi. Khải: \"Và bà Sáu... sáng nay tớ ghé bưu điện. Bà ấy ngồi trước cuốn sổ, tay cầm bút, mà không viết được chữ nào. Bà ấy nhìn tớ, hỏi: 'Cháu là ai? Cháu tới lấy thư à?' Tớ là Khải, tớ lấy thư ở bưu điện đó ba năm nay, mà bà ấy không nhớ tớ là ai nữa.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Khải",
+                  "text": "Và bà Sáu... sáng nay tớ ghé bưu điện. Bà ấy ngồi trước cuốn sổ, tay cầm bút, mà không viết được chữ nào. Bà ấy nhìn tớ, hỏi: 'Cháu là ai? Cháu tới lấy thư à?' Tớ là Khải, tớ lấy thư ở bưu điện đó ba năm nay, mà bà ấy không nhớ tớ là ai nữa."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Khải nhìn Mai, ngập ngừng, rồi nói thẳng. Khải: \"Cậu vẫn đi Hải Đăng đúng không? Vậy thì mang giúp tớ mấy bức này được không? Tớ sợ tớ sẽ quên mất đường đi giữa chừng, rồi thành gánh nặng.\" Mai nhìn xấp thư, rồi nhìn Khải, gật đầu, nhận lấy, cất cẩn thận vào túi của mình, bên cạnh bức thư không tên. Mai: \"Tớ mang giúp.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Khải",
+                  "text": "Cậu vẫn đi Hải Đăng đúng không? Vậy thì mang giúp tớ mấy bức này được không? Tớ sợ tớ sẽ quên mất đường đi giữa chừng, rồi thành gánh nặng."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Tớ mang giúp."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Đêm đó, Khải ngủ say cạnh bếp lửa, xấp thư chưa giao được đặt ngay dưới đầu cậu, như một cái gối. Mai nhìn cậu, nghĩ: người giao thư nhanh nhất Trạm Mây giờ ngủ với thư chưa giao làm gối, vì cậu sợ nếu để thư xa mình, cậu sẽ quên mất mình còn thư phải giao.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 6,
+          "title": "Bé Mây quên Mai",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Sáng hôm sau, khi đoàn người trong chòi chuẩn bị lên đường, bé Mây, đứa trẻ tám tuổi mà Mai vẫn nhớ vì bé hát sai lời ru, đang đứng với mẹ ở cửa chòi. Mai bước tới, mỉm cười, gọi: \"Bé Mây, chào bé.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Bé Mây, chào bé."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "cận, đau nhất chương",
+              "visual": "Bé Mây nhìn cô, chớp mắt, rồi ngẩng lên hỏi mẹ: \"Mẹ ơi, chị này là ai? Sao chị ấy biết tên con?\" Mẹ bé cũng lắc đầu, không trả lời được. Bé Mây lại nhìn Mai, ánh mắt trong veo mà xa lạ, như nhìn một người chưa từng gặp. Mai đứng sững, nụ cười đông cứng trên mặt.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bé Mây",
+                  "text": "Mẹ ơi, chị này là ai? Sao chị ấy biết tên con?"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai quay đi, không để bé thấy mặt mình, đi ra ngoài chòi, đứng một mình trong gió, hít thở thật sâu. Bin đi theo, đặt tay lên vai cô, không nói gì. Mai nói, giọng khản đi: \"Đi thôi. Mình không còn thời gian để buồn nữa.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Đi thôi. Mình không còn thời gian để buồn nữa."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Được một đoạn, Gió Nhỏ bay lên, cánh quạt kêu lạch cạch khác thường. Bin gọi nó xuống, xem xét, phát hiện một cánh quạt bị cong sau cơn gió hôm qua. Cậu mở hộp đồ nghề, lấy cờ lê ra, rồi bỗng dừng lại, nhìn đống dụng cụ như nhìn một đống đồ lạ. Bin: \"Khoan. Cái này... sửa thế nào nhỉ? Đầu tiên làm gì trước? Tháo cánh ra, hay nắn lại trước? Tớ... tớ biết mà. Tớ làm việc này hàng trăm lần rồi. Sao tự nhiên tớ không nhớ thứ tự nữa?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Khoan. Cái này... sửa thế nào nhỉ? Đầu tiên làm gì trước? Tháo cánh ra, hay nắn lại trước? Tớ... tớ biết mà. Tớ làm việc này hàng trăm lần rồi. Sao tự nhiên tớ không nhớ thứ tự nữa?"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "toàn, khung lớn cuối chương",
+              "visual": "Bin ngồi xuống, thử từng bước một, sai, làm lại, sai nữa, rồi cuối cùng cũng sửa được, nhưng chậm hơn mọi ngày rất nhiều, và mặt cậu trắng bệch. Cậu ngẩng lên nhìn Mai, nói nhỏ: \"Mai này, tới lượt tớ rồi. Tớ bắt đầu quên rồi.\" Mai nắm tay bạn, siết chặt: \"Không sao. Cậu quên thì tớ nhớ thay cậu. Tớ đếm, cậu làm theo. Như mọi lần.\" Hai đứa bước tiếp về phía Hải Đăng, nơi ánh đèn vẫn le lói sau lớp mây xám, và phía sau lưng, bức tường xám vẫn lặng lẽ tiến tới.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Mai này, tới lượt tớ rồi. Tớ bắt đầu quên rồi."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Không sao. Cậu quên thì tớ nhớ thay cậu. Tớ đếm, cậu làm theo. Như mọi lần."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "title": "Người đếm thay và bức thư được mở (chuyển thể novel chương 13 + 14)",
+      "pages": [
+        {
+          "number": 1,
+          "title": "Buổi sáng quên",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Sáng hôm sau, Mai tỉnh dậy và không nhớ mình đang ở đâu. Cô mở mắt, nhìn mái chòi, nhìn bếp lửa đã tắt, nhìn Bin đang ngủ cuộn tròn bên cạnh, và phải mất một lúc lâu cô mới nhớ ra: à, mình đang đi Hải Đăng. Mình là Mai. Mình là người giao thư.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Ngay khi nhớ ra, cô lại quên mất một thứ khác. Cô nhìn túi thư của mình, biết rằng trong đó có một bức thư quan trọng, nhưng không nhớ nó quan trọng vì sao. Cô nhìn dây buộc tóc đỏ trên tay, biết rằng nó là của mình, nhưng không nhớ ai đã buộc nó cho mình lần đầu.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bin dậy, dụi mắt, nhìn cô rồi cau mày. Bin: \"Cậu sao vậy? Mặt cậu trắng bệch.\" Mai: \"Tớ ổn.\" Nhưng giọng cô không ổn chút nào. Cô nói: \"Đi thôi. Hôm nay mình phải tới... tới...\" rồi dừng lại, vì cái tên Hải Đăng như trượt khỏi đầu cô, giống như một hòn đá trượt khỏi tay, tới khi cô cố nhớ lại mới nói tiếp được: \"Tới Hải Đăng.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Cậu sao vậy? Mặt cậu trắng bệch."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Tớ ổn."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Đi thôi. Hôm nay mình phải tới... tới..."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Tới Hải Đăng."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Đi được một đoạn, Mai dừng lại ở một ngã rẽ. Hai con đường mây tỏa ra hai hướng, một lên cao, một vòng xuống thấp. Mọi ngày, cô sẽ biết ngay phải đi đường nào. Hôm nay, cô nhìn hai con đường mà không biết đường nào là đúng. Cô quay sang Bin, giọng gần như cầu xin: \"Đường nào, Bin?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Đường nào, Bin?"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Bin nhìn hai con đường, rồi nhìn Mai, rồi nói, chậm rãi và rõ ràng. Bin: \"Đường lên cao, Mai. Mình đi lên cao. Cậu nhớ không? Hôm qua chú Ba dặn: lên cao thì gặp Đài Quan Sát, rồi từ đó mới tới Hải Đăng.\" Mai gật đầu, nhưng trong đầu cô, Đài Quan Sát là một cái tên trống rỗng.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Đường lên cao, Mai. Mình đi lên cao. Cậu nhớ không? Hôm qua chú Ba dặn: lên cao thì gặp Đài Quan Sát, rồi từ đó mới tới Hải Đăng."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "title": "Đếm thay",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Đi thêm một đoạn nữa, Mai dừng lại lần thứ hai. Lần này, cô không hỏi đường nữa. Cô hỏi một câu khiến Bin sững người. Mai: \"Bin này, mình đi đâu vậy? Và vì sao mình phải đi?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Bin này, mình đi đâu vậy? Và vì sao mình phải đi?"
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin quay lại, nhìn thẳng vào mắt cô. Cậu thấy trong mắt bạn mình một nỗi hoang mang mà cậu chưa từng thấy. Mai, người vẫn luôn biết mình đi đâu, giờ đang hỏi cậu vì sao phải đi. Cậu hiểu: bão đã tới được chỗ Mai rồi, không phải tới thành phố nữa, mà tới ngay trong đầu cô.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung, cảm động",
+              "visual": "Cậu không hoảng. Cậu làm một việc mà cậu đã thấy Mai làm rất nhiều lần: cậu bắt đầu đếm, giọng đều và chậm. Bin: \"Một. Hai. Ba. Bốn. Cậu hứa rồi. Năm, sáu. Cậu hứa sẽ giao một bức thư. Bảy, tám. Bức thư không có tên người nhận, chỉ ghi gửi người giữ đèn. Chín, mười. Người giữ đèn là ông Tư. Mười một, mười hai. Ông Tư chờ bức thư đó hai mươi năm rồi.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Một. Hai. Ba. Bốn. Cậu hứa rồi. Năm, sáu. Cậu hứa sẽ giao một bức thư. Bảy, tám. Bức thư không có tên người nhận, chỉ ghi gửi người giữ đèn. Chín, mười. Người giữ đèn là ông Tư. Mười một, mười hai. Ông Tư chờ bức thư đó hai mươi năm rồi."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "cận",
+              "visual": "Mỗi con số, mỗi câu nói của Bin như một sợi dây nhỏ, kéo Mai trở lại từng chút một. Cô nhớ ra túi thư. Cô nhớ ra ông Tư. Cô nhớ ra bà Lan, người phụ nữ giữ hoa giấy mà cô chưa từng gặp nhưng đã nghe kể. Cô nhớ ra lời hứa của mình. Mai (thì thầm): \"Tớ nhớ rồi. Tớ nhớ rồi, Bin.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Tớ nhớ rồi. Tớ nhớ rồi, Bin."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Bin vẫn đếm tiếp, không dừng lại ngay. Bin: \"Mười ba, mười bốn. Cậu là Mai. Tớ là Bin. Mười lăm, mười sáu. Mình đi Hải Đăng. Mười bảy, mười tám. Đừng dừng lại.\" Mai bật cười, một tiếng cười nghẹn ngào: \"Đủ rồi, Bin. Tớ nhớ rồi thật mà. Cậu đếm giỏi hơn tớ tưởng đấy.\" Bin: \"Tớ học từ cậu mà.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Mười ba, mười bốn. Cậu là Mai. Tớ là Bin. Mười lăm, mười sáu. Mình đi Hải Đăng. Mười bảy, mười tám. Đừng dừng lại."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Đủ rồi, Bin. Tớ nhớ rồi thật mà. Cậu đếm giỏi hơn tớ tưởng đấy."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Tớ học từ cậu mà."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "title": "Chuyện ngày tám tuổi và mẩu giấy tự nhắc",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Bin ngồi xuống cạnh Mai, kể chậm rãi như đang đọc lại một trang sổ cũ. Bin: \"Cậu có nhớ không, hồi mình còn nhỏ, khoảng tám tuổi, có lần tớ đi chợ một mình mà bị lạc không? Hôm đó, hai con đường trông giống hệt nhau, tớ đứng giữa ngã ba mà không biết đường nào về nhà. Tớ sợ tới mức ngồi xuống khóc ngay giữa đường. Rồi cậu đi qua, cậu không hỏi tớ sao khóc, cậu chỉ nói: 'Đứng dậy, tớ đếm cho cậu về.' Cậu đếm từng bước một, từ ngã ba về tới cửa nhà tớ, vừa đi vừa đếm, đếm tới ba trăm thì tới nơi.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Cậu có nhớ không, hồi mình còn nhỏ, khoảng tám tuổi, có lần tớ đi chợ một mình mà bị lạc không? Hôm đó, hai con đường trông giống hệt nhau, tớ đứng giữa ngã ba mà không biết đường nào về nhà. Tớ sợ tới mức ngồi xuống khóc ngay giữa đường. Rồi cậu đi qua, cậu không hỏi tớ sao khóc, cậu chỉ nói: 'Đứng dậy, tớ đếm cho cậu về.' Cậu đếm từng bước một, từ ngã ba về tới cửa nhà tớ, vừa đi vừa đếm, đếm tới ba trăm thì tới nơi."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Mai nghe mà ngẩn người. Cô không nhớ rõ chuyện đó nữa, hoặc cô nhớ lờ mờ như nhớ một giấc mơ cũ. Nhưng Bin nhớ rõ, nhớ từng chi tiết, nhớ cả con số ba trăm. Mai: \"Vậy là cậu đếm cho tớ hôm nay, giống như tớ đếm cho cậu hồi tám tuổi. Hóa ra mình đếm cho nhau từ lâu rồi, chỉ là đổi vai thôi.\" Bin: \"Ừ. Và từ nay, nếu cậu quên, tớ đếm. Nếu tớ quên, cậu đếm. Đừng ai đếm một mình nữa.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Vậy là cậu đếm cho tớ hôm nay, giống như tớ đếm cho cậu hồi tám tuổi. Hóa ra mình đếm cho nhau từ lâu rồi, chỉ là đổi vai thôi."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Ừ. Và từ nay, nếu cậu quên, tớ đếm. Nếu tớ quên, cậu đếm. Đừng ai đếm một mình nữa."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai lấy trong túi áo ra một mẩu giấy nhỏ, viết vội vài dòng, chữ nguệch ngoạc nhưng rõ ràng, rồi gấp lại, nhét vào túi áo trước ngực. Chữ trong mẩu giấy: \"Tôi là Mai. Tôi là người giao thư. Tôi đi Hải Đăng để giao một bức thư cho bà Lan. Nếu tôi quên, hãy đọc dòng này cho tôi nghe.\" Bin cầm mẩu giấy, đọc thử một lần, rồi cất cẩn thận vào túi áo của mình, đề phòng Mai quên luôn cả việc mình có mẩu giấy.",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong mẩu giấy",
+                  "text": "Tôi là Mai. Tôi là người giao thư. Tôi đi Hải Đăng để giao một bức thư cho bà Lan. Nếu tôi quên, hãy đọc dòng này cho tôi nghe."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Hai đứa đi tiếp, nhưng từ lúc đó, Bin không rời mắt khỏi Mai nữa. Mỗi lần cô chậm lại, mỗi lần cô nhìn quanh như tìm kiếm một thứ gì đó đã mất, cậu lại đếm nhỏ bên tai cô, và cô lại bước tiếp. Có lúc cô quên tên một con đường, có lúc cô quên mất mình đã ăn sáng chưa, có lúc cô nhìn Gió Nhỏ mà phải nghĩ một lúc mới nhớ ra tên nó.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Tới chiều, khi hai đứa dừng lại nghỉ dưới một tảng đá lớn, Mai lấy cuốn sổ của mình ra. Cô lật qua những dòng chữ mình đã viết những ngày trước: bà Bảy quên mùi bánh, bảng phố mờ chữ, bé Mây hát sai lời ru, đèn chớp tắt. Chữ của cô vẫn còn đó, rõ ràng, nhưng khi đọc lại, cô có cảm giác như đang đọc sổ của một người khác. Cô viết thêm một dòng mới, chữ nguệch ngoạc hơn mọi ngày. Chữ trong sổ: \"Hôm nay, tới lượt mình quên. Bin đếm thay mình.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong sổ",
+                  "text": "Hôm nay, tới lượt mình quên. Bin đếm thay mình."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 4,
+          "title": "Nếu ta quên thì hãy mở",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Sáng hôm sau tệ hơn hôm trước. Mai tỉnh dậy, nhìn Bin, và phải mất một lúc cô mới nhớ ra tên cậu. Không phải là cô quên hẳn, mà là cái tên cứ lơ lửng ở đâu đó ngoài tầm với, như một từ nằm ngay đầu lưỡi mà nói không ra. Cô nhìn túi thư, biết rằng mình phải mang nó đi đâu đó, nhưng \"đâu đó\" là đâu thì cô không nhớ nữa.",
+              "lines": [
+                {
+                  "kind": "narration",
+                  "text": "đâu đó"
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin ngồi xuống trước mặt cô, lấy trong túi ra một thứ: phong bì thư không tên. Cậu đã giữ nó hộ cô từ tối qua, khi thấy cô ôm túi mà mắt cứ nhìn xa xăm. Bin: \"Mai, nhìn này. Trên phong bì có chữ. Cậu đọc cho tớ nghe được không?\" Mai cầm lấy phong bì, tay run nhẹ, đọc thành tiếng, từng chữ một: \"Gửi... người... giữ... đèn.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Mai, nhìn này. Trên phong bì có chữ. Cậu đọc cho tớ nghe được không?"
+                },
+                {
+                  "kind": "written",
+                  "source": "chữ một",
+                  "text": "Gửi... người... giữ... đèn."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "cận",
+              "visual": "Bin lật phong bì lại giúp cô. Bin: \"Và ở mặt sau? Ở đây, góc dưới này, có một dòng chữ nhỏ hơn. Cậu đọc thử xem.\" Mai nheo mắt nhìn. Dòng chữ nhỏ, nét run run, nhưng vẫn đọc được. Chữ trên phong bì: \"Nếu ta quên thì hãy mở.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Và ở mặt sau? Ở đây, góc dưới này, có một dòng chữ nhỏ hơn. Cậu đọc thử xem."
+                },
+                {
+                  "kind": "written",
+                  "source": "Chữ trên phong bì",
+                  "text": "Nếu ta quên thì hãy mở."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai ngẩng lên nhìn Bin. Bin gật đầu: \"Ông Tư dặn vậy đó. Hôm ở lưng chừng cầu, ông ấy có nói với tớ: thư này, nếu người mang nó quên mất vì sao mình đi, thì cứ mở ra mà đọc. Vì ký ức trong thư sẽ nhắc người đọc nhớ lại.\" Mai nhìn phong bì trong tay. Bao nhiêu ngày nay, cô giữ nó như giữ một thứ không được đụng vào. Nhưng giờ đây, chính người gửi đã dặn: nếu quên thì hãy mở. Và cô thì đang quên, thật sự đang quên, từng chút một, ngay lúc này. Mai (giọng nhỏ như xin phép): \"Tớ mở nhé. Tớ mở đây, Bin.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Ông Tư dặn vậy đó. Hôm ở lưng chừng cầu, ông ấy có nói với tớ: thư này, nếu người mang nó quên mất vì sao mình đi, thì cứ mở ra mà đọc. Vì ký ức trong thư sẽ nhắc người đọc nhớ lại."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Tớ mở nhé. Tớ mở đây, Bin."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "cận, huyền ảo",
+              "visual": "Cô bóc phong bì thật chậm, thật cẩn thận, như sợ làm rách ký ức bên trong. Bên trong chỉ có một tờ giấy mỏng, chữ viết tay đều và đẹp, và một thứ khác mà cô không ngờ tới: một mùi hương rất nhẹ bay ra khi cô mở tờ giấy. Mùi mưa. Mùi của mưa trên mây, mùi của một buổi chiều rất xa.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 5,
+          "title": "Buổi chiều mưa mây",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn, chuyển cảnh vào ký ức",
+              "visual": "Mai bắt đầu đọc. Và ngay từ dòng đầu tiên, cô không còn ở trong căn chòi nữa. Cô đang đứng dưới một cơn mưa mây. Mưa ở Trạm Mây không giống mưa ở mặt đất: mưa mây nhẹ và lạnh, rơi thành từng hạt nhỏ li ti, ướt áo mà không ướt người, như đi qua một làn sương dày.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung, trong ký ức",
+              "visual": "Trong ký ức đó, một chàng trai trẻ đứng trú dưới mái hiên của bưu điện, tay ôm một xấp thư, vai ướt đẫm. Chàng trai đó là ông Tư, hai mươi tuổi, chưa có tóc bạc, chưa có gậy gỗ, chỉ có một đôi mắt sáng và một nỗi ngại ngùng rất rõ khi nhìn ai đó.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung, trong ký ức",
+              "visual": "Từ trong mưa, một cô gái bước tới. Cô gái cầm một chiếc ô giấy, màu hồng nhạt, nghiêng nghiêng che mưa. Cô dừng lại trước mái hiên, nhìn chàng trai ướt sũng, rồi không nói gì, chỉ nghiêng ô của mình sang phía anh, để một nửa ô che cho anh, một nửa che cho cô. Hai người đứng chung một chiếc ô, vai kề vai, không ai nói câu nào trong một lúc lâu, chỉ nghe tiếng mưa rơi trên giấy ô, lộp bộp, lộp bộp, như một bài hát không lời.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung, trong ký ức",
+              "visual": "Rồi cô gái cười. Cô nói, giọng trong như tiếng chuông nhỏ. Lan: \"Anh giao thư mà để thư ướt hết thì người nhận buồn lắm đấy.\" Chàng trai luống cuống, ôm xấp thư chặt hơn, nói lắp: \"Tôi... tôi che rồi mà. Tôi che bằng áo của tôi. Chỉ ướt một chút ở mép thôi.\" Lan (vẫn cười): \"Một chút cũng là ướt. Lần sau mưa thì đứng vào đây này. Mái hiên này rộng, đủ cho hai người.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Lan",
+                  "text": "Anh giao thư mà để thư ướt hết thì người nhận buồn lắm đấy."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Tôi... tôi che rồi mà. Tôi che bằng áo của tôi. Chỉ ướt một chút ở mép thôi."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Lan",
+                  "text": "Một chút cũng là ướt. Lần sau mưa thì đứng vào đây này. Mái hiên này rộng, đủ cho hai người."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung, trong ký ức",
+              "visual": "Ký ức kết thúc bằng một hình ảnh: hai người ngồi dưới mái hiên, mưa đã tạnh, ô giấy dựng bên cạnh, khô dần trong nắng. Lan đưa cho Tư một bông hoa giấy màu hồng, nói: \"Cầm lấy. Hoa giấy không tàn, nên anh sẽ không quên em được đâu.\" Tư cầm lấy, cất vào túi áo, và giữ nó suốt hai mươi năm, cho tới khi bão cũ đi qua và lấy đi của Lan tất cả, trừ những bông hoa giấy.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Lan",
+                  "text": "Cầm lấy. Hoa giấy không tàn, nên anh sẽ không quên em được đâu."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 6,
+          "title": "Nhớ lại",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Mai đọc xong, gấp tờ giấy lại thật cẩn thận. Cô ngẩng lên, và thấy Bin đang nhìn cô, mắt mở to, chờ đợi. Mai nói, giọng rõ ràng, không còn hoang mang nữa. Mai: \"Tớ nhớ rồi. Tớ là Mai. Cậu là Bin. Mình đi Hải Đăng để giao bức thư này cho bà Lan. Ông Tư chờ ở tháp. Bão đang tới. Và mình không được dừng lại.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Tớ nhớ rồi. Tớ là Mai. Cậu là Bin. Mình đi Hải Đăng để giao bức thư này cho bà Lan. Ông Tư chờ ở tháp. Bão đang tới. Và mình không được dừng lại."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin thở ra một hơi dài, như thể cậu đã nín thở từ nãy tới giờ. Bin: \"Cậu nhớ lại thật rồi à?\" Mai: \"Nhớ lại rồi. Không phải nhớ bằng đầu đâu, Bin. Nhớ bằng cái cảm giác lúc đọc thư ấy. Như thể có ai đó vừa đặt lại vào tay tớ một thứ tớ đánh rơi. Tớ nhớ vì sao mình đi, và tớ sẽ không quên nữa đâu.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Cậu nhớ lại thật rồi à?"
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Nhớ lại rồi. Không phải nhớ bằng đầu đâu, Bin. Nhớ bằng cái cảm giác lúc đọc thư ấy. Như thể có ai đó vừa đặt lại vào tay tớ một thứ tớ đánh rơi. Tớ nhớ vì sao mình đi, và tớ sẽ không quên nữa đâu."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai chép lại ký ức vừa sống vào sổ, bằng chính lời của mình, không phải lời của ông Tư, mà là lời của một người vừa đi qua cơn mưa đó lần thứ hai. Cô kể cho Bin nghe buổi chiều mưa mây, và Bin gật đầu, rồi nói: \"Và cậu cũng thấy rồi đấy, thư này không chỉ nhắc một người. Nó nhắc cả tớ nữa. Lúc cậu đọc thư, tớ bỗng nhớ ra cách sửa cánh quạt, nhớ đúng thứ tự, như thể ký ức trong thư lan ra ngoài, chạm vào ai ở gần cũng nhắc người đó nhớ lại một thứ của riêng mình. Giống như ánh đèn vậy.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Và cậu cũng thấy rồi đấy, thư này không chỉ nhắc một người. Nó nhắc cả tớ nữa. Lúc cậu đọc thư, tớ bỗng nhớ ra cách sửa cánh quạt, nhớ đúng thứ tự, như thể ký ức trong thư lan ra ngoài, chạm vào ai ở gần cũng nhắc người đó nhớ lại một thứ của riêng mình. Giống như ánh đèn vậy."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai gật đầu, nghĩ tới ánh đèn Hải Đăng, thứ mà cô đang đi tới. Cô đứng dậy, đeo túi lên vai, cất bức thư đã mở vào một ngăn riêng, bọc thêm một lớp vải để nó không ướt, không rách. Thư đã mở, nhưng vẫn phải tới tay bà Lan, vì người cần sống lại ký ức đó nhất chính là bà ấy. Bin cũng đứng dậy, nhìn hộp đồ nghề của mình, rồi nhìn Gió Nhỏ, rồi bỗng cười toe: \"Tớ cũng nhớ rồi này! Tớ nhớ cách sửa cánh quạt rồi. Tháo cánh ra trước, nắn lại, rồi mới lắp vào. Đúng thứ tự rồi, không lộn nữa.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Tớ cũng nhớ rồi này! Tớ nhớ cách sửa cánh quạt rồi. Tháo cánh ra trước, nắn lại, rồi mới lắp vào. Đúng thứ tự rồi, không lộn nữa."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "toàn, khung lớn cuối chương",
+              "visual": "Gió Nhỏ bay lên, lượn một vòng quanh hai đứa, cánh quạt quay đều và khỏe, như thể nó cũng vừa nhớ lại cách bay. Mai nhìn Bin, Bin nhìn Mai, và cả hai cùng hiểu: ký ức trong thư không chỉ nhắc một người. Nó nhắc cả đoàn, như ánh đèn nhắc cả thành phố. Mai bước ra khỏi chòi, về phía con đường lên cao, giọng chắc chắn: \"Đi thôi. Hải Đăng còn ở phía trước. Và lần này, tớ sẽ không để mình quên nữa.\" Phía sau, bức tường xám vẫn lặng lẽ tiến tới. Nhưng phía trước, hai đứa trẻ bước đi nhanh hơn, vững hơn, vì giờ đây chúng không chỉ mang theo một bức thư. Chúng mang theo một lý do để đi, vừa được nhắc lại, còn ấm nóng trong tay người mang nó.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Đi thôi. Hải Đăng còn ở phía trước. Và lần này, tớ sẽ không để mình quên nữa."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "title": "Lên tháp và ngọn đèn cần gió thật (chuyển thể novel chương 16 + 17)",
+      "pages": [
+        {
+          "number": 1,
+          "title": "Leo tháp",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Sáng sớm, hai đứa đứng trước cầu thang xoắn trong tháp. Cầu thang hẹp, bậc đá mòn, tay vịn bằng sắt đã rỉ. Mai ngẩng lên, nhìn theo đường xoắn ốc lên cao, không thấy đỉnh. Gió Nhỏ bay lên trước dò đường, rồi bay về đậu lên vai Mai, kêu lạch cạch vài tiếng như báo cáo đường phía trên vẫn đi được.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Mai bắt đầu leo, đếm bước thành tiếng như mọi lần. \"Một, hai, ba, bốn.\" Bin đi ngay sau, đếm theo, giọng đều và chậm. Cứ leo được một đoạn, hai đứa lại dừng lại thở, vì cầu thang dốc và không khí trên cao loãng hơn dưới đất.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Một, hai, ba, bốn."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Tới một chiếu nghỉ, Mai ngồi xuống, lấy sổ ra ghi. Chữ trong sổ: \"Tháp cao hơn mình tưởng. Cầu thang xoắn, bậc đá mòn. Gió Nhỏ bay lên trước rồi về báo cáo. Bin đếm theo mình.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong sổ",
+                  "text": "Tháp cao hơn mình tưởng. Cầu thang xoắn, bậc đá mòn. Gió Nhỏ bay lên trước rồi về báo cáo. Bin đếm theo mình."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Leo tiếp, Mai vấp một bậc đá sứt ở phía tay trái, suýt ngã. Cô nhớ lời Khải dặn hôm nào: đi sát phía tay phải. Cô nắm tay vịn chặt hơn, đi chậm lại, nhưng không dừng. Bin đi sau, tay lúc nào cũng sẵn sàng đỡ lấy cô nếu cô trượt chân.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Tới gần đỉnh tháp, Mai nghe thấy tiếng gì đó rất khẽ từ phía trên: tiếng kim loại rung nhẹ, tiếng kính kêu lách tách trong gió, và tiếng một người đang lẩm bẩm đếm. Cô ngẩng lên, và thấy ông Tư đang đứng ở cửa phòng đèn, tay chống gậy, nhìn xuống hai đứa, mắt sáng lên khi thấy Mai vẫn còn mang theo túi thư.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "title": "Đèn chính tắt",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Phòng đèn trên đỉnh tháp: một căn phòng tròn, tường kính bốn phía, ở giữa là một ngọn đèn lớn, thấu kính thủy tinh dày, ánh sáng vàng ấm tỏa ra khắp phòng, soi rõ từng hạt bụi bay trong không khí. Ông Tư đứng cạnh đèn, tay đặt lên thấu kính như đặt tay lên vai một người bạn cũ.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Ông Tư nhìn Mai, nói giọng khàn nhưng rõ từng chữ. Ông Tư: \"Cháu tới đúng lúc lắm. Đèn chính sắp tắt rồi. Nó đã chớp tắt hai lần, và lần nào cũng lâu hơn lần trước. Ta đã giữ nó bốn mươi năm, nhưng lần này, ta giữ không nổi nữa.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Cháu tới đúng lúc lắm. Đèn chính sắp tắt rồi. Nó đã chớp tắt hai lần, và lần nào cũng lâu hơn lần trước. Ta đã giữ nó bốn mươi năm, nhưng lần này, ta giữ không nổi nữa."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung, gây cấn",
+              "visual": "Đúng lúc đó, ngọn đèn lớn chớp một cái, rồi tắt hẳn. Không phải tắt dần, mà tắt phụt, như một người thổi tắt một ngọn nến. Phòng đèn chìm vào bóng tối, chỉ còn ánh sáng xám từ ngoài cửa sổ hắt vào. Mai, Bin và ông Tư đứng sững trong bóng tối, không ai nói gì trong một lúc lâu.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Bin là người lên tiếng trước, giọng cố tỏ ra bình tĩnh. Bin: \"Đèn dự phòng đâu? Chú Ba nói có đèn dự phòng mà. Chìa khóa đâu, Mai?\" Mai lấy trong túi ra chiếc chìa khóa đồng nhỏ mà chị Thu đưa hôm nào, tay hơi run. Cô nhìn ông Tư, ông gật đầu, chỉ về phía một góc phòng, nơi có một ngọn đèn nhỏ hơn, cũ hơn, phủ một lớp bụi dày.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Đèn dự phòng đâu? Chú Ba nói có đèn dự phòng mà. Chìa khóa đâu, Mai?"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Mai phủi bụi trên ngọn đèn dự phòng. Dưới lớp bụi, trên đế đèn, có một dấu khắc nhỏ hình phong bì, giống hệt dấu trên phong bì thư không tên. Mai tra chìa khóa vào ổ, xoay nhẹ, ổ khóa kêu một tiếng \"cạch\" khô khốc. Nhưng đèn không sáng. Bin xem xét, rồi nói, giọng thất vọng: \"Đèn này không cháy bằng dầu. Nó cháy bằng gió. Gió thật. Gió từ ngoài trời thổi vào mới thắp được nó.\"",
+              "lines": [
+                {
+                  "kind": "sfx",
+                  "text": "cạch"
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Đèn này không cháy bằng dầu. Nó cháy bằng gió. Gió thật. Gió từ ngoài trời thổi vào mới thắp được nó."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "title": "Gió Nhỏ bay chưa đủ",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Mai nhìn quanh phòng đèn. Bốn phía đều là cửa sổ, tổng cộng mười hai cái, tất cả đều đang đóng kín để chắn gió. Cô hiểu ngay: muốn có gió thật thì phải mở hết cửa ra, để gió ngoài trời ùa vào. Cô chạy tới cửa sổ đầu tiên, mở tung ra. Gió lạnh ùa vào, thổi tung tóc cô.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Bin chạy theo, mở các cửa sổ còn lại, một cái, hai cái, ba cái. Tới cửa sổ thứ bảy, chốt bị kẹt, rỉ sét đã ăn sâu vào bản lề. Bin lấy cờ lê ra, gõ nhẹ vài cái, rồi dùng dây buộc chốt lại để cửa không tự đóng sập xuống trong gió.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mười hai cửa sổ đều mở. Gió ùa vào phòng đèn từ mọi phía, thổi tung giấy tờ, thổi tắt cả ngọn nến nhỏ trên bàn. Nhưng ngọn đèn dự phòng vẫn không sáng. Nó chỉ rung nhẹ, như một người đang cố hít thở mà không đủ hơi.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Bin tung Gió Nhỏ lên. Con chim máy bay vòng quanh phòng đèn, cánh quạt quay tít, tạo ra một luồng gió nhỏ xoáy quanh ngọn đèn. Gió Nhỏ bay một vòng, hai vòng, ba vòng, nhanh dần, nhưng ngọn đèn vẫn không sáng. Nó cần gió mạnh hơn thế, gió thật, gió của trời, không phải gió của một con chim máy nhỏ.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Gió Nhỏ bay chậm dần, rồi đậu xuống vai Bin, cánh quạt quay yếu ớt. Bin nhìn nó, rồi nhìn Mai, giọng nhỏ lại: \"Nó cố hết sức rồi. Nhưng nó chỉ là một con chim máy nhỏ. Gió của nó không đủ.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Nó cố hết sức rồi. Nhưng nó chỉ là một con chim máy nhỏ. Gió của nó không đủ."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 4,
+          "title": "Đọc sổ của chính mình",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Mai ngồi xuống sàn phòng đèn, lưng tựa vào tường, nhìn ngọn đèn dự phòng vẫn tối om. Cô cảm thấy mọi thứ mình mang theo suốt chuyến đi, từ túi thư tới chìa khóa tới lời hứa, đều đang tuột khỏi tay cô, giống như cách bão đã lấy đi từng thứ của thành phố. Cô nhắm mắt lại, hít thở thật sâu, và bỗng nhớ ra một thứ: cuốn sổ của mình.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Cô lấy sổ ra, lật từng trang, đọc lại những dòng chữ mình đã viết suốt chuyến đi: bà Bảy quên mùi bánh, bảng phố mờ chữ, bé Mây hát sai lời ru, đèn chớp tắt, Bin đếm thay mình, và dòng chữ cô viết đêm ở Trạm Nghỉ: \"Đèn lồng là để người ta tìm được đường về.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "dòng chữ mình đã viết suốt chuyến đi: bà Bảy quên mùi bánh",
+                  "text": "Đèn lồng là để người ta tìm được đường về."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "cận",
+              "visual": "Cô lật tới trang cuối cùng, nơi cô viết mẩu giấy tự nhắc hôm nào, và đọc lại chính lời của mình, giọng nhỏ dần rồi chắc dần. Chữ trong sổ: \"Tôi là Mai. Tôi là người giao thư. Tôi đi Hải Đăng để giao một bức thư cho bà Lan. Nếu tôi quên, hãy đọc dòng này cho tôi nghe.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong sổ",
+                  "text": "Tôi là Mai. Tôi là người giao thư. Tôi đi Hải Đăng để giao một bức thư cho bà Lan. Nếu tôi quên, hãy đọc dòng này cho tôi nghe."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai ngẩng lên, nhìn quanh phòng đèn, nhìn mười hai cửa sổ đang mở, nhìn gió đang ùa vào, và bỗng hiểu ra một điều rất đơn giản mà cô đã quên mất vì quá căng thẳng: gió không tự tới. Gió phải có người tạo ra, ngay lúc cần nó. Và người đó, lúc này, chỉ có thể là cô. Mai (nói to, giọng chắc chắn): \"Bin, ông Tư, nghe này. Đèn cần gió thật. Gió thật không tới thì mình tự tạo ra gió. Mình chạy. Chạy quanh phòng đèn này, càng nhanh càng tốt, gió từ bước chạy sẽ thổi vào đèn.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Bin, ông Tư, nghe này. Đèn cần gió thật. Gió thật không tới thì mình tự tạo ra gió. Mình chạy. Chạy quanh phòng đèn này, càng nhanh càng tốt, gió từ bước chạy sẽ thổi vào đèn."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Bin há hốc miệng, rồi bật cười, một tiếng cười vừa ngạc nhiên vừa nhẹ nhõm. Bin: \"Chạy quanh phòng đèn để thắp đèn? Nghe điên rồ thật. Nhưng mà... mọi cách điên rồ từ đầu chuyến đi tới giờ đều hiệu quả cả.\" Ông Tư gật đầu chậm rãi, mắt sáng lên: \"Thợ đèn đầu tiên cũng làm vậy đấy. Khi gió lặng, ông ấy chạy quanh bệ đá, đếm từng bước, cho tới khi đèn sáng lên.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Chạy quanh phòng đèn để thắp đèn? Nghe điên rồ thật. Nhưng mà... mọi cách điên rồ từ đầu chuyến đi tới giờ đều hiệu quả cả."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Thợ đèn đầu tiên cũng làm vậy đấy. Khi gió lặng, ông ấy chạy quanh bệ đá, đếm từng bước, cho tới khi đèn sáng lên."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 5,
+          "title": "Chạy và đếm",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung, hành động",
+              "visual": "Mai đứng dậy, đeo túi lên vai, bắt đầu chạy quanh bệ đá của phòng đèn, vòng thứ nhất, chậm rãi, vừa chạy vừa đếm thành tiếng: \"Một, hai, ba, bốn.\" Gió từ bước chạy của cô bắt đầu lay động không khí trong phòng, nhẹ như một hơi thở.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Một, hai, ba, bốn."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung, hành động",
+              "visual": "Vòng thứ hai, thứ ba, cô chạy nhanh hơn, tiếng đếm to hơn, rõ hơn. Bin đứng ở một góc phòng, đếm theo cô, giọng đều và chắc: \"Năm, sáu, bảy, tám.\" Gió mạnh dần lên, thổi tung tóc Mai, thổi bay những tờ giấy trên bàn.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Năm, sáu, bảy, tám."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung, hành động",
+              "visual": "Tới vòng thứ sáu, Mai bắt đầu mệt, chân nặng dần, hơi thở gấp gáp, nhưng cô không dừng lại. Và rồi, từ dưới chân tháp, có một giọng đếm khác vọng lên, khàn nhưng rõ: giọng ông Tư, cũng đang chạy quanh chân tháp, đếm theo cô, từng bước một. Ông Tư (vọng lên): \"Chín, mười, mười một, mười hai.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Chín, mười, mười một, mười hai."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung, cao trào",
+              "visual": "Gió trong phòng đèn giờ đã mạnh thật sự, thổi tung mọi thứ, thổi qua ngọn đèn dự phòng, và ngọn đèn bắt đầu rung lên, mạnh hơn trước, rồi bỗng nhiên, từ bên trong nó, một đốm sáng nhỏ xíu nhen lên, như một con đom đóm vừa tỉnh giấc. Mai nhìn thấy đốm sáng, hét lên: \"Sáng rồi! Nó sáng rồi! Chạy tiếp đi, đừng dừng lại!\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Sáng rồi! Nó sáng rồi! Chạy tiếp đi, đừng dừng lại!"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Bin cũng chạy theo Mai, hai đứa chạy cùng nhau quanh bệ đá, đếm cùng nhau, giọng hòa vào nhau thành một nhịp duy nhất. Đốm sáng trong đèn lớn dần lên, từ một đốm nhỏ thành một ngọn lửa nhỏ, rồi thành một ngọn lửa lớn, vàng rực, soi sáng cả phòng đèn.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 6,
+          "title": "Ánh sáng trở lại",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn, khung lớn",
+              "visual": "Ngọn đèn dự phòng sáng bừng lên, ánh sáng vàng rực xuyên qua thấu kính, chiếu ra ngoài qua mười hai cửa sổ đang mở, thành mười hai luồng sáng, và qua thấu kính lớn trên đỉnh tháp, thành một luồng sáng duy nhất, mạnh mẽ, xuyên qua lớp mây xám, chiếu thẳng xuống thành phố Trạm Mây ở phía xa.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Mai dừng lại, thở hổn hển, chống tay lên đầu gối, nhìn ngọn đèn đang sáng, rồi bật cười, một tiếng cười vừa mệt vừa nhẹ nhõm vừa không tin nổi. Cô ngồi phịch xuống sàn, lưng tựa vào bệ đá, mắt vẫn không rời khỏi ngọn đèn.",
+              "lines": []
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bin cũng ngồi xuống cạnh cô, thở dốc, mặt đỏ bừng vì chạy, nhưng miệng vẫn cười toe. Bin: \"Thấy chưa, tớ đã bảo mà. Mọi cách điên rồ đều hiệu quả.\" Mai: \"Lần này thì cậu đúng thật.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Thấy chưa, tớ đã bảo mà. Mọi cách điên rồ đều hiệu quả."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Lần này thì cậu đúng thật."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Ông Tư bước vào phòng đèn, chậm rãi, tay chống gậy, nhìn ngọn đèn đang sáng, rồi nhìn Mai, rồi đặt tay lên vai cô, không nói gì trong một lúc lâu. Rồi ông nói, giọng khàn đi vì xúc động. Ông Tư: \"Bốn mươi năm giữ đèn, ta chưa từng thấy ai thắp đèn bằng cách chạy cả. Cháu là người đầu tiên. Và cháu đã làm được.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Bốn mươi năm giữ đèn, ta chưa từng thấy ai thắp đèn bằng cách chạy cả. Cháu là người đầu tiên. Và cháu đã làm được."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "toàn, khung lớn cuối chương",
+              "visual": "Từ trên đỉnh tháp nhìn xuống, ánh sáng từ Hải Đăng lan ra khắp thành phố, từng ô cửa sổ sáng lên, từng con đường sáng lên, như một bàn tay đang thắp từng ngọn đèn một. Mai đứng bên cửa sổ, nhìn ánh sáng lan đi, tay nắm chặt túi thư, và nghĩ: đèn đã sáng lại. Giờ chỉ còn một việc nữa thôi: mang thư xuống núi, về Nhà Hoa Giấy, giao tận tay bà Lan. Mai: \"Đi thôi, Bin. Đèn đã sáng. Giờ tới lượt mình mang thư về.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Đi thôi, Bin. Đèn đã sáng. Giờ tới lượt mình mang thư về."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "title": "Thư tới tay người nhận (chuyển thể novel chương 18 + 19 + 20)",
+      "pages": [
+        {
+          "number": 1,
+          "title": "Xuống núi",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Sáng sớm hôm sau, Mai và Bin đứng ở cửa phòng đèn, nhìn ngọn đèn dự phòng vẫn sáng đều sau một đêm, ánh sáng vàng ấm xuyên qua thấu kính, chiếu xuống thành phố. Ông Tư đứng cạnh, tay chống gậy, mắt nhìn theo luồng sáng như nhìn một người bạn cũ đang đi xa dần.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Ông Tư quay sang Mai, nói chậm rãi, giọng đã bớt khàn hơn hôm qua, như thể ánh sáng cũng chữa lành giọng nói của ông. Ông Tư: \"Đèn sáng rồi. Nhưng đèn cần người giữ, mỗi ngày, không nghỉ. Cháu xuống núi đi, mang thư về Nhà Hoa Giấy, giao tận tay bà Lan. Đừng để thư chờ thêm một đêm nào nữa.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Đèn sáng rồi. Nhưng đèn cần người giữ, mỗi ngày, không nghỉ. Cháu xuống núi đi, mang thư về Nhà Hoa Giấy, giao tận tay bà Lan. Đừng để thư chờ thêm một đêm nào nữa."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Mai gật đầu, đeo túi lên vai, kiểm tra lại ngăn riêng trong túi, nơi bức thư đã mở được bọc thêm một lớp vải, nguyên vẹn, không ướt, không rách. Bin cũng kiểm tra lại hộp đồ nghề, Gió Nhỏ đậu trên vai, cánh quạt quay đều và khỏe.",
+              "lines": []
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Hai đứa bắt đầu xuống cầu thang xoắn, lần này đi xuống nên nhanh hơn đi lên rất nhiều, nhưng Mai vẫn đếm bước thành tiếng, không phải vì sợ quên nữa, mà vì đếm đã thành thói quen của cô, giống như hơi thở vậy. Bin đếm theo, giọng vui vẻ hơn mọi ngày.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "toàn",
+              "visual": "Xuống tới chân tháp, hai đứa quay đầu nhìn lên lần cuối. Ngọn đèn trên đỉnh tháp vẫn sáng, và từ đây nhìn xuống, thành phố Trạm Mây hiện ra với từng ô cửa sổ đang sáng dần lên, từng con đường đang sáng dần lên, như một bàn tay vô hình đang thắp từng ngọn đèn một, từ tháp đèn lan ra khắp thành phố.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 2,
+          "title": "Thành phố nhớ lại",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Hai đứa đi qua phố Mây Trắng. Bảng tên phố, hôm nào chữ \"Trắng\" đã mờ hẳn chỉ còn chữ \"Mây\", giờ chữ \"Trắng\" đang hiện lại, nét chữ đậm dần lên, như có ai đó đang viết lại nó bằng một cây bút vô hình. Một người đàn ông đứng trước bảng, gật gù: \"Ừ, phố Mây Trắng. Đúng rồi, phố Mây Trắng.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "chữ",
+                  "text": "Trắng"
+                },
+                {
+                  "kind": "written",
+                  "source": "chữ",
+                  "text": "Mây"
+                },
+                {
+                  "kind": "written",
+                  "source": "chữ",
+                  "text": "Trắng"
+                },
+                {
+                  "kind": "written",
+                  "source": "bảng",
+                  "text": "Ừ, phố Mây Trắng. Đúng rồi, phố Mây Trắng."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Tới bưu điện, bà Sáu đang ngồi ghi sổ. Lần này, bà viết liền mạch, không dừng lại giữa chừng, không nhìn chằm chằm vào một cái tên nào nữa. Thấy Mai, bà ngẩng lên, cười, và gọi đúng tên cô ngay lập tức, không do dự: \"Mai! Về rồi à? Thư giao tới đâu rồi?\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Mai! Về rồi à? Thư giao tới đâu rồi?"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Khải đang giao thư ở cuối phố, lần này cậu đi chậm lại, tới mỗi nhà đều dừng lại, nói chuyện với chủ nhà vài câu rồi mới đưa thư, không chạy vội như mọi ngày. Thấy Mai, cậu giơ tay chào, cười toe: \"Mai! Tớ giao lại từ đầu rồi. Lần này, tớ giao chậm mà chắc.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Mai! Tớ giao lại từ đầu rồi. Lần này, tớ giao chậm mà chắc."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Bà Bảy ở chợ đang trở bánh, mùi bánh nướng thơm lừng khắp chợ, khác hẳn mùi nhạt nhẽo hôm nào. Bà thấy Mai, vẫy tay gọi lớn: \"Mai! Bánh bao nhân thịt, nướng mười lăm phút thì vàng, bà nhớ rồi! Lấy hai cái đi, bà cho, không lấy tiền!\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Mai! Bánh bao nhân thịt, nướng mười lăm phút thì vàng, bà nhớ rồi! Lấy hai cái đi, bà cho, không lấy tiền!"
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Mai nhận bánh, mắt hơi cay. Cô nhìn quanh chợ, nhìn những người bán hàng đang nhớ lại từng thứ của mình, và nghĩ: ánh sáng từ Hải Đăng không chỉ soi đường. Nó nhắc người ta nhớ lại. Giống như bức thư đã nhắc cô nhớ lại, ánh sáng này đang nhắc cả thành phố nhớ lại, từng người một, từng ký ức một.",
+              "lines": []
+            }
+          ]
+        },
+        {
+          "number": 3,
+          "title": "Bé Mây nhớ lại",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Đi qua một con hẻm nhỏ, Mai nghe thấy tiếng hát. Một giọng trẻ con, trong veo, đang hát lời ru, lần này không sai một chữ nào, giai điệu đúng, lời đúng, nhịp đúng. Mai dừng lại, quay về phía tiếng hát, và thấy bé Mây đang ngồi hát trước cửa nhà, mẹ bé ngồi cạnh, cười hiền.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "cận, cảm động",
+              "visual": "Bé Mây ngẩng lên, thấy Mai, mắt sáng lên, rồi chạy ào tới, ôm chầm lấy chân cô. Bé Mây: \"Chị Mai! Chị Mai về rồi! Em nhớ chị! Em hát đúng rồi này, chị nghe em hát nhé!\" Mai cúi xuống, ôm lấy bé, và lần này, cô không quay đi để giấu mặt mình nữa. Cô cười, một nụ cười thật sự, lần đầu tiên kể từ ngày bé quên cô.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bé Mây",
+                  "text": "Chị Mai! Chị Mai về rồi! Em nhớ chị! Em hát đúng rồi này, chị nghe em hát nhé!"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bin đứng cạnh, nhìn hai chị em, rồi quay đi, giả vờ xem xét Gió Nhỏ để giấu mắt mình cũng hơi đỏ. Gió Nhỏ bay lên, lượn một vòng quanh bé Mây, cánh quạt quay đều, không còn kêu lạch cạch nữa. Bin nói, giọng hơi khàn: \"Tớ cũng nhớ rồi này. Tớ nhớ cách sửa cánh quạt rồi, đúng thứ tự, không lộn nữa. Tháo cánh ra trước, nắn lại, rồi mới lắp vào.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Tớ cũng nhớ rồi này. Tớ nhớ cách sửa cánh quạt rồi, đúng thứ tự, không lộn nữa. Tháo cánh ra trước, nắn lại, rồi mới lắp vào."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mẹ bé Mây bước tới, đặt tay lên vai Mai, nói nhỏ. Mẹ bé Mây: \"Cảm ơn cháu. Sáng nay, con bé tỉnh dậy và hỏi mẹ: 'Chị Mai đâu rồi?' Mẹ mừng tới mức suýt khóc. Mấy ngày nay, nó quên cả chị, mẹ cứ tưởng nó quên luôn rồi.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Cảm ơn cháu. Sáng nay, con bé tỉnh dậy và hỏi mẹ: 'Chị Mai đâu rồi?' Mẹ mừng tới mức suýt khóc. Mấy ngày nay, nó quên cả chị, mẹ cứ tưởng nó quên luôn rồi."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Mai lắc đầu, cười: \"Không có gì đâu ạ. Cháu chỉ đi giao thư thôi.\" Nhưng trong lòng cô, cô biết: cô không chỉ đi giao thư. Cô đã đi mang ánh sáng về, và ánh sáng đó đang trả lại cho thành phố từng thứ mà bão đã lấy đi, bắt đầu từ những thứ nhỏ nhất: một bài hát, một cái tên, một mùi bánh.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Không có gì đâu ạ. Cháu chỉ đi giao thư thôi."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 4,
+          "title": "Nhà Hoa Giấy",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "toàn",
+              "visual": "Tới Nhà Hoa Giấy, hai đứa dừng lại trước cửa. Ngôi nhà nhỏ, xung quanh đầy hoa giấy đủ màu, hồng, vàng, trắng, và xen giữa hoa giấy là hoa thật, đang nở rộ trong nắng. Trên hiên nhà, một người phụ nữ tóc bạc đang ngồi gấp hoa giấy, tay thoăn thoắt, mắt nhìn xa xăm về phía Hải Đăng.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Mai bước tới, tim đập mạnh. Cô đã đi bao nhiêu ngày, qua bao nhiêu cầu, bao nhiêu vực, bao nhiêu cơn gió, chỉ để tới được giây phút này: đứng trước bà Lan, người phụ nữ trong ký ức mưa mây, người mà ông Tư đã chờ hai mươi năm. Cô lấy bức thư ra khỏi túi, hai tay đưa về phía bà, giọng hơi run nhưng rõ ràng. Mai: \"Bà ơi, cháu là Mai, người giao thư. Cháu mang thư tới cho bà. Thư này, ông Tư gửi bà. Cháu đã đi từ Trạm Mây, qua cầu Mây, qua vực Gió, lên Hải Đăng, và giờ cháu mang nó về đây, giao tận tay bà.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Bà ơi, cháu là Mai, người giao thư. Cháu mang thư tới cho bà. Thư này, ông Tư gửi bà. Cháu đã đi từ Trạm Mây, qua cầu Mây, qua vực Gió, lên Hải Đăng, và giờ cháu mang nó về đây, giao tận tay bà."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "cận",
+              "visual": "Bà Lan nhìn phong bì, tay run nhẹ. Bà không mở ra ngay. Bà đưa phong bì lên gần mặt, nhắm mắt lại, hít một hơi thật sâu, và mỉm cười, một nụ cười rất nhẹ, rất xa xăm. Bà Lan (thì thầm): \"Mùi mưa. Mùi của một buổi chiều mưa mây, rất lâu rồi.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Lan",
+                  "text": "Mùi mưa. Mùi của một buổi chiều mưa mây, rất lâu rồi."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Bà Lan mở thư ra, chậm rãi, cẩn thận, rồi bắt đầu đọc, dưới ánh sáng từ Hải Đăng vẫn đang chiếu tới, xuyên qua cửa sổ, soi rõ từng chữ trên tờ giấy. Mai đứng cạnh, không đọc ké, chỉ nhìn bà đọc, nhìn mắt bà đi từ dòng này sang dòng khác, nhìn tay bà siết chặt tờ giấy, rồi thả lỏng, rồi lại siết chặt.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "cận",
+              "visual": "Đọc tới dòng cuối cùng, bà Lan dừng lại rất lâu, mắt nhòe đi, rồi bà gấp tờ giấy lại, ôm nó vào ngực, và nói, giọng nghẹn lại nhưng rõ ràng. Bà Lan: \"Ta nhớ rồi. Ta nhớ buổi chiều đó. Ta nhớ chiếc ô giấy màu hồng. Ta nhớ chàng trai ướt sũng đứng dưới mái hiên bưu điện. Ta nhớ hết rồi, Mai ạ. Cảm ơn cháu. Cháu đã mang ký ức của ta trở về.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Lan",
+                  "text": "Ta nhớ rồi. Ta nhớ buổi chiều đó. Ta nhớ chiếc ô giấy màu hồng. Ta nhớ chàng trai ướt sũng đứng dưới mái hiên bưu điện. Ta nhớ hết rồi, Mai ạ. Cảm ơn cháu. Cháu đã mang ký ức của ta trở về."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 5,
+          "title": "Đoàn tụ",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Đúng lúc đó, có tiếng bước chân ngoài cửa. Chậm rãi, nặng nề, tiếng gậy gỗ gõ nhẹ lên nền đá, từng bước một, như đếm từng bước đi. Bà Lan ngẩng lên, nhìn về phía cửa, và Mai cũng quay lại nhìn. Ở cửa, ông Tư đang đứng, áo khoác dài màu xám, tóc bạc trắng, tay chống gậy, mắt nhìn thẳng vào bà Lan, không chớp.",
+              "lines": []
+            },
+            {
+              "number": 2,
+              "shot": "cận, lặng",
+              "visual": "Hai người nhìn nhau, rất lâu, không ai nói gì. Hai mươi năm, kể từ ngày bà Lan tỉnh dậy và hỏi \"Ông là ai?\", tới hôm nay, họ mới lại nhìn nhau như thế này: bà nhớ ông là ai, ông vẫn là ông, và khoảng cách hai mươi năm giữa họ bỗng thu lại chỉ còn bằng chiều rộng của một căn phòng nhỏ đầy hoa giấy.",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": null,
+                  "text": "Ông là ai?"
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Bà Lan đứng dậy, bước tới, từng bước một, chậm rãi như sợ mình đang mơ. Ông Tư cũng bước tới, gậy gỗ gõ nhẹ lên nền đá. Tới khi chỉ còn cách nhau một bước chân, bà Lan đưa tay lên, chạm nhẹ vào má ông, và nói, giọng run run nhưng chắc chắn. Bà Lan: \"Tư. Ông về rồi à.\" Ông Tư: \"Ừ. Ta về rồi, Lan. Ta mang thư về cho bà rồi, nhờ cô bé này đây.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bà Lan",
+                  "text": "Tư. Ông về rồi à."
+                },
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Ừ. Ta về rồi, Lan. Ta mang thư về cho bà rồi, nhờ cô bé này đây."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Hai người ôm nhau, nhẹ nhàng, như sợ làm vỡ một thứ gì đó mong manh vừa mới được trả lại. Mai và Bin đứng ở góc phòng, nhìn hai ông bà, không nói gì, chỉ mỉm cười. Gió Nhỏ đậu trên vai Bin, cánh quạt quay chậm, như cũng đang nín thở theo.",
+              "lines": []
+            },
+            {
+              "number": 5,
+              "shot": "trung",
+              "visual": "Ông Tư quay sang Mai, đặt tay lên vai cô, nói giọng trầm và ấm. Ông Tư: \"Mai này, cháu đã làm được một việc mà ta không làm được trong hai mươi năm. Cháu đã mang thư tới, và mang ánh sáng về. Từ nay, cháu không chỉ là người giao thư nữa. Cháu là người giữ đèn, cùng với ta.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Mai này, cháu đã làm được một việc mà ta không làm được trong hai mươi năm. Cháu đã mang thư tới, và mang ánh sáng về. Từ nay, cháu không chỉ là người giao thư nữa. Cháu là người giữ đèn, cùng với ta."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "number": 6,
+          "title": "Lời hứa giữ đèn",
+          "panels": [
+            {
+              "number": 1,
+              "shot": "trung",
+              "visual": "Mai nhìn ông Tư, rồi nhìn bà Lan, rồi gật đầu, giọng chắc chắn. Mai: \"Cháu nhận. Cháu sẽ giữ đèn cùng ông. Mỗi ngày, cháu sẽ làm ba việc: lau kính, kiểm tra dầu và bấc, đếm cửa sổ. Cháu hứa.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Mai",
+                  "text": "Cháu nhận. Cháu sẽ giữ đèn cùng ông. Mỗi ngày, cháu sẽ làm ba việc: lau kính, kiểm tra dầu và bấc, đếm cửa sổ. Cháu hứa."
+                }
+              ]
+            },
+            {
+              "number": 2,
+              "shot": "trung",
+              "visual": "Ông Tư cười, lần đầu tiên Mai thấy ông cười thật sự, một nụ cười không còn buồn nữa. Ông Tư: \"Ba việc đó, ta đã làm bốn mươi năm. Giờ tới lượt cháu. Và nhớ: chừng nào còn đèn, còn có người giữ đèn. Chừng nào còn người giữ đèn, thư còn có người nhận.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Ông Tư",
+                  "text": "Ba việc đó, ta đã làm bốn mươi năm. Giờ tới lượt cháu. Và nhớ: chừng nào còn đèn, còn có người giữ đèn. Chừng nào còn người giữ đèn, thư còn có người nhận."
+                }
+              ]
+            },
+            {
+              "number": 3,
+              "shot": "trung",
+              "visual": "Chiều xuống, Mai và Bin ngồi trên hiên Nhà Hoa Giấy, ăn bánh bao bà Bảy cho, nhìn thành phố Trạm Mây phía xa, nơi ánh đèn Hải Đăng vẫn đang chiếu tới, từng ô cửa sổ sáng lên, từng con đường sáng lên. Bin nói, giọng vui vẻ: \"Vậy là xong rồi à? Thư đã tới tay người nhận, đèn đã sáng lại, thành phố đã nhớ lại hết.\"",
+              "lines": [
+                {
+                  "kind": "spoken",
+                  "speaker": "Bin",
+                  "text": "Vậy là xong rồi à? Thư đã tới tay người nhận, đèn đã sáng lại, thành phố đã nhớ lại hết."
+                }
+              ]
+            },
+            {
+              "number": 4,
+              "shot": "trung",
+              "visual": "Mai lắc đầu, cười, lấy sổ ra, viết dòng cuối cùng của chuyến đi, chữ nắn nót, rõ ràng. Chữ trong sổ: \"Thư đã tới tay người nhận. Thành phố sẽ không quên nữa. Vì từ nay, có thêm một người giữ đèn.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "Chữ trong sổ",
+                  "text": "Thư đã tới tay người nhận. Thành phố sẽ không quên nữa. Vì từ nay, có thêm một người giữ đèn."
+                }
+              ]
+            },
+            {
+              "number": 5,
+              "shot": "toàn, khung lớn cuối chương và cuối bộ manga",
+              "visual": "Hoàng hôn buông xuống Trạm Mây. Trên đỉnh tháp, ngọn đèn sáng rực, chiếu một luồng sáng vàng xuyên qua biển mây, soi rõ cả thành phố. Dưới hiên Nhà Hoa Giấy, ông Tư và bà Lan ngồi gấp hoa giấy cùng nhau, Mai và Bin ngồi ăn bánh, Gió Nhỏ bay lượn trên đầu. Không thoại, chỉ có ánh sáng, hoa giấy, và dòng chữ nhỏ ở góc khung: \"Hết. Thư đã tới tay người nhận.\"",
+              "lines": [
+                {
+                  "kind": "written",
+                  "source": "dòng chữ nhỏ ở góc khung",
+                  "text": "Hết. Thư đã tới tay người nhận."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

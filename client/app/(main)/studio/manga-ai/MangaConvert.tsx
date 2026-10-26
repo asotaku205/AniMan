@@ -22,6 +22,7 @@ export function MangaConverter() {
     isLoaded,
     selectProject,
     createProject,
+    importSampleProject,
     deleteProject,
     savePageData,
     addPageToProject,
@@ -70,6 +71,7 @@ export function MangaConverter() {
               setMode("publish");
             }}
             onCreateProject={createProject}
+            onImportSampleProject={importSampleProject}
             onDeleteProject={deleteProject}
           />
         )}

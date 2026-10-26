@@ -6,8 +6,9 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { sceneWords } from "../lib/novel";
+import { parseNovelSample } from "../lib/sampleLoader";
 import type { NovelStudioState } from "../hooks/useNovelStudio";
 
 type Editing = { kind: "novel" | "chapter" | "scene"; id: string } | null;
@@ -60,6 +61,9 @@ export function NovelBinder({ s }: { s: NovelStudioState }) {
   const [newNovel, setNewNovel] = useState("");
   const [newChapter, setNewChapter] = useState("");
   const [newScene, setNewScene] = useState("");
+  const [sampleOpen, setSampleOpen] = useState(false);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const [sampleError, setSampleError] = useState<string | null>(null);
 
   const startEdit = (kind: "novel" | "chapter" | "scene", id: string, title: string) => {
     setEditing({ kind, id });
@@ -78,6 +82,24 @@ export function NovelBinder({ s }: { s: NovelStudioState }) {
   };
 
   const askDelete = (id: string) => setConfirmId(id);
+
+  const openSample = async () => {
+    setSampleBusy(true);
+    setSampleError(null);
+    try {
+      const res = await fetch("/samples/thu-gui-thanh-pho-tren-may-novel.json");
+      if (!res.ok) throw new Error("Không tải được file dự án mẫu.");
+      const sample = parseNovelSample(await res.json());
+      await s.importSampleNovel(sample);
+      setSampleOpen(false);
+    } catch (err) {
+      setSampleError(
+        err instanceof Error ? err.message : "Không mở được dự án mẫu.",
+      );
+    } finally {
+      setSampleBusy(false);
+    }
+  };
 
   const titleInput = (
     <input
@@ -148,6 +170,13 @@ export function NovelBinder({ s }: { s: NovelStudioState }) {
             <Plus className="w-3.5 h-3.5" /> Tạo
           </button>
         </div>
+        <button
+          type="button"
+          onClick={() => setSampleOpen(true)}
+          className="mt-2 w-full h-8 rounded-lg bg-white/5 border border-white/10 px-2 text-[13px] text-amber-50/80 hover:bg-white/10 flex items-center justify-center gap-1.5"
+        >
+          <BookOpen className="w-3.5 h-3.5" /> Mở dự án mẫu
+        </button>
       </div>
 
       {s.selectedNovel && (
@@ -266,6 +295,46 @@ export function NovelBinder({ s }: { s: NovelStudioState }) {
             >
               <Plus className="w-3.5 h-3.5" /> Thêm
             </button>
+          </div>
+        </div>
+      )}
+      {sampleOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl border border-amber-200/20 bg-[#1c1208] p-5 shadow-2xl">
+            <h3 className="text-amber-50 font-medium">Mở dự án mẫu</h3>
+            <p className="mt-2 text-[13px] text-amber-50/80 leading-relaxed">
+              <span className="font-medium text-amber-50">
+                Thư Gửi Thành Phố Trên Mây
+              </span>
+              <br />
+              Tiểu thuyết mẫu đã viết xong: 20 chương, 4 phần, kèm dàn ý,
+              tuyến truyện, cung nhân vật, câu hỏi và sổ tay. Mở ra một bản
+              riêng để đọc và sửa tiếp. Các tiểu thuyết bạn đã có vẫn giữ
+              nguyên.
+            </p>
+            {sampleError && (
+              <p className="mt-3 rounded-lg border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-[13px] text-rose-100">
+                {sampleError}
+              </p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={sampleBusy}
+                onClick={() => setSampleOpen(false)}
+                className="h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-xs text-amber-50/80 disabled:opacity-50"
+              >
+                Để sau
+              </button>
+              <button
+                type="button"
+                disabled={sampleBusy}
+                onClick={() => void openSample()}
+                className="h-8 px-3 rounded-lg bg-amber-400 text-amber-950 text-xs font-semibold disabled:opacity-50"
+              >
+                {sampleBusy ? "Đang mở..." : "Mở bản mẫu"}
+              </button>
+            </div>
           </div>
         </div>
       )}

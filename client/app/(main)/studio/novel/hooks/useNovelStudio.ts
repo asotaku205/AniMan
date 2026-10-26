@@ -44,6 +44,7 @@ import {
   type Scene,
   type SceneStatus,
 } from "../lib/novel";
+import { importNovelSample, type NovelSample } from "../lib/sampleLoader";
 import {
   deleteArc,
   deleteBeat,
@@ -385,6 +386,29 @@ export function useNovelStudio() {
     } catch {
       setSaveError("Không tạo được tiểu thuyết.");
     }
+  };
+
+  /**
+   * Mở dự án mẫu thành bản copy mới (mã mới, không đè bản cũ), rồi chọn
+   * thẳng bản đó để viết tiếp. Lỗi để nơi gọi hiển thị trong hộp thoại.
+   */
+  const importSampleNovel = async (sample: NovelSample) => {
+    await flushPendingSave();
+    const records = await importNovelSample(sample);
+    setNovels((prev) => [...prev, records.novel]);
+    setChapters((prev) => [...prev, ...records.chapters]);
+    setScenes((prev) => [...prev, ...records.scenes]);
+    setPlotlines((prev) => [...prev, ...records.plotlines]);
+    setBeats((prev) => [...prev, ...records.beats]);
+    setArcs((prev) => [...prev, ...records.arcs]);
+    setQuestions((prev) => [...prev, ...records.questions]);
+    setEntities((prev) => [...prev, ...records.entities]);
+    setSnapshots((prev) => [...prev, records.snapshot]);
+    setSelectedNovelId(records.novel.id);
+    setSelectedChapterId(records.chapters[0]?.id ?? null);
+    setSelectedSceneId(records.scenes[0]?.id ?? null);
+    setSaveError(null);
+    return records.novel;
   };
 
   const renameNovel = async (id: string, title: string) => {
@@ -1009,7 +1033,7 @@ export function useNovelStudio() {
     selectedNovel, selectedChapter, selectedScene,
     selectedNovelId, selectedChapterId, selectedSceneId,
     selectNovel, selectChapter, selectScene,
-    addNovel, renameNovel, deleteNovel,
+    addNovel, importSampleNovel, renameNovel, deleteNovel,
     addChapter, renameChapter, deleteChapter, moveChapter,
     addScene, renameScene, deleteScene: deleteSceneById, moveScene,
     setGoal,
