@@ -98,11 +98,19 @@ export function ExportPanel({
   const [progress, setProgress] = useState("");
   const [doneNote, setDoneNote] = useState("");
   const cancelRef = useRef(false);
+  const [exportFile, setExportFile] = useState<{ url: string; name: string } | null>(null);
+  const exportUrlRef = useRef<string | null>(null);
+  const clearExportFile = () => {
+    if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current);
+    exportUrlRef.current = null;
+    setExportFile(null);
+  };
 
   const exportWebM = async () => {
     if (exporting || project.kind !== "2d") return;
     setExporting(true);
     cancelRef.current = false;
+    clearExportFile();
     // Khổ khung + tốc độ khung hình theo kiểu xuất (giai đoạn D).
     const { width: W, height: H, fps } = resolveExportSize(
       exportPresetOf(project),
@@ -338,19 +346,24 @@ export function ExportPanel({
     );
     const blob = new Blob(chunks, { type: "video/webm" });
     const url = URL.createObjectURL(blob);
+    const fileName = `${project.name.replace(/\s+/g, "-")}.webm`;
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${project.name.replace(/\s+/g, "-")}.webm`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    // Giu duong dan file de nut tai hien thi ben duoi co the bam bang chuot that;
+    // thu hoi khi xuat moi hoac sau khi bam nut tai.
+    exportUrlRef.current = url;
+    setExportFile({ url, name: fileName });
   };
 
   const exportWebM3D = async () => {
     if (exporting || project.kind !== "3d") return;
     setExporting(true);
     cancelRef.current = false;
+    clearExportFile();
     setDoneNote("");
     setProgress("Đang trộn tiếng cho phim…");
     const post = postSettingsOf(project);
@@ -532,13 +545,17 @@ export function ExportPanel({
     );
     const blob = new Blob(chunks, { type: "video/webm" });
     const url = URL.createObjectURL(blob);
+    const fileName = `${project.name.replace(/\s+/g, "-")}.webm`;
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${project.name.replace(/\s+/g, "-")}.webm`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    // Giu duong dan file de nut tai hien thi ben duoi co the bam bang chuot that;
+    // thu hoi khi xuat moi hoac sau khi bam nut tai.
+    exportUrlRef.current = url;
+    setExportFile({ url, name: fileName });
   };
 
   return (
@@ -1013,6 +1030,23 @@ export function ExportPanel({
 
       {doneNote && (
         <p className="text-[12px] text-emerald-300/90">{doneNote}</p>
+      )}
+
+      {exportFile && (
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={exportFile.url}
+            download={exportFile.name}
+            onClick={() => {
+              setTimeout(() => clearExportFile(), 4000);
+            }}
+            className="flex items-center gap-1.5 px-4 h-10 rounded-xl bg-gradient-to-r from-amber-500 to-orange-400 text-sm font-medium hover:opacity-90 transition"
+          >
+            <Download className="w-4 h-4" />
+            Tải file WebM xuống
+          </a>
+          <span className="text-[12px] text-white/50">{exportFile.name}</span>
+        </div>
       )}
 
       {project.kind === "2d" ? (
