@@ -10,6 +10,12 @@ import { createGeminiDrawingProvider } from "../driver/gemini-drawing-provider.j
 import { AiDrawingController } from "./ai-drawing.controller.js";
 import { AiDrawingConsentController } from "./ai-drawing-consent.controller.js";
 import { AiDrawingConsentService } from "./ai-drawing-consent.service.js";
+import { ReferenceImageController } from "../reference-image/reference-image.controller.js";
+import { ReferenceImageJobsService } from "../reference-image/reference-image-jobs.service.js";
+import {
+  REFERENCE_IMAGE_PROVIDER,
+  createCloudflareReferenceImageProvider,
+} from "../reference-image/cloudflare-reference-image.provider.js";
 import { TranslationController } from "../translation/translation.controller.js";
 import { TranslationService } from "../translation/translation.service.js";
 import { NovelAiController } from "../novel/novel-ai.controller.js";
@@ -36,10 +42,27 @@ import { NovelAiService } from "../novel/novel-ai.service.js";
       },
     }),
   ],
-  controllers: [AiDrawingConsentController, AiDrawingController, TranslationController, NovelAiController],
+  controllers: [
+    AiDrawingConsentController,
+    AiDrawingController,
+    ReferenceImageController,
+    TranslationController,
+    NovelAiController,
+  ],
   providers: [
     AiDrawingConsentService,
     AiDrawingRateLimiter,
+    ReferenceImageJobsService,
+    {
+      provide: REFERENCE_IMAGE_PROVIDER,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        createCloudflareReferenceImageProvider({
+          enabled: config.get("REFERENCE_IMAGE_ENABLED") === "true",
+          accountId: config.get("CLOUDFLARE_ACCOUNT_ID") ?? "",
+          token: config.get("CLOUDFLARE_API_TOKEN") ?? "",
+        }),
+    },
     {
       provide: TranslationService,
       inject: [ConfigService],

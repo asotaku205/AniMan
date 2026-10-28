@@ -15,27 +15,51 @@ interface Props {
   source: ReferenceImageSource;
   onSourceChange: (source: ReferenceImageSource) => void;
   onDeleteImage: (id: string) => void;
+  /** Bấm nút sinh: tạo job Cloudflare rồi hỏi lại trạng thái cho tới khi xong. */
+  onGenerate: () => void;
+  /** Hủy job đang chạy (khi người dùng bấm Hủy trong lúc chờ). */
+  onCancelGenerate: () => void;
+  generating: boolean;
+  /** Dòng tiến trình đang chờ (ví dụ đang chạy, đã chờ bao lâu). */
+  jobStatusText: string | null;
+  /** Lỗi lần sinh gần nhất, đã dịch sang tiếng Việt. */
+  generationError: string | null;
+  /** Hộp thoại đồng ý dữ liệu đang mở (xác nhận 18+ trước lần sinh đầu). */
+  consentPending: boolean;
+  consentNotice: { version: string; notice: string } | null;
+  onAcceptConsent: () => void;
+  onDeclineConsent: () => void;
 }
 
 /**
  * Panel "Ảnh mẫu tham khảo" (mockup đã duyệt 28/10/2026).
  *
  * Panel là một mục trong cột phải, đứng cạnh khung vẽ, KHÔNG BAO GIỜ phủ
- * lên khung vẽ. Sinh ảnh đang TẮT: nút "Sinh ảnh mẫu" bị vô hiệu hóa và
- * không gọi API nào, vì chưa có model ảnh miễn phí nào được nối vào.
- * Ảnh mẫu chỉ để nhìn theo và vẽ lại, không phải bản chính của truyện.
+ * lên khung vẽ. Sinh ảnh chạy bằng job bất đồng bộ qua Cloudflare Workers
+ * AI (model FLUX.2 klein 4B / FLUX.1 schnell); ảnh mẫu chỉ để nhìn theo
+ * và vẽ lại, không phải bản chính của truyện.
  */
 export function ReferenceImagePanel({
   images,
   source,
   onSourceChange,
   onDeleteImage,
+  onGenerate,
+  onCancelGenerate,
+  generating,
+  jobStatusText,
+  generationError,
+  consentPending,
+  consentNotice,
+  onAcceptConsent,
+  onDeclineConsent,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [compareOn, setCompareOn] = useState(false);
   const [compareId, setCompareId] = useState<string | null>(null);
   const [zoomedId, setZoomedId] = useState<string | null>(null);
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
 
   const selected =
     images.find((image) => image.id === selectedId) ?? images[0] ?? null;
@@ -131,15 +155,38 @@ export function ReferenceImagePanel({
           <div className="space-y-1.5">
             <button
               type="button"
-              disabled
-              title="Chưa có mô hình ảnh miễn phí nào được nối vào"
-              className="w-full py-2 px-3 rounded-xl bg-white/5 border border-white/10 text-white/40 text-xs font-semibold cursor-not-allowed"
+              onClick={onGenerate}
+              disabled={generating}
+              className="w-full py-2 px-3 rounded-xl bg-amber-500/25 border border-amber-400/50 text-amber-100 text-xs font-semibold transition-colors hover:bg-amber-500/35 disabled:opacity-50 disabled:cursor-wait"
             >
-              Sinh ảnh mẫu
+              {generating ? "Đang sinh ảnh mẫu..." : "Sinh ảnh mẫu"}
             </button>
+            {generating && (
+              <button
+                type="button"
+                onClick={onCancelGenerate}
+                className="w-full py-1.5 px-3 rounded-xl bg-white/5 border border-white/10 text-white/70 text-xs transition-colors hover:bg-white/10"
+              >
+                Hủy lần sinh này
+              </button>
+            )}
+            {jobStatusText && !generationError && (
+              <p className="text-white/60 text-[10px] leading-relaxed">
+                {jobStatusText}
+              </p>
+            )}
+            {generationError && (
+              <p
+                role="alert"
+                className="text-red-300 text-[10px] leading-relaxed"
+              >
+                {generationError}
+              </p>
+            )}
             <p className="text-white/40 text-[10px] leading-relaxed">
-              Chưa có mô hình ảnh miễn phí nào được nối vào, nên nút này đang
-              tắt và không gọi API nào.
+              Sinh ảnh có thể mất vài phút vì model chạy trên Cloudflare.
+              Ảnh về sẽ vào lịch sử bên dưới, tối đa 3 ảnh, để bạn vừa
+              nhìn theo vừa vẽ.
             </p>
           </div>
 
@@ -166,8 +213,9 @@ export function ReferenceImagePanel({
 
             {images.length === 0 ? (
               <p className="text-white/40 text-[10px] leading-relaxed bg-white/[0.03] border border-white/5 rounded-xl px-2 py-2.5">
-                Chưa có ảnh mẫu nào cho khung này. Khi sinh ảnh được bật, tối
-                đa 3 ảnh gần nhất sẽ hiện ở đây để bạn vừa nhìn theo vừa vẽ.
+                Chưa có ảnh mẫu nào cho khung này. Bấm Sinh ảnh mẫu để tạo
+                ảnh đầu tiên; tối đa 3 ảnh gần nhất sẽ hiện ở đây để bạn
+                vừa nhìn theo vừa vẽ.
               </p>
             ) : (
               <>
@@ -275,6 +323,58 @@ export function ReferenceImagePanel({
             </div>
             <div className="max-h-[80vh] aspect-[4/3] bg-white rounded-xl overflow-hidden">
               {renderImage(zoomed, "Ảnh mẫu tham khảo phóng to")}
+            </div>
+          </div>
+        </div>
+      )}
+      {consentPending && consentNotice && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Đồng ý dữ liệu AI cho ảnh mẫu tham khảo"
+        >
+          <div className="max-w-md w-full bg-[#1c1430] border border-white/10 rounded-2xl p-4 space-y-3">
+            <h3 className="text-white text-sm font-semibold">
+              Trước khi sinh ảnh mẫu
+            </h3>
+            <p className="text-white/70 text-xs leading-relaxed whitespace-pre-line">
+              {consentNotice.notice}
+            </p>
+            <label className="flex items-start gap-2 text-white/80 text-xs leading-relaxed cursor-pointer">
+              <input
+                type="checkbox"
+                checked={ageConfirmed}
+                onChange={(event) => setAgeConfirmed(event.target.checked)}
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                Tôi đã đủ 18 tuổi và đồng ý để bản vẽ và prompt của tôi được
+                xử lý như văn bản trên.
+              </span>
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!ageConfirmed}
+                onClick={() => {
+                  setAgeConfirmed(false);
+                  onAcceptConsent();
+                }}
+                className="flex-1 py-2 px-3 rounded-xl bg-amber-500/25 border border-amber-400/50 text-amber-100 text-xs font-semibold transition-colors hover:bg-amber-500/35 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Đồng ý và sinh ảnh
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAgeConfirmed(false);
+                  onDeclineConsent();
+                }}
+                className="py-2 px-3 rounded-xl bg-white/5 border border-white/10 text-white/70 text-xs transition-colors hover:bg-white/10"
+              >
+                Để sau
+              </button>
             </div>
           </div>
         </div>

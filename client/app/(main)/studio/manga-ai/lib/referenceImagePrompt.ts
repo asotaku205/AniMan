@@ -1,10 +1,11 @@
 /**
  * System prompt cho sinh ảnh mẫu tham khảo manga (mockup đã duyệt 28/10/2026).
  *
- * CHƯA DÙNG (UNUSED / DISABLED): chưa có model ảnh miễn phí nào được nối vào
- * AniMan, nên hằng này không được đưa vào bất kỳ lời gọi model nào. Khi nào
- * Sơn chọn được model miễn phí và kiểm chứng xong, mới nối hằng này vào
- * provider ảnh mẫu mới (không dùng lại đường nét mờ đã gỡ).
+ * ĐÃ NỐI (29/10/2026): prompt này chạy phía SERVER, trong
+ * `server/src/ai/reference-image/reference-image.constants.ts`, và server
+ * tự ghép từ hằng số của chính nó. Bản trong file này chỉ là bản sao để
+ * hiển thị/tham khảo, KHÔNG BAO GIỜ được gửi đi từ client. Hai bản phải
+ * giữ nguyên văn giống nhau; khi đổi prompt thì đổi cả hai nơi.
  *
  * Nội dung bên dưới là nguyên văn mục 2 của mockup đã duyệt.
  */
@@ -25,5 +26,5 @@ USER INPUT:
 RESPONSE:
 - Return the reference image only, plus one short sentence in Vietnamese saying what was fixed (for example: head size, arm length, or composition). Do not claim the image is the user's work.`;
 
-/** Đánh dấu rõ: prompt trên chưa được nối vào model nào. */
-export const REFERENCE_IMAGE_SYSTEM_PROMPT_ENABLED = false;
+/** Đánh dấu rõ: prompt trên đã được nối vào provider Cloudflare phía server. */
+export const REFERENCE_IMAGE_SYSTEM_PROMPT_ENABLED = true;

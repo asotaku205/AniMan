@@ -10,6 +10,7 @@ async function bootstrap(): Promise<void> {
     bodyParser: false,
   });
   app.use("/ai/drawing", express.json({ limit: "6mb" }));
+  app.use("/ai/reference-image", express.json({ limit: "6mb" }));
   app.use(express.json({ limit: "100kb" }));
   app.use(express.urlencoded({ extended: true, limit: "100kb" }));
   app.use(cookieParser());

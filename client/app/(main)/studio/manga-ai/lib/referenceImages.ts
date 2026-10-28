@@ -3,8 +3,9 @@
  *
  * Ảnh mẫu CHỈ để người dùng nhìn theo và vẽ lại. Ảnh mẫu không bao giờ là
  * bản chính của truyện, không được đưa vào lớp vẽ, lịch sử hoàn tác hay
- * xuất PNG/PDF. Sinh ảnh mẫu đang TẮT vì chưa có model ảnh miễn phí nào
- * được nối vào; file này chỉ định nghĩa dữ liệu và giới hạn lịch sử.
+ * xuất PNG/PDF. Sinh ảnh chạy qua Cloudflare Workers AI bằng job bất đồng
+ * bộ (xem `client/lib/reference-image-api.ts`); ảnh về đã được server ép
+ * xám và lưu riêng trong IndexedDB của panel này.
  */
 
 /** Tối đa 3 ảnh mẫu mỗi khung (lịch sử so sánh, theo mockup đã duyệt). */
@@ -35,6 +36,17 @@ export interface ReferenceImageItem {
   note?: string;
   createdAt: number;
   isPlaceholder?: boolean;
+}
+
+/** Id cho một ảnh mẫu mới trong lịch sử của khung. */
+export function createReferenceImageId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**

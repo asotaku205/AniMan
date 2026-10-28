@@ -23,12 +23,25 @@ import {
   requestAiDrawingReview,
   requestAiPageStoryFlow,
   selectStoryFlowPanelsForLayout,
+  type AiDrawingImagePayload,
   type AiDrawingQuota,
   type AiDrawingReviewResponse,
   type AiPageStoryFlowResponse,
   type AiDrawingFinding,
   type NormalizedRegion,
 } from "@/lib/ai-drawing-api";
+import {
+  cancelReferenceImageJob,
+  createReferenceImageJob,
+  createSketchSnapshot,
+  getReferenceImageErrorMessage,
+  pollReferenceImageJob,
+} from "@/lib/reference-image-api";
+import {
+  fetchReferenceImageConsent,
+  loadReferenceImageConsentVersion,
+  saveReferenceImageConsentVersion,
+} from "../lib/referenceImageConsent";
 import {
   getPageDrawingRecordFromDB,
   getPageStacksFromDB,
@@ -100,12 +113,14 @@ import {
 } from "../lib/selection";
 import { blitSelectionMask } from "../lib/selectionBlit";
 import {
+  addReferenceImage as addStoredReferenceImage,
   deleteReferenceImage as deleteStoredReferenceImage,
   loadReferenceImages,
 } from "../lib/referenceImageStorage";
-import type {
-  ReferenceImageItem,
-  ReferenceImageSource,
+import {
+  createReferenceImageId,
+  type ReferenceImageItem,
+  type ReferenceImageSource,
 } from "../lib/referenceImages";
 import { regionToPixelRect } from "../lib/strokeCleanup";
 import {
@@ -589,8 +604,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   // Ảnh mẫu tham khảo (mockup đã duyệt 28/10/2026): lịch sử tối đa 3 ảnh
   // mỗi khung, lưu riêng trong IndexedDB, không vào lớp vẽ hay xuất bản.
-  // Sinh ảnh đang TẮT (chưa có model ảnh miễn phí), panel chỉ hiển thị
-  // lịch sử và nút bị vô hiệu hóa; không có đường ghi ảnh mẫu vào canvas.
+  // Sinh ảnh chạy bằng job bất đồng bộ qua Cloudflare Workers AI; ảnh về
+  // đã được server ép xám và chỉ lưu vào kho riêng này, không vào canvas.
   const [referenceImagesByPanel, setReferenceImagesByPanel] = useState<
     Record<string, ReferenceImageItem[]>
   >({});
@@ -628,6 +643,23 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     const next = await deleteStoredReferenceImage(pid, id);
     setReferenceImagesByPanel((prev) => ({ ...prev, [pid]: next }));
   }, []);
+
+  // ── Sinh ảnh mẫu tham khảo (Cloudflare, job bất đồng bộ) ────────────────
+  const [referenceGenerating, setReferenceGenerating] = useState(false);
+  const [referenceJobStatusText, setReferenceJobStatusText] = useState<
+    string | null
+  >(null);
+  const [referenceError, setReferenceError] = useState<string | null>(null);
+  const [referenceConsentNotice, setReferenceConsentNotice] = useState<{
+    version: string;
+    notice: string;
+  } | null>(null);
+  const [referenceConsentPending, setReferenceConsentPending] =
+    useState(false);
+  const referenceJobRef = useRef<{
+    jobId: string;
+    abort: AbortController;
+  } | null>(null);
 
   /**
    * Mô tả ý tưởng của người dùng (user prompt).
@@ -3448,6 +3480,177 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     }
   }, [activePanel, authenticatedFetch, strokeCount, userDrawingPrompt, showToast, refreshAiQuota]);
 
+  /**
+   * Sinh một ảnh mẫu tham khảo bằng job bất đồng bộ. Gợi ý sửa lấy từ
+   * kết quả drawing_review gần nhất (nếu người dùng đã chạy phân tích),
+   * phác thảo gửi đi đã thu nhỏ còn tối đa 500 px. Ảnh về được lưu vào
+   * kho riêng của khung, không bao giờ chạm vào lớp vẽ.
+   */
+  const runReferenceImageGeneration = useCallback(async () => {
+    const panelId = activePanelRef.current;
+    if (!panelId) {
+      showToast("Vui lòng mở một khung truyện để sinh ảnh mẫu.");
+      return;
+    }
+    if (referenceGenerating) return;
+    const needsSketch = referenceSource !== "prompt";
+    const canvas = canvasRef.current;
+    let sketch: AiDrawingImagePayload | null = null;
+    if (needsSketch) {
+      if (!canvas) {
+        showToast("Không thể chụp khung vẽ để gửi làm phác thảo.");
+        return;
+      }
+      sketch = createSketchSnapshot(canvas);
+      if (!sketch) {
+        showToast("Không thể tạo ảnh phác thảo để gửi tới AI.");
+        return;
+      }
+    }
+    if (referenceSource === "prompt" && !userDrawingPrompt.trim()) {
+      showToast("Nhập mô tả ý tưởng trước khi sinh ảnh mẫu từ prompt.");
+      return;
+    }
+    const fixHints = (reviewResult?.findings ?? [])
+      .slice(0, 5)
+      .map(
+        (finding) =>
+          `${finding.issue} -> ${finding.recommendation}`.slice(0, 200),
+      );
+    const abortController = new AbortController();
+    setReferenceGenerating(true);
+    setReferenceError(null);
+    setReferenceJobStatusText("Đã gửi yêu cầu, đang chờ model...");
+    try {
+      const job = await createReferenceImageJob(
+        authenticatedFetch,
+        {
+          source: referenceSource,
+          sceneType,
+          ...(userDrawingPrompt.trim()
+            ? { prompt: userDrawingPrompt.trim().slice(0, 800) }
+            : {}),
+          ...(fixHints.length > 0 ? { fixHints } : {}),
+          ...(sketch ? { image: sketch } : {}),
+        },
+        abortController.signal,
+      );
+      referenceJobRef.current = { jobId: job.id, abort: abortController };
+      const finalJob = await pollReferenceImageJob(
+        authenticatedFetch,
+        job.id,
+        {
+          signal: abortController.signal,
+          onUpdate: (current) => {
+            if (current.status !== "running") return;
+            const waited = current.startedAt
+              ? Math.round((Date.now() - current.startedAt) / 1000)
+              : 0;
+            setReferenceJobStatusText(
+              `Model đang sinh ảnh mẫu, đã chờ ${waited} giây...`,
+            );
+          },
+        },
+      );
+      if (abortController.signal.aborted) return;
+      if (finalJob.status === "succeeded" && finalJob.imageDataUrl) {
+        const item: ReferenceImageItem = {
+          id: createReferenceImageId(),
+          dataUrl: finalJob.imageDataUrl,
+          source: referenceSource,
+          note: finalJob.note || undefined,
+          createdAt: Date.now(),
+        };
+        const next = await addStoredReferenceImage(panelId, item);
+        setReferenceImagesByPanel((prev) => ({ ...prev, [panelId]: next }));
+        showToast("Đã sinh ảnh mẫu tham khảo");
+        void refreshAiQuota();
+        return;
+      }
+      if (finalJob.status === "cancelled") {
+        showToast("Đã hủy sinh ảnh mẫu");
+        return;
+      }
+      if (finalJob.status === "timeout") {
+        setReferenceError(
+          getReferenceImageErrorMessage(
+            finalJob.errorCode,
+            "Hết thời gian chờ sinh ảnh mẫu.",
+          ),
+        );
+        return;
+      }
+      setReferenceError(
+        getReferenceImageErrorMessage(
+          finalJob.errorCode,
+          "Không sinh được ảnh mẫu lúc này. Hãy thử lại sau.",
+        ),
+      );
+    } catch (error) {
+      if (abortController.signal.aborted) return;
+      const message =
+        error instanceof AiDrawingApiError
+          ? error.message
+          : "Không gọi được AI lúc này. Vui lòng thử lại.";
+      setReferenceError(message);
+    } finally {
+      referenceJobRef.current = null;
+      setReferenceGenerating(false);
+      setReferenceJobStatusText(null);
+    }
+  }, [
+    authenticatedFetch,
+    referenceGenerating,
+    referenceSource,
+    sceneType,
+    userDrawingPrompt,
+    reviewResult,
+    showToast,
+    refreshAiQuota,
+  ]);
+
+  /**
+   * Cổng đồng ý riêng cho ảnh mẫu: xác nhận 18+ theo phiên bản văn bản
+   * hiện hành (đã gồm Cloudflare) trước lần sinh đầu tiên và mỗi khi văn
+   * bản đổi phiên bản. Từ chối thì không sinh gì cả.
+   */
+  const generateReferenceImage = useCallback(async () => {
+    if (referenceGenerating) return;
+    const notice = await fetchReferenceImageConsent(authenticatedFetch);
+    if (loadReferenceImageConsentVersion() === notice.version) {
+      void runReferenceImageGeneration();
+      return;
+    }
+    setReferenceConsentNotice(notice);
+    setReferenceConsentPending(true);
+  }, [authenticatedFetch, referenceGenerating, runReferenceImageGeneration]);
+
+  const acceptReferenceImageConsent = useCallback(() => {
+    if (referenceConsentNotice) {
+      saveReferenceImageConsentVersion(referenceConsentNotice.version);
+    }
+    setReferenceConsentPending(false);
+    setReferenceConsentNotice(null);
+    void runReferenceImageGeneration();
+  }, [referenceConsentNotice, runReferenceImageGeneration]);
+
+  const declineReferenceImageConsent = useCallback(() => {
+    setReferenceConsentPending(false);
+    setReferenceConsentNotice(null);
+  }, []);
+
+  const cancelReferenceImageGeneration = useCallback(() => {
+    const current = referenceJobRef.current;
+    if (!current) return;
+    current.abort.abort();
+    void cancelReferenceImageJob(authenticatedFetch, current.jobId).catch(
+      () => {},
+    );
+    setReferenceGenerating(false);
+    setReferenceJobStatusText(null);
+    showToast("Đã hủy sinh ảnh mẫu");
+  }, [authenticatedFetch, showToast]);
+
   const clearAiSuggestions = useCallback(() => {
     if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
@@ -3917,6 +4120,16 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     deleteReferenceImage,
     referenceSource,
     setReferenceSource,
+    /** Sinh ảnh mẫu tham khảo (Cloudflare, job bất đồng bộ) */
+    generateReferenceImage,
+    cancelReferenceImageGeneration,
+    referenceGenerating,
+    referenceJobStatusText,
+    referenceError,
+    referenceConsentPending,
+    referenceConsentNotice,
+    acceptReferenceImageConsent,
+    declineReferenceImageConsent,
     /** Lượt AI còn lại (GET /ai/drawing/quota — chỉ đọc, không tốn lượt) */
     aiQuota,
     refreshAiQuota,

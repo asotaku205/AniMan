@@ -161,6 +161,15 @@ export function RightPanel({ s }: Props) {
           onDeleteReferenceImage={s.deleteReferenceImage}
           referenceSource={s.referenceSource}
           onReferenceSourceChange={s.setReferenceSource}
+          generateReferenceImage={s.generateReferenceImage}
+          cancelReferenceImageGeneration={s.cancelReferenceImageGeneration}
+          referenceGenerating={s.referenceGenerating}
+          referenceJobStatusText={s.referenceJobStatusText}
+          referenceError={s.referenceError}
+          referenceConsentPending={s.referenceConsentPending}
+          referenceConsentNotice={s.referenceConsentNotice}
+          acceptReferenceImageConsent={s.acceptReferenceImageConsent}
+          declineReferenceImageConsent={s.declineReferenceImageConsent}
           showGuideSection={s.showGuideSection}
           setShowGuideSection={s.setShowGuideSection}
           toggleGuide={s.toggleGuide}

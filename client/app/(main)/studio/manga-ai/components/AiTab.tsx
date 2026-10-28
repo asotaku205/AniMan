@@ -85,6 +85,16 @@ type Props = {
   onDeleteReferenceImage: (id: string) => void;
   referenceSource: ReferenceImageSource;
   onReferenceSourceChange: (source: ReferenceImageSource) => void;
+  /** Sinh ảnh mẫu tham khảo (Cloudflare, job bất đồng bộ) */
+  generateReferenceImage: () => void;
+  cancelReferenceImageGeneration: () => void;
+  referenceGenerating: boolean;
+  referenceJobStatusText: string | null;
+  referenceError: string | null;
+  referenceConsentPending: boolean;
+  referenceConsentNotice: { version: string; notice: string } | null;
+  acceptReferenceImageConsent: () => void;
+  declineReferenceImageConsent: () => void;
   showGuideSection: boolean;
   setShowGuideSection: React.Dispatch<React.SetStateAction<boolean>>;
   toggleGuide: (g: GuideId) => void;
@@ -255,6 +265,15 @@ export function AiTab({
   onDeleteReferenceImage,
   referenceSource,
   onReferenceSourceChange,
+  generateReferenceImage,
+  cancelReferenceImageGeneration,
+  referenceGenerating,
+  referenceJobStatusText,
+  referenceError,
+  referenceConsentPending,
+  referenceConsentNotice,
+  acceptReferenceImageConsent,
+  declineReferenceImageConsent,
   showGuideSection,
   setShowGuideSection,
   toggleGuide,
@@ -399,12 +418,21 @@ export function AiTab({
           </p>
         </div>
 
-        {/* 2b. Ảnh mẫu tham khảo (sinh ảnh đang tắt — xem ReferenceImagePanel) */}
+        {/* 2b. Ảnh mẫu tham khảo (sinh ảnh bằng job Cloudflare) */}
         <ReferenceImagePanel
           images={referenceImages}
           source={referenceSource}
           onSourceChange={onReferenceSourceChange}
           onDeleteImage={onDeleteReferenceImage}
+          onGenerate={generateReferenceImage}
+          onCancelGenerate={cancelReferenceImageGeneration}
+          generating={referenceGenerating}
+          jobStatusText={referenceJobStatusText}
+          generationError={referenceError}
+          consentPending={referenceConsentPending}
+          consentNotice={referenceConsentNotice}
+          onAcceptConsent={acceptReferenceImageConsent}
+          onDeclineConsent={declineReferenceImageConsent}
         />
 
         {/* 3. Bố Cục Mẫu (tham chiếu, theo SceneType đang chọn) */}
