@@ -221,13 +221,6 @@ const ALLOWED_PRINCIPLES = new Set([
 
 const ALLOWED_STROKE_GROUPS = new Set<string>(AI_STROKE_GROUPS);
 
-/** Ba task trả về một mảng nét phẳng (không chia lớp). */
-const GHOST_STROKE_TASKS = new Set<string>([
-  "stroke_guidance",
-  "composition_overlay",
-  "pose_guidance",
-]);
-
 const STROKE_FILL_PATTERN = /^#[0-9a-f]{6}$/;
 
 /** Độ mờ mặc định cho nét AI khi model không khai (AC-A1.3: 0.55). */
@@ -529,13 +522,6 @@ export function normalizeGeminiOutput(
     );
   } else {
     obj.sourceIds = [];
-  }
-
-  // ── Task nét đơn lẻ: chuẩn hoá thẳng mảng `strokes` ────────────────────────
-  if (GHOST_STROKE_TASKS.has(request.task)) {
-    obj.strokes = normalizeStrokes(obj.strokes, MAX_AI_GHOST_STROKES);
-    delete obj.recommendations;
-    delete obj.findings;
   }
 
   // ── Blueprint toàn cảnh: chuẩn hoá theo từng lớp rồi trải phẳng ────────────

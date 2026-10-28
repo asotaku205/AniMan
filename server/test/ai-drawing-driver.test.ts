@@ -167,12 +167,16 @@ describe("AI drawing driver", () => {
 
     const registry = new AiDrawingModelRegistry(GEMINI_DRAWING_MODEL_PROFILE);
 
-    expect(registry.select(AiDrawingTask.StrokeGuidance)).toBe(
+    expect(registry.select(AiDrawingTask.DrawingReview)).toBe(
       GEMINI_DRAWING_MODEL_PROFILE,
     );
     expect(registry.select(AiDrawingTask.SceneBlueprint)).toBe(
       GEMINI_DRAWING_MODEL_PROFILE,
     );
+    // Task nét mờ đã gỡ khỏi profile (28/10/2026): chọn task đó phải lỗi.
+    expect(() =>
+      registry.select("stroke_guidance" as never),
+    ).toThrow(AiDrawingModelProfileError);
   });
 
   it("validates requests and parses provider output against the application contract", async () => {

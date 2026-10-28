@@ -1,7 +1,5 @@
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-import type { AiStrokeGroup, AiStrokePath } from "@/lib/ai-drawing-api";
-
 export type StudioMode   = "projects" | "draw" | "storyboard" | "publish";
 export type SceneType    = "auto" | "action" | "dialogue" | "landscape" | "closeup" | "wide";
 export type RightTab     = "ai" | "layout" | "layers";
@@ -31,8 +29,8 @@ export type LayerBlend =
 
 /**
  * Layer v2 (Spec 02 §2.1).
- * Mọi nơi khởi tạo layer phải dùng `createUserLayer` / `createAiLayer`
- * để không bỏ sót `kind`, `blend`, `createdAt`.
+ * Mọi nơi khởi tạo layer phải dùng `createUserLayer` để không bỏ sót `kind`,
+ * `blend`, `createdAt`. `kind: "ai"` chỉ còn để đọc ngăn xếp đã lưu cũ.
  */
 export interface LayerItem {
   id: string;
@@ -82,7 +80,11 @@ export function createUserLayer(
 
 /**
  * Tạo layer AI (vector/ảo): luôn `readOnly`, mặc định ẩn chip ghi pixel.
- * AI không bao giờ ghi thẳng vào layer người dùng (bất biến AI-DRAWING-OPERATIONS §1.1).
+ *
+ * CHỈ DÙNG ĐỂ ĐỌC DỮ LIỆU CŨ: từ khi gỡ nét mờ AI (28/10/2026), không còn
+ * đường code nào tạo layer AI mới. Hàm này còn lại để `normalizeLayer` đọc
+ * được ngăn xếp đã lưu trước đó; layer AI cũ được lọc bỏ khi chuẩn hóa
+ * ngăn xếp v2 (xem `normalizePanelStacks`).
  */
 export function createAiLayer(
   name = "AI (Gợi ý)",
@@ -142,44 +144,9 @@ export function normalizeLayers(raw: unknown): LayerItem[] {
 }
 
 /**
- * Một **lớp AI dạng vector** của một khung (5C.1) — không có canvas pixel (RC-5).
- * `id` trùng id của `LayerItem kind:"ai"` tương ứng trong `layers`, nên bật/tắt và
- * độ mờ của layer ở tab Layers điều khiển thẳng lớp này.
- */
-export interface AiOverlayLayer {
-  id: string;
-  /** Nhóm nội dung khi lớp đến từ blueprint; `null` với gợi ý nét đơn lẻ. */
-  group: AiStrokeGroup | null;
-  /** Tên hiển thị ở tab Layers */
-  name: string;
-  /** Mô tả lớp của blueprint (5B.5) */
-  description?: string;
-  strokes: AiStrokePath[];
-}
-
-/** Toàn bộ nét AI (vector) của một khung — vẫn còn nguyên sau F5 (5C.7). */
-export interface PanelAiOverlay {
-  /** Các lớp AI theo **đúng thứ tự vẽ**: nền trước, hiệu ứng sau. */
-  layers: AiOverlayLayer[];
-  /** Tóm tắt của AI cho lần gợi ý này */
-  summary?: string;
-  generatedAt: number;
-  model?: string;
-  /** Id nguồn tri thức AI trích dẫn — dòng nguồn AI (AC-D2.2) */
-  sourceIds?: string[];
-  /** Blueprint toàn cảnh đã sinh ra bộ lớp này (5B.5/5B.6) */
-  blueprint?: {
-    title: string;
-    composition: string;
-    lighting: string;
-    camera: string;
-  };
-}
-
-/**
  * Ngăn xếp layer của **MỘT khung** (spec 02 §2.2) — mỗi panel có bộ layer riêng.
- * `layers` index 0 = lớp trên cùng (đầu danh sách UI); layer AI luôn nằm cuối
- * (dưới nét người dùng) theo bất biến AI-DRAWING-OPERATIONS §1.2.
+ * Chỉ layer người dùng được tạo mới; `kind: "ai"` trong dữ liệu cũ được lọc
+ * bỏ khi chuẩn hóa (xem `normalizePanelStacks`).
  */
 export interface PanelLayerStack {
   panelId: string;
@@ -190,8 +157,6 @@ export interface PanelLayerStack {
    * Layer `kind:"ai"` không có entry ở đây (layer ảo/vector — RC-5).
    */
   pixels: Record<string, string>; // dataURL (image/png)
-  /** Nét AI dạng vector — vẫn còn nguyên sau F5. */
-  aiOverlay?: PanelAiOverlay;
 }
 
 /** Toàn bộ ngăn xếp của một trang: panelId → stack. */
@@ -317,14 +282,6 @@ export const POSES: Record<PoseCategory, PoseItem[]> = {
   ],
 };
 // ─── AI Tools Data ─────────────────────────────────────────────────────────────
-
-export const AI_TOOLS = [
-  { id: "clean-lines",   label: "Gợi ý ink sạch nét",  desc: "Nét mờ gợi ý để đi mực theo",   dot: "bg-indigo-500" },
-  { id: "screentone",    label: "Gợi ý screentone",    desc: "Nét mờ gợi ý vùng lưới tone",   dot: "bg-sky-500"    },
-  { id: "speech-bubble", label: "Gợi ý bubble thoại",  desc: "Nét mờ gợi ý vị trí hộp thoại", dot: "bg-pink-500"   },
-  { id: "speed-lines",   label: "Gợi ý speed lines",   desc: "Nét mờ gợi ý hiệu ứng chuyển động", dot: "bg-emerald-500" },
-  { id: "fix-comp",      label: "Gợi ý sửa bố cục",    desc: "Lớp phủ gợi ý tối ưu bố cục",   dot: "bg-amber-500"  },
-];
 
 export const SCENE_TYPE_LABEL: Record<SceneType, string> = {
   auto: "Tự động (AI)",

@@ -1,0 +1,69 @@
+/**
+ * Ảnh mẫu tham khảo cho Manga Studio (đã duyệt mockup 28/10/2026).
+ *
+ * Ảnh mẫu CHỈ để người dùng nhìn theo và vẽ lại. Ảnh mẫu không bao giờ là
+ * bản chính của truyện, không được đưa vào lớp vẽ, lịch sử hoàn tác hay
+ * xuất PNG/PDF. Sinh ảnh mẫu đang TẮT vì chưa có model ảnh miễn phí nào
+ * được nối vào; file này chỉ định nghĩa dữ liệu và giới hạn lịch sử.
+ */
+
+/** Tối đa 3 ảnh mẫu mỗi khung (lịch sử so sánh, theo mockup đã duyệt). */
+export const MAX_REFERENCE_IMAGES = 3;
+
+export type ReferenceImageSource = "prompt" | "drawing" | "drawing-prompt";
+
+export const REFERENCE_IMAGE_SOURCE_LABELS: Record<
+  ReferenceImageSource,
+  string
+> = {
+  prompt: "Chỉ prompt",
+  drawing: "Chỉ bức vẽ của tôi",
+  "drawing-prompt": "Bức vẽ + prompt",
+};
+
+/**
+ * Một ảnh mẫu trong lịch sử của một khung. `dataUrl` là ảnh đã sinh (PNG/JPEG),
+ * lưu riêng khỏi mọi lớp vẽ. `source` ghi lại nguồn người dùng đã chọn khi
+ * sinh, `note` là câu mô tả ngắn model trả về (ví dụ phần giải phẫu đã sửa).
+ * `isPlaceholder` đánh dấu bản ghi nội bộ dùng để kiểm thử/khởi tạo giao diện,
+ * KHÔNG BAO GIỜ được hiển thị như ảnh AI thật.
+ */
+export interface ReferenceImageItem {
+  id: string;
+  dataUrl: string;
+  source: ReferenceImageSource;
+  note?: string;
+  createdAt: number;
+  isPlaceholder?: boolean;
+}
+
+/**
+ * Thêm một ảnh vào lịch sử: ảnh mới nhất lên đầu, ảnh cũ nhất bị loại khi
+ * lịch sử đã đủ `MAX_REFERENCE_IMAGES`. Hàm thuần, không chạm IndexedDB.
+ */
+export function addReferenceImageToHistory(
+  history: ReferenceImageItem[],
+  item: ReferenceImageItem,
+): ReferenceImageItem[] {
+  const next = [item, ...history.filter((entry) => entry.id !== item.id)];
+  return next.slice(0, MAX_REFERENCE_IMAGES);
+}
+
+export function removeReferenceImageFromHistory(
+  history: ReferenceImageItem[],
+  id: string,
+): ReferenceImageItem[] {
+  return history.filter((entry) => entry.id !== id);
+}
+
+/**
+ * Kiểm tra một ảnh mẫu có an toàn để đứng ngoài xuất bản hay không: ảnh mẫu
+ * không bao giờ được đưa vào danh sách lớp xuất. Hàm này dùng trong test
+ * bảo vệ xuất bản (xem reference-images.test.ts).
+ */
+export function referenceImageIsOutsideLayers(
+  layerIds: string[],
+  referenceIds: string[],
+): boolean {
+  return referenceIds.every((id) => !layerIds.includes(id));
+}

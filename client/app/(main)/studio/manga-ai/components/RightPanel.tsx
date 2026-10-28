@@ -48,7 +48,6 @@ export function RightPanel({ s }: Props) {
   const [collapsed, setCollapsed] = useState(false);
 
   const userLayers = s.layers.filter((l) => l.kind !== "ai");
-  const aiLayers = s.layers.filter((l) => l.kind === "ai");
   /** Thumbnail 40×40 từng layer — làm mới khi layers/panel/composite đổi */
   const thumbs = useMemo(() => {
     const thumbById: Record<string, string | null> = {};
@@ -142,12 +141,9 @@ export function RightPanel({ s }: Props) {
           storyError={s.storyError}
           storyAt={s.storyAt}
           appliedStoryPanels={s.appliedStoryPanels}
-          strokeCount={s.strokeCount}
           activePanel={s.activePanel}
           runAnalysis={s.runAnalysis}
-          processingTool={s.processingTool}
           analyzing={s.analyzing}
-          runTool={s.runTool}
           showCompSection={s.showCompSection}
           setShowCompSection={s.setShowCompSection}
           applyComp={s.applyComp}
@@ -157,31 +153,14 @@ export function RightPanel({ s }: Props) {
           poseCategory={s.poseCategory}
           setPoseCategory={s.setPoseCategory}
           applyPose={s.applyPose}
-          ghostType={s.ghostType}
-          ghostId={s.ghostId}
-          ghostOpacity={s.ghostOpacity}
-          setGhostOpacity={s.setGhostOpacity}
-          aiStrokeLayers={s.aiStrokeLayers}
-          aiStrokeCount={s.aiStrokeCount}
-          clearPanelAiOverlay={s.clearPanelAiOverlay}
-          applyAiLayerToActiveLayer={s.applyAiLayerToActiveLayer}
-          canApplyAiToLayer={s.canApplyAiToLayer}
+          selectedPoseId={s.selectedPoseId}
           aiQuota={s.aiQuota}
-          ghostStrokesSummary={s.ghostStrokesSummary}
-          ghostAt={s.ghostAt}
-          ghostSourceIds={s.ghostSourceIds}
-          ghostModel={s.ghostModel}
           userDrawingPrompt={s.userDrawingPrompt}
           setUserDrawingPrompt={s.setUserDrawingPrompt}
-          blueprint={s.blueprint}
-          blueprintLoading={s.blueprintLoading}
-          blueprintError={s.blueprintError}
-          blueprintApplied={s.blueprintApplied}
-          blueprintAt={s.blueprintAt}
-          runSceneBlueprint={s.runSceneBlueprint}
-          cancelSceneBlueprint={s.cancelSceneBlueprint}
-          applyBlueprintToPanel={s.applyBlueprintToPanel}
-          dismissBlueprint={s.dismissBlueprint}
+          referenceImages={s.referenceImages}
+          onDeleteReferenceImage={s.deleteReferenceImage}
+          referenceSource={s.referenceSource}
+          onReferenceSourceChange={s.setReferenceSource}
           showGuideSection={s.showGuideSection}
           setShowGuideSection={s.setShowGuideSection}
           toggleGuide={s.toggleGuide}
@@ -281,11 +260,11 @@ export function RightPanel({ s }: Props) {
             ))}
           </div>
 
-          {/* Layer List — nhóm Lớp của tôi / Lớp AI */}
+          {/* Layer List — chỉ lớp của người dùng; nhóm lớp AI đã gỡ cùng nét mờ (28/10/2026).
+              `isAi` còn lại trong mã hiển thị chỉ để phòng dữ liệu cũ lọt qua, luôn false với ngăn xếp đã chuẩn hóa. */}
           {(
             [
               { title: "Lớp của tôi", items: userLayers, isAi: false },
-              { title: "Lớp AI", items: aiLayers, isAi: true },
             ] as const
           )
             .filter((g) => g.items.length > 0)

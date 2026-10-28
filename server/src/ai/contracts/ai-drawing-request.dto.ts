@@ -12,27 +12,14 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 
+// Các task nét mờ AI (stroke_guidance, composition_overlay, pose_guidance)
+// đã gỡ khỏi hợp đồng ngày 28/10/2026. `scene_blueprint` còn lại trong enum
+// nhưng KHÔNG CÓ client nào gọi — giữ để parser/hợp đồng cũ không vỡ.
 export enum AiDrawingTask {
   CompositionGuidance = "composition_guidance",
   DrawingReview = "drawing_review",
-  StrokeGuidance = "stroke_guidance",
-  CompositionOverlay = "composition_overlay",
-  PoseGuidance = "pose_guidance",
   PageStoryFlow = "page_story_flow",
   SceneBlueprint = "scene_blueprint",
-}
-
-/**
- * Gợi ý công cụ vẽ — giúp AI hiểu người dùng đang muốn làm gì
- * để đưa ra nét gợi ý phù hợp hơn với tool được chọn.
- */
-export enum AiDrawingToolHint {
-  CleanLines = "clean-lines",
-  Screentone = "screentone",
-  SpeedLines = "speed-lines",
-  SpeechBubble = "speech-bubble",
-  CompositionOverlay = "composition-overlay",
-  PoseGuidance = "pose-guidance",
 }
 
 export enum AiDrawingImageMimeType {
@@ -77,14 +64,6 @@ export class AiDrawingRequestDto {
   @MinLength(3)
   @MaxLength(800)
   prompt?: string;
-
-  /**
-   * Context về tool người dùng đang dùng — giúp AI sinh nét gợi ý
-   * phù hợp với loại kỹ thuật vẽ được chọn (clean-lines, screentone, ...).
-   */
-  @IsOptional()
-  @IsEnum(AiDrawingToolHint)
-  toolHint?: AiDrawingToolHint;
 
   /**
    * Ảnh chụp canvas. **Bắt buộc với mọi task trừ `page_story_flow`** (VD-1):

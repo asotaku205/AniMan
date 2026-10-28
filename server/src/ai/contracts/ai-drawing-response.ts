@@ -117,7 +117,8 @@ export interface AiDrawingReviewResponse extends AiDrawingResponseBase {
   findings: AiDrawingFinding[];
 }
 
-// ─── Ghost stroke response (StrokeGuidance / CompositionOverlay / PoseGuidance) ──
+// ─── Stroke definitions (shared by the scene blueprint path; ghost stroke
+// tasks were removed 28/10/2026) ──────────────────────────────────────────
 
 export const MAX_AI_GHOST_STROKES = 60;
 export const MAX_AI_STROKE_POINTS = 120;
@@ -210,14 +211,6 @@ export interface AiStrokePath {
   fill?: string;
 }
 
-export interface AiGhostStrokeResponse extends AiDrawingResponseBase {
-  task:
-    | AiDrawingTask.StrokeGuidance
-    | AiDrawingTask.CompositionOverlay
-    | AiDrawingTask.PoseGuidance;
-  strokes: AiStrokePath[];
-}
-
 // ─── Scene blueprint response (A-2, Phase 5B) ────────────────────────────────
 
 /** Phần "bức tranh toàn cảnh bằng lời" — mô tả chứ không phải ảnh (C3). */
@@ -290,7 +283,6 @@ export interface AiPageStoryFlowResponse extends AiDrawingResponseBase {
 export type AiDrawingResponse =
   | AiCompositionGuidanceResponse
   | AiDrawingReviewResponse
-  | AiGhostStrokeResponse
   | AiPageStoryFlowResponse
   | AiSceneBlueprintResponse;
 
@@ -808,12 +800,6 @@ function validateStrokes(value: unknown): asserts value is AiStrokePath[] {
   );
 }
 
-const GHOST_STROKE_TASKS = new Set<AiDrawingTask>([
-  AiDrawingTask.StrokeGuidance,
-  AiDrawingTask.CompositionOverlay,
-  AiDrawingTask.PoseGuidance,
-]);
-
 // ─── Page story flow validation ─────────────────────────────────────────────
 
 /**
@@ -1042,24 +1028,6 @@ export function parseAiDrawingResponse(
       sourceIds,
       ...modelField,
       findings,
-    };
-  }
-
-  // Ghost stroke tasks: StrokeGuidance, CompositionOverlay, PoseGuidance
-  if (GHOST_STROKE_TASKS.has(expectedTask)) {
-    requireTaskKeys(value, [...BASE_RESPONSE_KEYS, "strokes"], "response");
-    const strokes = value.strokes;
-    validateStrokes(strokes);
-    return {
-      schemaVersion: AI_DRAWING_RESPONSE_SCHEMA_VERSION,
-      task: expectedTask as
-        | AiDrawingTask.StrokeGuidance
-        | AiDrawingTask.CompositionOverlay
-        | AiDrawingTask.PoseGuidance,
-      summary,
-      sourceIds,
-      ...modelField,
-      strokes,
     };
   }
 

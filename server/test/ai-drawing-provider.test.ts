@@ -12,6 +12,7 @@ import {
   AI_STROKE_OPACITY_MAX,
   AI_STROKE_OPACITY_MIN,
   MAX_AI_BLUEPRINT_LAYERS,
+  MAX_AI_BLUEPRINT_LAYER_STROKES,
   MAX_AI_GHOST_STROKES,
   MAX_AI_STROKE_LABEL_LENGTH,
   MAX_AI_STROKE_POINTS,
@@ -20,7 +21,7 @@ import {
 import type { AiDrawingProviderRequest } from "../src/ai/driver/ai-drawing-driver.js";
 
 function providerRequest(
-  task: AiDrawingTask = AiDrawingTask.StrokeGuidance,
+  task: AiDrawingTask = AiDrawingTask.DrawingReview,
 ): AiDrawingProviderRequest {
   return {
     modelId: "test-vision-model",
@@ -34,21 +35,73 @@ function providerRequest(
   };
 }
 
-function baseResponse(strokes: unknown[]): Record<string, unknown> {
-  return {
-    schemaVersion: "1",
-    task: AiDrawingTask.StrokeGuidance,
-    summary: "Gợi ý nét.",
-    sourceIds: [],
-    strokes,
-  };
-}
+describe("normalizeGeminiOutput — chuẩn hoá nét trong lớp blueprint (Phase 5A, retarget 28/10/2026)", () => {
+  const blueprintRequest = providerRequest(AiDrawingTask.SceneBlueprint);
 
-describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
+  function fillerStrokes(count: number): Array<Record<string, unknown>> {
+    return Array.from({ length: count }, () => ({
+      kind: "line",
+      from: { x: 0.1, y: 0.1 },
+      to: { x: 0.8, y: 0.9 },
+      style: "flow",
+      opacity: 0.5,
+      strokeWidth: 0.005,
+    }));
+  }
+
+  /** Blueprint có lớp background mang đúng nét cần kiểm tra, 4 lớp còn lại đủ 3 nét. */
+  function blueprintWithBackgroundStrokes(
+    strokes: Array<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    const padded = [
+      ...strokes,
+      ...fillerStrokes(Math.max(0, 3 - strokes.length)),
+    ];
+    const filler = (group: string) => ({
+      group,
+      name: `Lớp ${group}`,
+      description: `Mô tả lớp ${group}`,
+      strokes: fillerStrokes(3),
+    });
+    return {
+      schemaVersion: "1",
+      task: AiDrawingTask.SceneBlueprint,
+      summary: "Toàn cảnh.",
+      sourceIds: [],
+      blueprint: {
+        title: "Toàn cảnh thành phố",
+        composition: "Chủ thể lệch phải.",
+        lighting: "Sáng từ trái.",
+        camera: "Góc thấp, 35mm.",
+      },
+      layers: [
+        {
+          group: "background",
+          name: "Lớp background",
+          description: "Mô tả lớp background",
+          strokes: padded,
+        },
+        filler("midground"),
+        filler("subject"),
+        filler("effects"),
+        filler("guide"),
+      ],
+      strokes: [],
+    };
+  }
+
+  function backgroundStrokes(
+    normalized: Record<string, unknown>,
+  ): Array<Record<string, unknown>> {
+    const layers = normalized.layers as Array<{
+      strokes: Array<Record<string, unknown>>;
+    }>;
+    return layers[0].strokes;
+  }
+
   it("điền group/label mặc định để parser chặt luôn nhận được", () => {
-    const request = providerRequest();
     const normalized = normalizeGeminiOutput(
-      baseResponse([
+      blueprintWithBackgroundStrokes([
         {
           kind: "line",
           from: { x: 0.1, y: 0.1 },
@@ -58,23 +111,26 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
           strokeWidth: 0.005,
         },
       ]),
-      request,
+      blueprintRequest,
     ) as Record<string, unknown>;
 
-    const strokes = normalized.strokes as Array<Record<string, unknown>>;
-    expect(strokes).toHaveLength(1);
-    expect(strokes[0].group).toBe("detail");
+    const strokes = backgroundStrokes(normalized);
+    expect(strokes[0].group).toBe("background");
     expect(strokes[0].label).toBe("");
 
     // Kết quả chuẩn hoá phải qua được parser chặt.
     expect(() =>
-      parseAiDrawingResponse(normalized, request.task, new Set()),
+      parseAiDrawingResponse(
+        normalized,
+        AiDrawingTask.SceneBlueprint,
+        new Set(),
+      ),
     ).not.toThrow();
   });
 
   it("giữ nhóm hợp lệ và gộp khoảng trắng của nhãn", () => {
     const normalized = normalizeGeminiOutput(
-      baseResponse([
+      blueprintWithBackgroundStrokes([
         {
           kind: "line",
           from: { x: 0.1, y: 0.1 },
@@ -90,23 +146,23 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
           from: { x: 0.2, y: 0.2 },
           to: { x: 0.8, y: 0.8 },
           style: "flow",
-          group: "foreground", // nhóm lạ → detail
+          group: "foreground", // nhóm lạ → detail, rồi ép theo lớp
           opacity: 0.6,
           strokeWidth: 0.008,
         },
       ]),
-      providerRequest(),
+      blueprintRequest,
     ) as Record<string, unknown>;
 
-    const strokes = normalized.strokes as Array<Record<string, unknown>>;
-    expect(strokes[0].group).toBe("subject");
+    const strokes = backgroundStrokes(normalized);
     expect(strokes[0].label).toBe("viền tóc bên phải");
-    expect(strokes[1].group).toBe("detail");
+    expect(strokes[0].group).toBe("background");
+    expect(strokes[1].group).toBe("background");
   });
 
   it("cắt nhãn quá dài theo giới hạn hợp đồng", () => {
     const normalized = normalizeGeminiOutput(
-      baseResponse([
+      blueprintWithBackgroundStrokes([
         {
           kind: "line",
           from: { x: 0.1, y: 0.1 },
@@ -117,10 +173,10 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
           strokeWidth: 0.008,
         },
       ]),
-      providerRequest(),
+      blueprintRequest,
     ) as Record<string, unknown>;
 
-    const strokes = normalized.strokes as Array<Record<string, unknown>>;
+    const strokes = backgroundStrokes(normalized);
     expect((strokes[0].label as string).length).toBeLessThanOrEqual(
       MAX_AI_STROKE_LABEL_LENGTH,
     );
@@ -129,7 +185,7 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
 
   it("kẹp opacity vào 0.15..0.9 và mặc định 0.55 khi model bỏ trống", () => {
     const normalized = normalizeGeminiOutput(
-      baseResponse([
+      blueprintWithBackgroundStrokes([
         {
           kind: "line",
           from: { x: 0.1, y: 0.1 },
@@ -154,10 +210,10 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
           strokeWidth: 0.005,
         },
       ]),
-      providerRequest(),
+      blueprintRequest,
     ) as Record<string, unknown>;
 
-    const strokes = normalized.strokes as Array<Record<string, unknown>>;
+    const strokes = backgroundStrokes(normalized);
     expect(strokes[0].opacity).toBe(AI_STROKE_OPACITY_MIN);
     expect(strokes[1].opacity).toBe(AI_STROKE_OPACITY_MAX);
     expect(strokes[2].opacity).toBe(0.55);
@@ -165,7 +221,7 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
 
   it("tự khép path khi có màu tô, và bỏ màu tô không hợp lệ", () => {
     const normalized = normalizeGeminiOutput(
-      baseResponse([
+      blueprintWithBackgroundStrokes([
         {
           kind: "path",
           points: [
@@ -207,10 +263,10 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
           fill: "none",
         },
       ]),
-      providerRequest(),
+      blueprintRequest,
     ) as Record<string, unknown>;
 
-    const strokes = normalized.strokes as Array<Record<string, unknown>>;
+    const strokes = backgroundStrokes(normalized);
     expect(strokes[0].fill).toBe("#aabbcc");
     expect(strokes[0].closed).toBe(true);
     expect(strokes[1].fill).toBeUndefined();
@@ -222,19 +278,19 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
     expect(() =>
       parseAiDrawingResponse(
         normalized,
-        AiDrawingTask.StrokeGuidance,
+        AiDrawingTask.SceneBlueprint,
         new Set(),
       ),
     ).not.toThrow();
   });
 
-  it("bỏ trường lạ và chặn trần số nét/số điểm", () => {
+  it("bỏ trường lạ và chặn trần số nét/số điểm theo ngân sách lớp", () => {
     const manyPoints = Array.from(
       { length: MAX_AI_STROKE_POINTS + 25 },
       (_, index) => ({ x: index / 1000, y: index / 1000 }),
     );
     const manyStrokes = Array.from(
-      { length: MAX_AI_GHOST_STROKES + 5 },
+      { length: MAX_AI_BLUEPRINT_LAYER_STROKES + 5 },
       () => ({
         kind: "line",
         from: { x: 0.1, y: 0.1 },
@@ -247,7 +303,7 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
     );
 
     const normalized = normalizeGeminiOutput(
-      baseResponse([
+      blueprintWithBackgroundStrokes([
         {
           kind: "path",
           points: manyPoints,
@@ -257,11 +313,11 @@ describe("normalizeGeminiOutput — nét gợi ý (Phase 5A)", () => {
         },
         ...manyStrokes,
       ]),
-      providerRequest(),
+      blueprintRequest,
     ) as Record<string, unknown>;
 
-    const strokes = normalized.strokes as Array<Record<string, unknown>>;
-    expect(strokes).toHaveLength(MAX_AI_GHOST_STROKES);
+    const strokes = backgroundStrokes(normalized);
+    expect(strokes).toHaveLength(MAX_AI_BLUEPRINT_LAYER_STROKES);
     expect((strokes[0].points as unknown[]).length).toBe(
       MAX_AI_STROKE_POINTS,
     );
@@ -529,23 +585,53 @@ describe("buildGeminiDrawingOutput — cắt output & tên model (Phase 5E)", ()
   });
 
   it("điền model thật đã phục vụ vào phản hồi", () => {
+    const layerStrokes = (group: string) =>
+      [0, 1, 2].map(() => ({
+        kind: "line",
+        from: { x: 0.1, y: 0.1 },
+        to: { x: 0.8, y: 0.9 },
+        style: "flow",
+        group,
+        label: "nét",
+        opacity: 0.5,
+        strokeWidth: 0.005,
+      }));
+    const layers = BLUEPRINT_ORDER.map((group) => ({
+      group,
+      name: `Lớp ${group}`,
+      description: `Mô tả lớp ${group}`,
+      strokes: layerStrokes(group),
+    }));
     const output = buildGeminiDrawingOutput(
       {
         text: JSON.stringify({
           schemaVersion: "1",
-          task: "stroke_guidance",
-          summary: "Gợi ý nét.",
+          task: "scene_blueprint",
+          summary: "Toàn cảnh.",
           sourceIds: [],
-          strokes: [],
+          blueprint: {
+            title: "Toàn cảnh",
+            composition: "Chủ thể lệch phải.",
+            lighting: "Sáng từ trái.",
+            camera: "Góc thấp.",
+          },
+          layers,
+          strokes: layers.flatMap((layer) => layer.strokes),
         }),
         candidates: [{ finishReason: "STOP" }],
       },
-      providerRequest(),
+      providerRequest(AiDrawingTask.SceneBlueprint),
       "gemini-2.5-flash-fallback",
     ) as Record<string, unknown>;
 
     expect(output.model).toBe("gemini-2.5-flash-fallback");
-    expect(parseAiDrawingResponse(output, AiDrawingTask.StrokeGuidance, new Set())).toMatchObject({
+    expect(
+      parseAiDrawingResponse(
+        output,
+        AiDrawingTask.SceneBlueprint,
+        new Set(),
+      ),
+    ).toMatchObject({
       model: "gemini-2.5-flash-fallback",
     });
   });

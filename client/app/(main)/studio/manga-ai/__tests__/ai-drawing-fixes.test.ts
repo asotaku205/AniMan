@@ -5,23 +5,9 @@ import {
   buildAiToolPrompt,
   extractErrorMessage,
   formatRetryWait,
-  requestAiGhostStrokes,
-  type AiStrokePath,
+  requestAiDrawingReview,
 } from "@/lib/ai-drawing-api";
 import type { AuthenticatedFetch } from "@/lib/auth-api";
-import {
-  isDrawableAiStroke,
-  orderStrokesWithIndex,
-  sanitizeAiStrokes,
-} from "../lib/aiStrokeGeometry";
-
-const baseStroke: Omit<AiStrokePath, "kind"> = {
-  style: "composition",
-  group: "subject",
-  label: "nét mẫu",
-  opacity: 0.5,
-  strokeWidth: 0.01,
-};
 
 describe("Ghép prompt mẫu + ý tưởng cho AI (mẫu phải đổi được kết quả)", () => {
   it("mẫu + ý tưởng gộp thành một prompt, mẫu đứng trước", () => {
@@ -38,63 +24,6 @@ describe("Ghép prompt mẫu + ý tưởng cho AI (mẫu phải đổi được 
   it("cả hai rỗng thì không gửi prompt (undefined)", () => {
     expect(buildAiToolPrompt("   ", "  ")).toBeUndefined();
     expect(buildAiToolPrompt("", undefined)).toBeUndefined();
-  });
-});
-
-describe("Lọc nét AI không vẽ được phía client", () => {
-  const pathStroke: AiStrokePath = {
-    ...baseStroke,
-    kind: "path",
-    points: [
-      { x: 0.1, y: 0.1 },
-      { x: 0.5, y: 0.5 },
-    ],
-  };
-  const lineStroke: AiStrokePath = {
-    ...baseStroke,
-    kind: "line",
-    from: { x: 0, y: 0 },
-    to: { x: 1, y: 1 },
-  };
-  const ellipseStroke: AiStrokePath = {
-    ...baseStroke,
-    kind: "ellipse",
-    region: { x: 0.1, y: 0.1, width: 0.3, height: 0.2 },
-  };
-
-  it("giữ nét đủ hình học ở mọi kind", () => {
-    expect(isDrawableAiStroke(pathStroke)).toBe(true);
-    expect(isDrawableAiStroke(lineStroke)).toBe(true);
-    expect(isDrawableAiStroke(ellipseStroke)).toBe(true);
-    expect(
-      sanitizeAiStrokes([pathStroke, lineStroke, ellipseStroke]),
-    ).toHaveLength(3);
-  });
-
-  it("bỏ nét có tọa độ NaN (tránh chuỗi path 'NaN' vẽ rác)", () => {
-    const nanStroke: AiStrokePath = {
-      ...baseStroke,
-      kind: "path",
-      points: [
-        { x: 0.1, y: 0.1 },
-        { x: Number.NaN, y: 0.5 },
-      ],
-    };
-    expect(isDrawableAiStroke(nanStroke)).toBe(false);
-    expect(sanitizeAiStrokes([pathStroke, nanStroke])).toEqual([pathStroke]);
-  });
-
-  it("bỏ nét thiếu hình học, kind lạ, vùng rỗng và strokeWidth NaN", () => {
-    const noPoints: AiStrokePath = { ...baseStroke, kind: "path", points: [] };
-    const weirdKind = { ...baseStroke, kind: "spline" } as unknown as AiStrokePath;
-    const emptyRegion: AiStrokePath = {
-      ...baseStroke,
-      kind: "rectangle",
-      region: { x: 0.1, y: 0.1, width: 0, height: 0.2 },
-    };
-    const nanWidth: AiStrokePath = { ...pathStroke, strokeWidth: Number.NaN };
-    expect(sanitizeAiStrokes([noPoints, weirdKind, emptyRegion, nanWidth])).toEqual([]);
-    expect(sanitizeAiStrokes([pathStroke, noPoints])).toEqual([pathStroke]);
   });
 });
 
@@ -148,10 +77,10 @@ describe("Lỗi mạng và 429 đi qua đúng hàm gọi API (fetch giả)", () 
       throw new TypeError("Failed to fetch");
     };
     await expect(
-      requestAiGhostStrokes(
+      requestAiDrawingReview(
         throwingFetch as unknown as AuthenticatedFetch,
         image,
-        "stroke_guidance",
+        undefined,
       ),
     ).rejects.toThrow(/Không kết nối được máy chủ AI.*cổng 8080/);
   });
@@ -165,28 +94,11 @@ describe("Lỗi mạng và 429 đi qua đúng hàm gọi API (fetch giả)", () 
           JSON.stringify({ code: AI_DRAWING_RATE_LIMIT_CODE, retryAfterSeconds: 45 }),
       }) as unknown as Response;
     await expect(
-      requestAiGhostStrokes(
+      requestAiDrawingReview(
         rateLimitedFetch as unknown as AuthenticatedFetch,
         image,
-        "stroke_guidance",
+        undefined,
       ),
     ).rejects.toThrow(/45 giây/);
-  });
-});
-
-describe("Thứ tự nét giữ chỉ số gốc để chọn từng nét", () => {
-  it("sắp theo nhóm nhưng key chọn nét vẫn là chỉ số gốc", () => {
-    const strokes: AiStrokePath[] = [
-      { ...baseStroke, kind: "line", group: "effects", from: { x: 0, y: 0 }, to: { x: 1, y: 1 } },
-      { ...baseStroke, kind: "line", group: "background", from: { x: 0, y: 0 }, to: { x: 1, y: 1 } },
-      { ...baseStroke, kind: "line", group: "subject", from: { x: 0, y: 0 }, to: { x: 1, y: 1 } },
-    ];
-    const ordered = orderStrokesWithIndex(strokes);
-    expect(ordered.map((item) => item.index)).toEqual([1, 2, 0]);
-    expect(ordered.map((item) => item.stroke.group)).toEqual([
-      "background",
-      "subject",
-      "effects",
-    ]);
   });
 });

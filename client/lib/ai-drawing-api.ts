@@ -1,21 +1,15 @@
 import type { AuthenticatedFetch } from "./auth-api";
 
+// Các task nét mờ AI (stroke_guidance, composition_overlay, pose_guidance)
+// đã gỡ khỏi hợp đồng ngày 28/10/2026: không còn đường code nào gọi chúng.
+// `scene_blueprint` còn lại trong hợp đồng nhưng KHÔNG CÓ UI nào gọi
+// (cờ AI_SCENE_BLUEPRINT_ENABLED vẫn tắt) — giữ để hợp đồng và test cũ
+// của blueprint không vỡ, không phải để dùng.
 export type AiDrawingTask =
   | "composition_guidance"
   | "drawing_review"
-  | "stroke_guidance"
-  | "composition_overlay"
-  | "pose_guidance"
   | "page_story_flow"
   | "scene_blueprint";
-
-export type AiDrawingToolHint =
-  | "clean-lines"
-  | "screentone"
-  | "speed-lines"
-  | "speech-bubble"
-  | "composition-overlay"
-  | "pose-guidance";
 
 export type AiDrawingPrinciple =
   | "composition"
@@ -106,16 +100,6 @@ export interface AiStrokePath {
   closed?: boolean;
   /** Màu tô kín: "#rrggbb" hoặc "none" */
   fill?: string;
-}
-
-export interface AiGhostStrokeResponse {
-  schemaVersion: "1";
-  task: "stroke_guidance" | "composition_overlay" | "pose_guidance";
-  summary: string;
-  sourceIds: string[];
-  /** Model **thật đã phục vụ** (Phase 5E), có thể thiếu với server cũ. */
-  model?: string;
-  strokes: AiStrokePath[];
 }
 
 export interface AiDrawingImagePayload {
@@ -210,8 +194,9 @@ export const AI_DRAWING_MODEL_LABEL = "gemini-flash-latest";
  * Tắt cho bản demo đồ án (22/10/2026): lần đo runtime thật duy nhất mất 106,6s —
  * vượt trần timeout 90s của driver — và prompt v3 chưa đo lại được lần nào vì
  * Google trả 503 lặp lại (xem appendix-AC-STATUS, "Việc còn lại của Phase 6" #2).
- * Code, contract và test của tính năng vẫn giữ nguyên; chỉ ẩn entry point ở
- * `AiTab`. Bật lại (`true`) sau khi T-CHECK-74 đo đạt trong trần 90s.
+ * Code, contract và test của tính năng vẫn giữ nguyên; entry point ở `AiTab`
+ * và hook đã gỡ hẳn ngày 28/10/2026 khi bỏ nét mờ AI. Bật lại (`true`) chỉ
+ * sau khi Sơn quyết định mới và đo lại runtime trong trần 90s.
  */
 export const AI_SCENE_BLUEPRINT_ENABLED = false;
 
@@ -274,7 +259,6 @@ function isKnownErrorCode(value: unknown): value is AiDrawingErrorCode {
 export interface AiDrawingRequestPayload {
   task: AiDrawingTask;
   prompt?: string;
-  toolHint?: AiDrawingToolHint;
   /** Bắt buộc với mọi task trừ `page_story_flow` (VD-1). */
   image?: AiDrawingImagePayload;
 }
@@ -468,52 +452,6 @@ export async function requestAiDrawingReview(
 }
 
 /**
- * Yêu cầu AI sinh ghost strokes cho một trong các task: stroke_guidance,
- * composition_overlay, pose_guidance.
- *
- * @param prompt  Mô tả ý tưởng của người dùng (user prompt) — để lại rỗng
- *                nếu bức vẽ đã rõ ràng. Khi canvas còn sơ khai, người dùng
- *                có thể nhập mô tả để AI đưa ra gợi ý phù hợp hơn.
- */
-export async function requestAiGhostStrokes(
-  authenticatedFetch: AuthenticatedFetch,
-  image: AiDrawingImagePayload,
-  task: "stroke_guidance" | "composition_overlay" | "pose_guidance",
-  toolHint?: AiDrawingToolHint,
-  prompt?: string,
-  signal?: AbortSignal,
-): Promise<AiGhostStrokeResponse> {
-  const payload: AiDrawingRequestPayload = {
-    task,
-    image,
-    ...(toolHint ? { toolHint } : {}),
-    ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
-  };
-
-  const response = await callAiDrawing(authenticatedFetch, "/ai/drawing", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    signal,
-  });
-
-  const responseData: unknown = await readPayload(response);
-
-  if (!response.ok) {
-    const message = extractErrorMessage(responseData, response.status);
-    throw new AiDrawingApiError(message, response.status);
-  }
-
-  if (!isGhostStrokeResponse(responseData)) {
-    throw new Error("Phản hồi ghost stroke từ AI không đúng cấu trúc yêu cầu.");
-  }
-
-  return responseData;
-}
-
-/**
  * Yêu cầu AI dệt mạch truyện xuyên suốt cả trang (AC-D1.1).
  *
  * `image` là tùy chọn (VD-1): khi người dùng chưa mở khung nào thì chỉ gửi mô tả
@@ -556,6 +494,10 @@ export async function requestAiPageStoryFlow(
 
 /**
  * Yêu cầu AI dựng "bức tranh toàn cảnh" cho khung đang mở (A-2).
+ *
+ * KHÔNG CÓ AI GỌI (inert): UI và hook của blueprint đã gỡ ngày 28/10/2026,
+ * cờ AI_SCENE_BLUEPRINT_ENABLED vẫn tắt. Hàm còn lại để hợp đồng không vỡ;
+ * không nối lại UI khi chưa có quyết định mới của Sơn.
  *
  * Khác `page_story_flow`, task này cần ảnh khung (VD-1) để AI bám vào nét đã có,
  * nên `prompt` là mô tả ý tưởng còn `image` là bắt buộc.
@@ -709,12 +651,6 @@ function isDrawingReviewResponse(
   );
 }
 
-const GHOST_STROKE_TASKS = new Set([
-  "stroke_guidance",
-  "composition_overlay",
-  "pose_guidance",
-]);
-
 /**
  * Kiểm tra phản hồi `page_story_flow`. Xuất để test được hợp đồng này mà không
  * phải dựng fetch giả.
@@ -823,19 +759,4 @@ export function isSceneBlueprintResponse(
   // `strokes` phải đúng bằng phép trải phẳng của `layers`, nếu không thì UI
   // không biết nét nào thuộc lớp nào.
   return strokeCount === rec.strokes.length;
-}
-
-function isGhostStrokeResponse(value: unknown): value is AiGhostStrokeResponse {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const rec = value as Record<string, unknown>;
-  return (
-    rec.schemaVersion === "1" &&
-    typeof rec.task === "string" &&
-    GHOST_STROKE_TASKS.has(rec.task) &&
-    typeof rec.summary === "string" &&
-    Array.isArray(rec.sourceIds) &&
-    Array.isArray(rec.strokes)
-  );
 }

@@ -1,13 +1,10 @@
 import type { MangaProject, MangaProjectPage } from "../hooks/useMangaProjects";
 import type {
-  AiOverlayLayer,
   LayerItem,
-  PanelAiOverlay,
   PanelLayerStack,
   PanelStacks,
 } from "../data";
 import { createUserLayer, normalizeLayers } from "../data";
-import type { AiStrokeGroup, AiStrokePath } from "@/lib/ai-drawing-api";
 import type { PanelTextItems } from "./textItems";
 import type { PanelBubbleShapes } from "./bubbleShapes";
 
@@ -256,71 +253,10 @@ export function migrateStoredPageToStacks(record: {
 }
 
 /**
- * Chuẩn hoá `aiOverlay` đọc từ IndexedDB.
- *
- * Bản ghi cũ (Phase 2–4) lưu `{ strokes, summary, ... }`; từ Phase 5B nét AI nằm
- * trong **từng lớp vector** `layers[]`. Dữ liệu cũ được gộp thành một lớp duy nhất
- * (`group: null`) để không mất nét đã sinh.
- */
-export function normalizeAiOverlay(raw: unknown): PanelAiOverlay | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const source = raw as Record<string, unknown>;
-  const generatedAt =
-    typeof source.generatedAt === "number" ? source.generatedAt : Date.now();
-  const summary =
-    typeof source.summary === "string" ? source.summary : undefined;
-  const model = typeof source.model === "string" ? source.model : undefined;
-  const sourceIds = Array.isArray(source.sourceIds)
-    ? source.sourceIds.filter((id): id is string => typeof id === "string")
-    : undefined;
-  const blueprint =
-    source.blueprint && typeof source.blueprint === "object"
-      ? (source.blueprint as PanelAiOverlay["blueprint"])
-      : undefined;
-
-  const layers: AiOverlayLayer[] = [];
-  if (Array.isArray(source.layers)) {
-    for (const value of source.layers) {
-      if (!value || typeof value !== "object") continue;
-      const layer = value as Record<string, unknown>;
-      if (typeof layer.id !== "string" || !Array.isArray(layer.strokes)) {
-        continue;
-      }
-      layers.push({
-        id: layer.id,
-        group:
-          typeof layer.group === "string" ? (layer.group as AiStrokeGroup) : null,
-        name: typeof layer.name === "string" ? layer.name : "AI (Gợi ý)",
-        description:
-          typeof layer.description === "string" ? layer.description : undefined,
-        strokes: layer.strokes as AiStrokePath[],
-      });
-    }
-  } else if (Array.isArray(source.strokes)) {
-    // Bản ghi cũ: một mảng nét phẳng, không chia lớp.
-    layers.push({
-      id: "ai-legacy",
-      group: null,
-      name: "AI (Gợi ý)",
-      strokes: source.strokes as AiStrokePath[],
-    });
-  }
-
-  if (layers.every((layer) => layer.strokes.length === 0)) return undefined;
-
-  return {
-    layers: layers.filter((layer) => layer.strokes.length > 0),
-    ...(summary ? { summary } : {}),
-    generatedAt,
-    ...(model ? { model } : {}),
-    ...(sourceIds && sourceIds.length > 0 ? { sourceIds } : {}),
-    ...(blueprint ? { blueprint } : {}),
-  };
-}
-
-/**
  * Chuẩn hoá `stacks` đọc từ IndexedDB (bản ghi v2): bỏ entry hỏng,
- * sửa `activeLayerId` trỏ sai, loại pixel mồ côi (layerId không còn tồn tại).
+ * sửa `activeLayerId` trỏ sai, loại pixel mồ côi (layerId không còn tồn tại),
+ * và LOẠI BỎ mọi lớp AI / `aiOverlay` còn sót từ thời nét mờ AI (đã gỡ
+ * 28/10/2026): nét AI cũ không bao giờ hiện lại trên canvas.
  */
 export function normalizePanelStacks(raw: unknown): PanelStacks {
   if (!raw || typeof raw !== "object") return {};
@@ -328,7 +264,8 @@ export function normalizePanelStacks(raw: unknown): PanelStacks {
   for (const [panelId, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!value || typeof value !== "object") continue;
     const s = value as Partial<PanelLayerStack>;
-    const layers = normalizeLayers(s.layers);
+    // Lớp AI cũ (kind "ai") bị loại: chỉ layer người dùng mới được giữ.
+    const layers = normalizeLayers(s.layers).filter((l) => l.kind !== "ai");
     if (layers.length === 0) continue;
 
     const activeLayerId = layers.some((l) => l.id === s.activeLayerId)
@@ -344,14 +281,11 @@ export function normalizePanelStacks(raw: unknown): PanelStacks {
       }
     }
 
-    const aiOverlay = normalizeAiOverlay(s.aiOverlay);
-
     out[panelId] = {
       panelId,
       layers,
       activeLayerId,
       pixels,
-      ...(aiOverlay ? { aiOverlay } : {}),
     };
   }
   return out;

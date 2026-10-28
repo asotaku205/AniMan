@@ -176,14 +176,11 @@ export const GEMINI_DRAWING_MODEL_PROFILE: AiDrawingModelProfile = {
   provider: "google-gemini",
   modelId: "gemini-flash-latest",
   description:
-    "Google Gemini Flash (Latest) — vision model for structured composition guidance, stroke guidance, pose guidance, page story flow, scene blueprint and drawing review.",
+    "Google Gemini Flash (Latest) — vision model for structured composition guidance, page story flow, scene blueprint and drawing review.",
   version: "4",
   tasks: [
     AiDrawingTask.CompositionGuidance,
     AiDrawingTask.DrawingReview,
-    AiDrawingTask.StrokeGuidance,
-    AiDrawingTask.CompositionOverlay,
-    AiDrawingTask.PoseGuidance,
     AiDrawingTask.PageStoryFlow,
     AiDrawingTask.SceneBlueprint,
   ],

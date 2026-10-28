@@ -92,7 +92,7 @@ describe("migrateStoredPageToStacks — đọc bản ghi v1 (spec 02 §3.2)", ()
 });
 
 describe("normalizePanelStacks — đọc bản ghi v2 (spec 02 §3.1)", () => {
-  it("bản ghi hợp lệ → giữ nguyên nội dung", () => {
+  it("bản ghi hợp lệ → giữ nguyên nội dung, aiOverlay cũ bị loại", () => {
     const raw = {
       p1: {
         panelId: "p1",
@@ -120,17 +120,20 @@ describe("normalizePanelStacks — đọc bản ghi v2 (spec 02 §3.1)", () => {
     expect(out.p1.layers[0].name).toBe("Ink (Đi nét)");
     expect(out.p1.activeLayerId).toBe("l2");
     expect(out.p1.pixels).toEqual({ l2: "URL" });
-    expect(out.p1.aiOverlay?.layers).toHaveLength(1);
-    expect(out.p1.aiOverlay?.layers[0].group).toBe("subject");
-    expect(out.p1.aiOverlay?.layers[0].strokes).toHaveLength(1);
-    expect(out.p1.aiOverlay?.model).toBe("gemini-flash-latest");
+    // Nét mờ AI đã gỡ 28/10/2026: dữ liệu cũ không hiện lại.
+    expect("aiOverlay" in out.p1).toBe(false);
   });
 
-  it("bản ghi cũ (strokes phẳng) → gộp thành một lớp AI với group null", () => {
+  it("bản ghi cũ có aiOverlay và lớp AI → loại bỏ cả hai, chỉ giữ lớp người dùng", () => {
     const out = normalizePanelStacks({
       p1: {
         panelId: "p1",
-        layers: [{ id: "l1", name: "A", visible: true, locked: false }],
+        layers: [
+          createAiLayer("AI test"),
+          { id: "l1", name: "A", visible: true, locked: false },
+        ],
+        activeLayerId: "l1",
+        pixels: { l1: "U1" },
         aiOverlay: {
           strokes: [{ id: "s1" }, { id: "s2" }],
           generatedAt: 7,
@@ -138,10 +141,9 @@ describe("normalizePanelStacks — đọc bản ghi v2 (spec 02 §3.1)", () => {
       },
     });
 
-    expect(out.p1.aiOverlay?.layers).toHaveLength(1);
-    expect(out.p1.aiOverlay?.layers[0].id).toBe("ai-legacy");
-    expect(out.p1.aiOverlay?.layers[0].group).toBeNull();
-    expect(out.p1.aiOverlay?.layers[0].strokes).toHaveLength(2);
+    expect("aiOverlay" in out.p1).toBe(false);
+    expect(out.p1.layers.map((l) => l.kind)).toEqual(["user"]);
+    expect(out.p1.pixels).toEqual({ l1: "U1" });
   });
 
   it("activeLayerId trỏ sai → sửa về layer đầu tiên; pixel mồ côi bị loại", () => {
@@ -157,7 +159,7 @@ describe("normalizePanelStacks — đọc bản ghi v2 (spec 02 §3.1)", () => {
     expect(out.p1.pixels).toEqual({ l1: "U1" });
   });
 
-  it("bỏ entry hỏng: layers rỗng, giá trị không phải object, aiOverlay thiếu strokes", () => {
+  it("bỏ entry hỏng: layers rỗng, giá trị không phải object, aiOverlay cũ bị loại", () => {
     const out = normalizePanelStacks({
       pEmpty: { panelId: "pEmpty", layers: [] },
       pString: "not-an-object",
@@ -171,7 +173,7 @@ describe("normalizePanelStacks — đọc bản ghi v2 (spec 02 §3.1)", () => {
     expect(out.pEmpty).toBeUndefined();
     expect(out.pString).toBeUndefined();
     expect(out.nullEntry).toBeUndefined();
-    expect(out.pBadAi.aiOverlay).toBeUndefined();
+    expect("aiOverlay" in out.pBadAi).toBe(false);
     expect(out.pBadAi.layers).toHaveLength(1);
   });
 

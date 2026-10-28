@@ -2,20 +2,14 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AI_TOOLS,
-  COMP_SUGGESTIONS,
   LAYOUTS,
-  POSES,
   SCENE_TYPE_LABEL,
-  createAiLayer,
   createUserLayer,
   createDefaultPanelStack,
-  type AiOverlayLayer,
   type DrawTool,
   type GuideId,
   type LayoutDef,
   type LayerItem,
-  type PanelAiOverlay,
   type PanelLayerStack,
   type PanelStacks,
   type PoseCategory,
@@ -23,25 +17,16 @@ import {
 } from "../data";
 import { useAuth } from "@/app/auth/AuthProvider";
 import {
-  AI_DRAWING_MODEL_LABEL,
   AiDrawingApiError,
-  MIN_BLUEPRINT_LAYERS,
-  buildAiToolPrompt,
   createCanvasSnapshot,
   requestAiDrawingQuota,
   requestAiDrawingReview,
-  requestAiGhostStrokes,
   requestAiPageStoryFlow,
-  requestAiSceneBlueprint,
   selectStoryFlowPanelsForLayout,
   type AiDrawingQuota,
   type AiDrawingReviewResponse,
   type AiPageStoryFlowResponse,
-  type AiSceneBlueprintResponse,
-  type AiStrokeGroup,
-  type AiStrokePath,
   type AiDrawingFinding,
-  type AiDrawingToolHint,
   type NormalizedRegion,
 } from "@/lib/ai-drawing-api";
 import {
@@ -86,7 +71,6 @@ import {
   effectiveStrokeAlpha,
   getPanelBackingSize,
   layerAlpha,
-  type CompositeOp,
 } from "../lib/layerEngine";
 import {
   canRemoveLayerInList,
@@ -115,8 +99,14 @@ import {
   type SelectMode,
 } from "../lib/selection";
 import { blitSelectionMask } from "../lib/selectionBlit";
-import { aiStrokeShape, sanitizeAiStrokes } from "../lib/aiStrokeGeometry";
-import { rasterizeAiStrokes } from "../lib/aiRasterize";
+import {
+  deleteReferenceImage as deleteStoredReferenceImage,
+  loadReferenceImages,
+} from "../lib/referenceImageStorage";
+import type {
+  ReferenceImageItem,
+  ReferenceImageSource,
+} from "../lib/referenceImages";
 import { regionToPixelRect } from "../lib/strokeCleanup";
 import {
   createTextItem,
@@ -236,31 +226,6 @@ export const GUIDE_DOT: Record<GuideId, string> = {
   proportions: "bg-pink-400",
   vanishing: "bg-green-400",
 };
-
-/** Map toolId → task AI tương ứng cho ghost stroke */
-const TOOL_TASK_MAP: Record<string, "stroke_guidance" | "composition_overlay" | "pose_guidance"> = {
-  "clean-lines": "stroke_guidance",
-  "screentone": "stroke_guidance",
-  "speech-bubble": "stroke_guidance",
-  "speed-lines": "stroke_guidance",
-  "fix-comp": "composition_overlay",
-  "composition-overlay": "composition_overlay",
-  "pose-guidance": "pose_guidance",
-};
-
-/** Map toolId → AiDrawingToolHint để server biết context */
-const TOOL_HINT_MAP: Record<string, AiDrawingToolHint> = {
-  "clean-lines": "clean-lines",
-  "screentone": "screentone",
-  "speech-bubble": "speech-bubble",
-  "speed-lines": "speed-lines",
-  "composition-overlay": "composition-overlay",
-  "fix-comp": "composition-overlay",
-  "pose-guidance": "pose-guidance",
-};
-
-/** Tên mặc định của lớp AI cho gợi ý nét đơn lẻ (5C.1) */
-const AI_GHOST_LAYER_NAME = "AI (Gợi ý)";
 
 /** Chuyển đổi mã màu hex (#111111 hoặc #fff) sang mảng RGBA [r, g, b, a] */
 function hexToRgba(hex: string): [number, number, number, number] {
@@ -418,7 +383,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   /** AbortController cho yêu cầu mạch truyện cả trang (AC-D1.2 — nút hủy). */
   const storyAbortRef = useRef<AbortController | null>(null);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toolTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
@@ -611,227 +575,60 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     [],
   );
 
-  /**
-   * Ghi một bộ **lớp AI mới** cho khung đang mở (5C.1/5B.6): thay toàn bộ lớp AI cũ,
-   * giữ nguyên lớp người dùng, và luôn xếp lớp AI xuống **cuối** ngăn xếp (dưới nét
-   * người dùng — bất biến AI-DRAWING-OPERATIONS §1.2).
-   *
-   * Lớp AI là **vector**: không có bitmap, chỉ đọc; người dùng bật/tắt và chỉnh độ
-   * mờ ở tab Layers, và nét AI không bao giờ được xuất ra file (C2).
-   */
-  const setPanelAiLayers = useCallback(
-    (input: {
-      layers: Array<{
-        group: AiStrokeGroup | null;
-        name: string;
-        description?: string;
-        strokes: AiStrokePath[];
-      }>;
-      summary?: string;
-      sourceIds?: string[];
-      /** Model **thật** đã phục vụ (Phase 5E); thiếu thì dùng hằng dự phòng. */
-      model?: string;
-      blueprint?: PanelAiOverlay["blueprint"];
-    }) => {
-      setStacks((prev) => {
-        const pid = activePanelRef.current;
-        const stack = pid ? prev[pid] : undefined;
-        if (!pid || !stack) return prev;
-
-        const kept = stack.layers.filter((layer) => layer.kind !== "ai");
-        const room = Math.max(0, MAX_LAYERS_PER_PANEL - kept.length);
-        const stamp = Date.now().toString(36);
-        const aiLayerRows: AiOverlayLayer[] = [];
-        const aiLayerItems: LayerItem[] = [];
-
-        for (const layer of input.layers) {
-          if (layer.strokes.length === 0) continue;
-          if (aiLayerRows.length >= room) break;
-          const id = `ai-${stamp}-${aiLayerRows.length}`;
-          aiLayerRows.push({
-            id,
-            group: layer.group,
-            name: layer.name,
-            ...(layer.description ? { description: layer.description } : {}),
-            strokes: layer.strokes,
-          });
-          aiLayerItems.push(createAiLayer(layer.name, { id }));
-        }
-
-        // Hết chỗ cho lớp AI → giữ nguyên ngăn xếp (người gọi đã báo lý do).
-        if (aiLayerRows.length === 0) return prev;
-
-        return {
-          ...prev,
-          [pid]: {
-            ...stack,
-            layers: [...kept, ...aiLayerItems],
-            aiOverlay: {
-              layers: aiLayerRows,
-              ...(input.summary ? { summary: input.summary } : {}),
-              generatedAt: Date.now(),
-              model: input.model ?? AI_DRAWING_MODEL_LABEL,
-              ...(input.sourceIds && input.sourceIds.length > 0
-                ? { sourceIds: input.sourceIds }
-                : {}),
-              ...(input.blueprint ? { blueprint: input.blueprint } : {}),
-            },
-          },
-        };
-      });
-    },
-    [],
-  );
-
-  /**
-   * Chọn từng nét ma để áp riêng (5C.2 mở rộng): key `${layerId}:${indexGốc}`.
-   * Mặc định overlay KHÔNG nhận click (bất biến: không chặn vẽ) — chỉ khi bật
-   * chế độ chọn nét thì click mới chọn nét, tránh phá thao tác vẽ thường.
-   */
-  const [ghostSelectMode, setGhostSelectMode] = useState(false);
-  const [selectedGhostStrokes, setSelectedGhostStrokes] = useState<
-    ReadonlySet<string>
-  >(new Set());
-  const toggleGhostStrokeSelection = useCallback(
-    (layerId: string, strokeIndex: number) => {
-      const key = `${layerId}:${strokeIndex}`;
-      setSelectedGhostStrokes((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-      });
-    },
-    [],
-  );
-
-  /** Gợi ý nét đơn lẻ (stroke_guidance/composition_overlay/pose_guidance) → 1 lớp AI. */
-  const applyAiStrokes = useCallback(
-    (input: {
-      strokes: AiStrokePath[];
-      summary?: string;
-      sourceIds?: string[];
-      model?: string;
-    }) => {
-      setSelectedGhostStrokes(new Set());
-      setPanelAiLayers({
-        layers: [
-          { group: null, name: AI_GHOST_LAYER_NAME, strokes: input.strokes },
-        ],
-        summary: input.summary,
-        sourceIds: input.sourceIds,
-        model: input.model,
-      });
-    },
-    [setPanelAiLayers],
-  );
-
-  /** Blueprint toàn cảnh → mỗi lớp nội dung thành một **lớp AI** riêng (5B.6). */
-  const applyAiBlueprint = useCallback(
-    (blueprint: AiSceneBlueprintResponse) => {
-      setSelectedGhostStrokes(new Set());
-      setPanelAiLayers({
-        layers: blueprint.layers.map((layer) => ({
-          group: layer.group,
-          name: layer.name,
-          description: layer.description,
-          strokes: layer.strokes,
-        })),
-        summary: blueprint.summary,
-        sourceIds: blueprint.sourceIds,
-        model: blueprint.model,
-        blueprint: blueprint.blueprint,
-      });
-    },
-    [setPanelAiLayers],
-  );
-
-  /** Xoá mọi lớp AI + nét AI của khung đang mở (không đụng nét người dùng). */
-  const clearPanelAiOverlay = useCallback(() => {
-    setSelectedGhostStrokes(new Set());
-    setGhostSelectMode(false);
-    setStacks((prev) => {
-      const pid = activePanelRef.current;
-      const stack = pid ? prev[pid] : undefined;
-      if (!pid || !stack) return prev;
-      const kept = stack.layers.filter((layer) => layer.kind !== "ai");
-      if (kept.length === stack.layers.length && !stack.aiOverlay) return prev;
-      return {
-        ...prev,
-        [pid]: { ...stack, layers: kept, aiOverlay: undefined },
-      };
-    });
-  }, []);
-
   // AI / scene
   const [sceneType, setSceneType] = useState<SceneType>("auto");
   const [activeGuides, setActiveGuides] = useState<GuideId[]>([]);
   const [selectedComp, setSelectedComp] = useState<string | null>(null);
   const [poseCategory, setPoseCategory] = useState<PoseCategory>("stand");
+  const [selectedPoseId, setSelectedPoseId] = useState<string | null>(null);
 
   // Collapsibles
   const [showCompSection, setShowCompSection] = useState(true);
   const [showPoseSection, setShowPoseSection] = useState(false);
   const [showGuideSection, setShowGuideSection] = useState(false);
 
-  // Ghost overlay — nét AI (vector) nằm trong **lớp AI của từng khung** (5C.1)
-  const [ghostType, setGhostType] = useState<"comp" | "pose" | null>(null);
-  const [ghostId, setGhostId] = useState<string | null>(null);
-  const [ghostOpacity, setGhostOpacity] = useState(28);
-  /** Đè nét AI lên trên nét người dùng (mặc định tắt — bất biến §1.2) */
-  const [aiOverlayAbove, setAiOverlayAbove] = useState(false);
-  /** Xuất kèm nét AI (5C.5) — **mặc định tắt**, C2: ảnh xuất không có nét AI */
-  const [exportAiStrokes, setExportAiStrokes] = useState(false);
-  /** Nét AI (vector) của khung đang mở — một nguồn sự thật duy nhất (5C.7) */
-  const aiOverlay = activeStack?.aiOverlay ?? null;
-  /**
-   * Các lớp AI **đang hiện** của khung đang mở, kèm độ mờ lấy từ layer tương ứng
-   * ở tab Layers (5C.6). Chỉ lớp đang bật và còn nét mới được vẽ.
-   */
-  const aiStrokeLayers = useMemo(() => {
-    if (!aiOverlay) return [];
-    const items = activeStack?.layers ?? [];
-    return aiOverlay.layers
-      .map((layer) => {
-        const item = items.find((l) => l.id === layer.id);
-        return {
-          id: layer.id,
-          group: layer.group,
-          name: layer.name,
-          opacity: (item?.opacity ?? 100) / 100,
-          strokes: layer.strokes,
-        };
-      })
-      .filter((layer) => {
-        const item = items.find((l) => l.id === layer.id);
-        return item?.visible !== false && layer.strokes.length > 0;
-      });
-  }, [aiOverlay, activeStack?.layers]);
-  /** Số nét AI đang hiện (chip trạng thái — 5C.4) */
-  const aiStrokeCount = useMemo(
-    () => aiStrokeLayers.reduce((total, layer) => total + layer.strokes.length, 0),
-    [aiStrokeLayers],
+  // Ảnh mẫu tham khảo (mockup đã duyệt 28/10/2026): lịch sử tối đa 3 ảnh
+  // mỗi khung, lưu riêng trong IndexedDB, không vào lớp vẽ hay xuất bản.
+  // Sinh ảnh đang TẮT (chưa có model ảnh miễn phí), panel chỉ hiển thị
+  // lịch sử và nút bị vô hiệu hóa; không có đường ghi ảnh mẫu vào canvas.
+  const [referenceImagesByPanel, setReferenceImagesByPanel] = useState<
+    Record<string, ReferenceImageItem[]>
+  >({});
+  const [referenceSource, setReferenceSource] =
+    useState<ReferenceImageSource>("drawing");
+  const referenceImagesLoadedRef = useRef<Set<string>>(new Set());
+  const referenceImages = useMemo(
+    () => (activePanel ? (referenceImagesByPanel[activePanel] ?? []) : []),
+    [activePanel, referenceImagesByPanel],
   );
-  /** Tóm tắt của AI cho lần gợi ý đang hiện */
-  const ghostStrokesSummary = aiOverlay?.summary ?? null;
-  /** Thời điểm + nguồn của nét gợi ý đang hiện — dòng nguồn AI (AC-D2.2) */
-  const ghostAt = aiOverlay?.generatedAt ?? null;
-  const ghostSourceIds = aiOverlay?.sourceIds ?? [];
-  /** Model thật đã phục vụ nét AI đang hiện (Phase 5E); null → tab AI dùng hằng dự phòng */
-  const ghostModel = aiOverlay?.model ?? null;
+  useEffect(() => {
+    if (!activePanel || referenceImagesLoadedRef.current.has(activePanel)) {
+      return;
+    }
+    referenceImagesLoadedRef.current.add(activePanel);
+    let cancelled = false;
+    loadReferenceImages(activePanel)
+      .then((images) => {
+        if (cancelled) return;
+        setReferenceImagesByPanel((prev) => ({
+          ...prev,
+          [activePanel]: images,
+        }));
+      })
+      .catch(() => {
+        referenceImagesLoadedRef.current.delete(activePanel);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activePanel]);
+  const deleteReferenceImage = useCallback(async (id: string) => {
+    const pid = activePanelRef.current;
+    if (!pid) return;
+    const next = await deleteStoredReferenceImage(pid, id);
+    setReferenceImagesByPanel((prev) => ({ ...prev, [pid]: next }));
+  }, []);
 
-  // Bức tranh toàn cảnh (A-2, 5B.5) — kết quả xem trước, chưa áp vào khung
-  const [blueprint, setBlueprint] = useState<AiSceneBlueprintResponse | null>(null);
-  const [blueprintLoading, setBlueprintLoading] = useState(false);
-  const [blueprintError, setBlueprintError] = useState<string | null>(null);
-  /** Đã áp blueprint vào lớp AI của khung chưa */
-  const [blueprintApplied, setBlueprintApplied] = useState(false);
-  /**
-   * Thời điểm nhận blueprint — dòng nguồn AI của **thẻ xem trước** (AC-D2.2).
-   * Trước Phase 5E thẻ này mượn `ghostAt` của nét AI đang áp, nên khi chưa có nét AI
-   * nào thì thẻ trắng không có dòng nguồn, còn khi đã có thì hiện **sai giờ**.
-   */
-  const [blueprintAt, setBlueprintAt] = useState<number | null>(null);
   /**
    * Mô tả ý tưởng của người dùng (user prompt).
    * Khi hình vẽ chưa rõ ràng, người dùng nhập mô tả để AI
@@ -856,8 +653,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   // Stroke / analysis
   const { authenticatedFetch } = useAuth();
   const reviewAbortRef = useRef<AbortController | null>(null);
-  /** AbortController riêng cho ghost stroke calls */
-  const ghostAbortRef = useRef<AbortController | null>(null);
   /**
    * Lượt AI còn lại — lấy từ `GET /ai/drawing/quota` (chỉ đọc, không tốn lượt).
    * null = chưa lấy được (chưa đăng nhập hoặc server chưa chạy) thì AiTab ẩn
@@ -891,7 +686,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     : null;
 
   // Processing & toast
-  const [processingTool, setProcessingTool] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   // In-panel suggestion widget
@@ -2441,47 +2235,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       return;
     }
 
-    // Ảnh xuất luôn có **nền giấy trắng** và mặc định **không kèm nét AI** (C2).
-    // Người dùng muốn đối chiếu thì bật tuỳ chọn (5C.5); khi đó nét AI được
-    // rasterize xuống **dưới** nét người dùng, đúng thứ tự đang thấy trên canvas.
+    // Ảnh xuất luôn có **nền giấy trắng** và chỉ gồm lớp của người dùng:
+    // nét AI gợi ý đã gỡ, ảnh mẫu tham khảo không bao giờ vào ảnh xuất.
     const exportCanvas = document.createElement("canvas");
     exportCanvas.width = canvas.width;
     exportCanvas.height = canvas.height;
 
-    let aiOp: CompositeOp | null = null;
-    let painted = 0;
-    if (exportAiStrokes && aiStrokeLayers.length > 0) {
-      const aiCanvas = document.createElement("canvas");
-      aiCanvas.width = canvas.width;
-      aiCanvas.height = canvas.height;
-      const aiCtx = aiCanvas.getContext("2d");
-      painted = aiCtx
-        ? rasterizeAiStrokes(
-            aiCtx,
-            aiStrokeLayers.map((layer) => ({
-              strokes: layer.strokes,
-              opacity: layer.opacity,
-            })),
-            canvas.width,
-            canvas.height,
-            ghostOpacity / 100,
-          )
-        : 0;
-      if (painted > 0) {
-        aiOp = {
-          layerId: "__ai__",
-          canvas: aiCanvas,
-          alpha: 1,
-          blend: "source-over",
-          order: 0,
-        };
-      }
-    }
-
     compositeTo(
       exportCanvas,
       [
-        ...(aiOp ? [aiOp] : []),
         ...buildCompositePlan(layers, (layerId) =>
           layerCanvasesRef.current.get(`${activePanel}::${layerId}`),
         ),
@@ -2508,20 +2270,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     link.download = `manga-panel-${activePanel}.png`;
     link.href = exportCanvas.toDataURL("image/png");
     link.click();
-    showToast(
-      painted > 0
-        ? `Đã xuất ảnh khung tranh (kèm ${painted} nét AI)!`
-        : "Đã xuất ảnh khung tranh!",
-    );
-  }, [
-    activePanel,
-    showToast,
-    exportAiStrokes,
-    aiStrokeLayers,
-    ghostOpacity,
-    layers,
-    panelTexts,
-  ]);
+    showToast("Đã xuất ảnh khung tranh!");
+  }, [activePanel, showToast, layers, panelTexts]);
 
   /**
    * Xuất **toàn bộ dự án thành PDF nhiều trang** (Slice 6 — xuất bản phẩm).
@@ -3471,7 +3221,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     compositeNow();
     setStrokeCount((n) => {
       const next = n + 1;
-      if (next === 8 && !ghostType && activePanel) {
+      if (next === 8 && activePanel) {
         setPanelSuggestPulse(true);
         if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
         pulseTimerRef.current = setTimeout(
@@ -3484,7 +3234,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   }, [
     activePanel,
     getCtx,
-    ghostType,
     compositeNow,
     clearStrokeBuffer,
     tool,
@@ -3699,125 +3448,18 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     }
   }, [activePanel, authenticatedFetch, strokeCount, userDrawingPrompt, showToast, refreshAiQuota]);
 
-  const runTool = useCallback(
-    async (toolId: string, extraPrompt?: string) => {
-      if (!activePanel) {
-        showToast("Hãy nhấn vào một khung để vẽ trước");
-        return;
-      }
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      const task = TOOL_TASK_MAP[toolId];
-      if (!task) {
-        showToast(`Công cụ "${toolId}" chưa được hỗ trợ`);
-        return;
-      }
-
-      const snapshotPayload = createCanvasSnapshot(canvas);
-      if (!snapshotPayload) {
-        showToast("Không thể chụp canvas để gửi tới AI.");
-        return;
-      }
-
-      // Hủy ghost stroke call đang chạy nếu có
-      if (ghostAbortRef.current) {
-        ghostAbortRef.current.abort();
-      }
-      const abortCtrl = new AbortController();
-      ghostAbortRef.current = abortCtrl;
-
-      const toolHint = TOOL_HINT_MAP[toolId] as
-        | import("@/lib/ai-drawing-api").AiDrawingToolHint
-        | undefined;
-      // Ngữ cảnh mẫu (bố cục/tư thế vừa chọn) đi cùng ý tưởng tự gõ — trước
-      // đây mẫu chọn không vào prompt nên bấm mẫu nào AI cũng trả như nhau.
-      const promptText = buildAiToolPrompt(userDrawingPrompt, extraPrompt);
-
-      setProcessingTool(toolId);
-
-      // Khung đã kín chỗ (kể cả lớp AI) thì không còn chỗ cho lớp AI mới.
-      if (MAX_LAYERS_PER_PANEL - layers.filter((l) => l.kind !== "ai").length < 1) {
-        setProcessingTool(null);
-        showToast(
-          `Khung đã đủ ${MAX_LAYERS_PER_PANEL} lớp — xoá bớt để nhận nét AI mới.`,
-        );
-        return;
-      }
-      clearPanelAiOverlay();
-
-      try {
-        const result = await requestAiGhostStrokes(
-          authenticatedFetch,
-          snapshotPayload,
-          task,
-          toolHint,
-          promptText,
-          abortCtrl.signal,
-        );
-        if (abortCtrl.signal.aborted) return;
-        // Lọc nét không vẽ được (thiếu hình học, tọa độ NaN, kind lạ) trước khi
-        // phủ — tránh phủ lớp rỗng hoặc vẽ rác lên canvas.
-        const drawableStrokes = sanitizeAiStrokes(result.strokes);
-        if (result.strokes.length > 0 && drawableStrokes.length === 0) {
-          showToast("Nét AI trả về không vẽ được, hãy thử lại.");
-        } else if (drawableStrokes.length === 0) {
-          showToast(`AI: ${result.summary}`);
-        } else {
-          // Nét AI đi thẳng vào **lớp AI** của khung (5C.1), không vào canvas người dùng.
-          applyAiStrokes({
-            strokes: drawableStrokes,
-            summary: result.summary,
-            sourceIds: result.sourceIds,
-            model: result.model,
-          });
-          showToast("Nét gợi ý AI đã hiện trong lớp AI");
-        }
-      } catch (err: unknown) {
-        if (abortCtrl.signal.aborted) return;
-        const msg =
-          err instanceof Error
-            ? err.message
-            : "Không thể sinh nét gợi ý AI.";
-        showToast(msg);
-      } finally {
-        if (!abortCtrl.signal.aborted) {
-          setProcessingTool(null);
-        }
-        void refreshAiQuota();
-      }
-    },
-    [
-      showToast,
-      activePanel,
-      authenticatedFetch,
-      userDrawingPrompt,
-      layers,
-      clearPanelAiOverlay,
-      applyAiStrokes,
-      refreshAiQuota,
-    ],
-  );
-
   const clearAiSuggestions = useCallback(() => {
     if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
-    if (toolTimerRef.current) clearTimeout(toolTimerRef.current);
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
     if (reviewAbortRef.current) {
       reviewAbortRef.current.abort();
       reviewAbortRef.current = null;
-    }
-    if (ghostAbortRef.current) {
-      ghostAbortRef.current.abort();
-      ghostAbortRef.current = null;
     }
     if (storyAbortRef.current) {
       storyAbortRef.current.abort();
       storyAbortRef.current = null;
     }
     analysisTimerRef.current = null;
-    toolTimerRef.current = null;
     pulseTimerRef.current = null;
     setPanelSuggestPulse(false);
     setStoryLoading(false);
@@ -3831,19 +3473,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setReviewResult(null);
     setSelectedFindingIndex(null);
     setShowAnalysis(false);
-    setProcessingTool(null);
-    setGhostType(null);
-    setGhostId(null);
-    clearPanelAiOverlay();
-    setBlueprint(null);
-    setBlueprintError(null);
-    setBlueprintApplied(false);
-    setBlueprintAt(null);
-    setBlueprintLoading(false);
     setSelectedComp(null);
     setActiveGuides([]);
     setShowPanelSuggestions(false);
-  }, [clearPanelAiOverlay]);
+  }, []);
 
   const toggleGuide = useCallback((g: GuideId) => {
     setActiveGuides((prev) =>
@@ -3851,159 +3484,20 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     );
   }, []);
 
-  const applyComp = useCallback(
-    (id: string) => {
-      setSelectedComp(id);
-      // Mẫu bố cục phải đi vào prompt thì AI mới sinh theo mẫu đó — trước đây
-      // id mẫu bị bỏ qua, bấm mẫu nào AI cũng trả như nhau.
-      const comp = (COMP_SUGGESTIONS[sceneType] ?? []).find((c) => c.id === id);
-      runTool(
-        "composition-overlay",
-        comp ? `Bố cục mẫu: ${comp.name} — ${comp.desc}` : undefined,
-      );
-    },
-    [runTool, sceneType],
-  );
-
-  const applyPose = useCallback(
-    (id: string) => {
-      // Tư thế mẫu cũng phải đi vào prompt, nếu không nút tư thế chỉ là trang trí.
-      if (id === "auto") {
-        runTool(
-          "pose-guidance",
-          "Tự động nhận diện nhân vật trong tranh và sinh khung xương phù hợp",
-        );
-        return;
-      }
-      const categoryLabels: Record<PoseCategory, string> = {
-        stand: "Đứng",
-        sit: "Ngồi",
-        action: "Hành động",
-        emotion: "Cảm xúc",
-      };
-      let context: string | undefined;
-      for (const category of Object.keys(POSES) as PoseCategory[]) {
-        const pose = POSES[category].find((p) => p.id === id);
-        if (pose) {
-          context = `Tư thế mẫu: ${pose.label} (${categoryLabels[category]})`;
-          break;
-        }
-      }
-      runTool("pose-guidance", context);
-    },
-    [runTool],
-  );
-
-  /**
-   * Sinh **bức tranh toàn cảnh** từ mô tả ý tưởng (A-2, 5B.5).
-   *
-   * Khác các task nét đơn lẻ, task này cần ảnh khung hiện tại và **bắt buộc** có mô
-   * tả ý tưởng; kết quả chỉ được xem trước, người dùng bấm "Áp vào lớp AI" mới vào
-   * khung (5B.6).
-   */
-  const runSceneBlueprint = useCallback(async () => {
-    if (!activePanel) {
-      showToast("Hãy nhấn vào một khung để vẽ trước");
-      return;
-    }
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const prompt = userDrawingPrompt.trim();
-    if (!prompt) {
-      showToast("Hãy mô tả ý tưởng cho toàn cảnh trước");
-      return;
-    }
-    if (
-      MAX_LAYERS_PER_PANEL - layers.filter((l) => l.kind !== "ai").length <
-      MIN_BLUEPRINT_LAYERS
-    ) {
-      showToast(
-        `Cần chỗ cho ${MIN_BLUEPRINT_LAYERS} lớp AI — xoá bớt lớp của bạn trước.`,
-      );
-      return;
-    }
-
-    const snapshotPayload = createCanvasSnapshot(canvas);
-    if (!snapshotPayload) {
-      showToast("Không thể chụp canvas để gửi tới AI.");
-      return;
-    }
-
-    if (ghostAbortRef.current) ghostAbortRef.current.abort();
-    const abortCtrl = new AbortController();
-    ghostAbortRef.current = abortCtrl;
-
-    setBlueprintLoading(true);
-    setBlueprintError(null);
-
-    try {
-      const result = await requestAiSceneBlueprint(
-        authenticatedFetch,
-        { prompt, image: snapshotPayload },
-        abortCtrl.signal,
-      );
-      if (abortCtrl.signal.aborted) return;
-      setBlueprint(result);
-      setBlueprintAt(Date.now());
-      setBlueprintApplied(false);
-      showToast(
-        `AI đã dựng toàn cảnh "${result.blueprint.title}" (${result.layers.length} lớp, ${result.strokes.length} nét)`,
-      );
-    } catch (err: unknown) {
-      if (abortCtrl.signal.aborted) return;
-      const msg =
-        err instanceof Error ? err.message : "Không thể sinh toàn cảnh từ AI.";
-      setBlueprintError(msg);
-      showToast(msg);
-    } finally {
-      if (!abortCtrl.signal.aborted) {
-        setBlueprintLoading(false);
-      }
-    }
-  }, [activePanel, authenticatedFetch, userDrawingPrompt, layers, showToast]);
-
-  const cancelSceneBlueprint = useCallback(() => {
-    if (ghostAbortRef.current) {
-      ghostAbortRef.current.abort();
-      ghostAbortRef.current = null;
-    }
-    setBlueprintLoading(false);
+  // Mẫu bố cục chỉ để tham khảo: chọn mẫu chỉ đổi lựa chọn hiển thị và
+  // giữ nguyên đường dẫn mắt do người dùng tự bật/tắt, không gọi AI.
+  const applyComp = useCallback((id: string) => {
+    setSelectedComp(id);
   }, []);
 
-  /** Áp toàn cảnh vào khung: mỗi lớp nội dung thành một lớp AI (5B.6). */
-  const applyBlueprintToPanel = useCallback(() => {
-    if (!blueprint) return;
-    const userLayerCount = layers.filter((l) => l.kind !== "ai").length;
-    if (MAX_LAYERS_PER_PANEL - userLayerCount < blueprint.layers.length) {
-      showToast(
-        `Không đủ chỗ cho ${blueprint.layers.length} lớp AI của toàn cảnh.`,
-      );
+  // Tư thế mẫu chỉ để tham khảo: chọn tư thế chỉ đổi lựa chọn hiển thị,
+  // không gọi AI và không sinh khung xương.
+  const applyPose = useCallback((id: string) => {
+    if (id === "auto") {
+      setSelectedPoseId(null);
       return;
     }
-    // Lọc nét không vẽ được trước khi áp — lớp nào rỗng sau khi lọc thì bỏ,
-    // tránh tạo lớp AI trống; toàn cảnh rỗng hẳn thì báo chứ không áp rỗng.
-    const cleanLayers = blueprint.layers
-      .map((layer) => ({ ...layer, strokes: sanitizeAiStrokes(layer.strokes) }))
-      .filter((layer) => layer.strokes.length > 0);
-    if (cleanLayers.length === 0) {
-      showToast("Toàn cảnh AI trả về không có nét vẽ được, hãy thử lại.");
-      return;
-    }
-    applyAiBlueprint({
-      ...blueprint,
-      layers: cleanLayers,
-      strokes: cleanLayers.flatMap((layer) => layer.strokes),
-    });
-    setBlueprintApplied(true);
-    showToast("Đã áp toàn cảnh vào các lớp AI (nét của bạn vẫn ở trên)");
-  }, [blueprint, layers, applyAiBlueprint, showToast]);
-
-  const dismissBlueprint = useCallback(() => {
-    setBlueprint(null);
-    setBlueprintError(null);
-    setBlueprintApplied(false);
-    setBlueprintAt(null);
+    setSelectedPoseId(id);
   }, []);
 
   const enterPanel = useCallback(
@@ -4011,10 +3505,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       if (reviewAbortRef.current) {
         reviewAbortRef.current.abort();
         reviewAbortRef.current = null;
-      }
-      if (ghostAbortRef.current) {
-        ghostAbortRef.current.abort();
-        ghostAbortRef.current = null;
       }
       // Khung chưa có ngăn xếp (lần đầu mở trong phiên) → tạo bộ layer mặc định
       setStacks((prev) =>
@@ -4030,13 +3520,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       setAnalysisError(null);
       setReviewResult(null);
       setSelectedFindingIndex(null);
-      // Nét AI thuộc **từng khung** (5C.7) → đổi khung thì giữ nguyên gợi ý của
-      // khung đó, không xoá; chỉ lịch sử undo + vùng chọn là phải đặt lại.
-      // Kết quả toàn cảnh đang xem trước thì thuộc khung cũ → bỏ đi.
-      setBlueprint(null);
-      setBlueprintError(null);
-      setBlueprintApplied(false);
-      setBlueprintLoading(false);
+      // Đổi khung thì chỉ lịch sử undo + vùng chọn là phải đặt lại.
       historyRef.current = [];
       futureRef.current = [];
       // Vùng chọn gắn với từng khung → đổi khung thì bỏ chọn (như lịch sử undo)
@@ -4051,10 +3535,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       reviewAbortRef.current.abort();
       reviewAbortRef.current = null;
     }
-    if (ghostAbortRef.current) {
-      ghostAbortRef.current.abort();
-      ghostAbortRef.current = null;
-    }
     setActivePanel(null);
     setShowPanelSuggestions(false);
     setShowSuggestBtn(true);
@@ -4064,12 +3544,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setAnalysisError(null);
     setReviewResult(null);
     setSelectedFindingIndex(null);
-    // Thoát khung KHÔNG xoá nét AI: gợi ý thuộc về khung (5C.7).
-    setBlueprint(null);
-    setBlueprintError(null);
-    setBlueprintApplied(false);
-    setBlueprintAt(null);
-    setBlueprintLoading(false);
     historyRef.current = [];
     futureRef.current = [];
   }, []);
@@ -4078,9 +3552,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     return () => {
       if (reviewAbortRef.current) {
         reviewAbortRef.current.abort();
-      }
-      if (ghostAbortRef.current) {
-        ghostAbortRef.current.abort();
       }
     };
   }, []);
@@ -4111,125 +3582,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     ? (layout.panels.find((p) => p.id === activePanel) ?? null)
     : null;
   const panelAspect = panelDef ? (panelDef.w / panelDef.h) * 0.75 : 0.75;
-
-  /**
-   * "Áp dụng về lớp tôi" (5C.2): rasterize nét AI đang hiện xuống **lớp người dùng
-   * đang chọn**, gộp lại thành **một bước hoàn tác**.
-   *
-   * Nét AI gốc vẫn nằm trong lớp AI (không bị xoá) nên tắt lớp AI ở tab Layers là
-   * xong. Đây là **con đường duy nhất** để nét AI trở thành nét thật: mặc định nét
-   * AI không bao giờ tự ghi xuống canvas và không bao giờ được xuất ra file (C1/C2).
-   *
-   * Hàm lõi dùng chung cho cả ba mức áp: tất cả nét, một lớp AI, và các nét
-   * đang chọn — để "áp từng phần" không cần đường code riêng.
-   */
-  const applyStrokeLayersToActiveLayer = useCallback(
-    (
-      layers: Array<{ strokes: AiStrokePath[]; opacity: number }>,
-    ): boolean => {
-      if (layers.length === 0) {
-        showToast("Khung này chưa có nét AI nào để áp về lớp của bạn.");
-        return false;
-      }
-      const reason = activeLayerBlockReason();
-      if (reason) {
-        showToast(reason);
-        return false;
-      }
-      const ctx = getCtx();
-      if (!ctx) {
-        showToast("Hãy chọn một lớp của bạn trước khi áp nét AI.");
-        return false;
-      }
-
-      // Kiểm trước có nét nào vẽ được không, để không tạo bước hoàn tác rỗng (BR-T08).
-      const w = ctx.canvas.width;
-      const h = ctx.canvas.height;
-      const drawable = layers.some((layer) =>
-        layer.strokes.some((stroke) => aiStrokeShape(stroke, w, h) !== null),
-      );
-      if (!drawable) {
-        showToast("Nét AI của khung này thiếu dữ liệu hình học, không vẽ xuống được.");
-        return false;
-      }
-
-      endFloat();
-      snapshot();
-      const painted = rasterizeAiStrokes(
-        ctx,
-        layers,
-        w,
-        h,
-        ghostOpacity / 100,
-      );
-      compositeNow();
-      showToast(
-        `Đã áp ${painted} nét AI xuống lớp đang chọn (Ctrl+Z để hoàn tác).`,
-      );
-      return true;
-    },
-    [
-      activeLayerBlockReason,
-      getCtx,
-      endFloat,
-      snapshot,
-      ghostOpacity,
-      compositeNow,
-      showToast,
-    ],
-  );
-
-  const applyAiToActiveLayer = useCallback(() => {
-    return applyStrokeLayersToActiveLayer(
-      aiStrokeLayers.map((layer) => ({
-        strokes: layer.strokes,
-        opacity: layer.opacity,
-      })),
-    );
-  }, [aiStrokeLayers, applyStrokeLayersToActiveLayer]);
-
-  /** Áp riêng MỘT lớp AI (vd: một lớp của toàn cảnh) xuống lớp đang chọn. */
-  const applyAiLayerToActiveLayer = useCallback(
-    (layerId: string): boolean => {
-      const layer = aiStrokeLayers.find((l) => l.id === layerId);
-      if (!layer) {
-        showToast("Không tìm thấy lớp AI đó (có thể lớp đã bị ẩn ở tab Layers).");
-        return false;
-      }
-      return applyStrokeLayersToActiveLayer([
-        { strokes: layer.strokes, opacity: layer.opacity },
-      ]);
-    },
-    [aiStrokeLayers, applyStrokeLayersToActiveLayer, showToast],
-  );
-
-  /** Áp riêng các nét AI đang chọn ở chế độ chọn nét xuống lớp đang chọn. */
-  const applySelectedGhostStrokes = useCallback((): boolean => {
-    if (selectedGhostStrokes.size === 0) {
-      showToast("Chưa chọn nét AI nào — bật chế độ chọn nét rồi bấm vào nét cần áp.");
-      return false;
-    }
-    const picked = aiStrokeLayers
-      .map((layer) => ({
-        opacity: layer.opacity,
-        strokes: layer.strokes.filter((_, index) =>
-          selectedGhostStrokes.has(`${layer.id}:${index}`),
-        ),
-      }))
-      .filter((layer) => layer.strokes.length > 0);
-    if (picked.length === 0) {
-      showToast("Các nét đã chọn không còn hiện (lớp đã bị ẩn hoặc xoá).");
-      return false;
-    }
-    const ok = applyStrokeLayersToActiveLayer(picked);
-    if (ok) setSelectedGhostStrokes(new Set());
-    return ok;
-  }, [
-    aiStrokeLayers,
-    selectedGhostStrokes,
-    applyStrokeLayersToActiveLayer,
-    showToast,
-  ]);
 
   /**
    * Tẩy **một vùng nét thừa** AI đã khoanh trong `drawing_review` (Slice 3 —
@@ -4459,12 +3811,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     [activePanel, setTextsBoth, compositeNow, showToast],
   );
 
-  /** Có thể áp nét AI xuống lớp đang chọn không (nút trong lớp phủ bật/tắt theo). */
-  const canApplyAiToLayer =
-    activePanel !== null &&
-    aiStrokeLayers.length > 0 &&
-    activeLayerBlockReason() === null;
-
   return {
     // Canvas ref
     canvasRef,
@@ -4566,36 +3912,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setShowPoseSection,
     showGuideSection,
     setShowGuideSection,
-    // Ghost overlay (AI dynamic strokes)
-    ghostType,
-    setGhostType,
-    ghostId,
-    setGhostId,
-    ghostOpacity,
-    setGhostOpacity,
-    /** Đè nét AI lên trên nét người dùng (mặc định tắt — bất biến §1.2) */
-    aiOverlayAbove,
-    setAiOverlayAbove,
-    /** Xuất kèm nét AI (5C.5 — mặc định tắt theo C2) */
-    exportAiStrokes,
-    setExportAiStrokes,
-    /** Các lớp AI đang hiện của khung mở (độ mờ lấy từ tab Layers — 5C.6) */
-    aiStrokeLayers,
-    aiStrokeCount,
-    /** Xoá nét AI + lớp AI của khung đang mở (không đụng nét người dùng) */
-    clearPanelAiOverlay,
-    /** Áp nét AI xuống lớp người dùng đang chọn = một bước hoàn tác (5C.2) */
-    applyAiToActiveLayer,
-    canApplyAiToLayer,
-    /** Áp riêng một lớp AI xuống lớp đang chọn (từng phần, không cần áp hết) */
-    applyAiLayerToActiveLayer,
-    /** Chế độ chọn từng nét ma trên lớp phủ + nét đang chọn */
-    ghostSelectMode,
-    setGhostSelectMode,
-    selectedGhostStrokes,
-    toggleGhostStrokeSelection,
-    /** Áp riêng các nét AI đang chọn xuống lớp đang chọn */
-    applySelectedGhostStrokes,
+    /** Ảnh mẫu tham khảo của khung đang mở (tối đa 3, kho riêng) */
+    referenceImages,
+    deleteReferenceImage,
+    referenceSource,
+    setReferenceSource,
     /** Lượt AI còn lại (GET /ai/drawing/quota — chỉ đọc, không tốn lượt) */
     aiQuota,
     refreshAiQuota,
@@ -4618,24 +3939,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     updateBubbleShape,
     commitBubbleShapes,
     removeBubbleShape,
-    /** Tóm tắt + dòng nguồn AI của nét gợi ý (AC-D2.2) */
-    ghostStrokesSummary,
-    ghostAt,
-    ghostSourceIds,
-    ghostModel,
     userDrawingPrompt,
     setUserDrawingPrompt,
-    // Bức tranh toàn cảnh (A-2 — 5B.5/5B.6)
-    blueprint,
-    blueprintLoading,
-    blueprintError,
-    blueprintApplied,
-    /** Thời điểm sinh blueprint — dòng nguồn AI của thẻ xem trước (AC-D2.2) */
-    blueprintAt,
-    runSceneBlueprint,
-    cancelSceneBlueprint,
-    applyBlueprintToPanel,
-    dismissBlueprint,
     // Legacy placeholder compat
     drawingPlaceholder: null,
     setDrawingPlaceholder: () => {},
@@ -4659,7 +3964,6 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     showAnalysis,
     dismissAnalysis,
     // Processing & toast
-    processingTool,
     toast,
     // Suggestion widget
     showPanelSuggestions,
@@ -4685,10 +3989,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     applyStoryFlow,
     dismissStoryFlow,
     runAnalysis,
-    runTool,
     toggleGuide,
     applyComp,
     applyPose,
+    selectedPoseId,
     enterPanel,
     exitPanel,
     showToast,

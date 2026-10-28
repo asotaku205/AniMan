@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Save,
   Check,
-  Sparkles,
   X,
 } from "lucide-react";
 import { GUIDE_CONFIG, GUIDE_DOT, TOOL_NAMES } from "../hooks/useDrawStudio";
@@ -37,16 +36,9 @@ type Props = {
   exportFullPage?: () => void;
   /** Xuất toàn bộ dự án thành PDF nhiều trang (Slice 6) */
   exportProjectPdf?: () => void;
-  /** Số nét AI đang hiện của khung — > 0 mới hiện tuỳ chọn xuất kèm nét AI (5C.5) */
-  aiStrokeCount?: number;
-  /** Xuất kèm nét AI (mặc định tắt — C2: ảnh xuất không có nét AI) */
-  exportAiStrokes?: boolean;
-  setExportAiStrokes?: (v: boolean) => void;
   panelFullscreen: boolean;
   setPanelFullscreen: React.Dispatch<React.SetStateAction<boolean>>;
   activeGuides: GuideId[];
-  ghostType: "comp" | "pose" | null;
-  ghostId: string | null;
 };
 
 export function CanvasTopBar({
@@ -69,14 +61,9 @@ export function CanvasTopBar({
   exportCurrentPanel,
   exportFullPage,
   exportProjectPdf,
-  aiStrokeCount = 0,
-  exportAiStrokes = false,
-  setExportAiStrokes,
   panelFullscreen,
   setPanelFullscreen,
   activeGuides,
-  ghostType,
-  ghostId,
 }: Props) {
   return (
     <div className="h-11 bg-[#0d0817] border-b border-white/5 flex items-center px-3 gap-3 flex-shrink-0">
@@ -121,27 +108,6 @@ export function CanvasTopBar({
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:bg-white/5 hover:text-white transition-all"
               >
                 <Download size={14} />
-              </button>
-            )}
-
-            {/* 5C.5: mặc định ảnh xuất KHÔNG kèm nét AI (C2) — bật khi muốn đối chiếu */}
-            {setExportAiStrokes && aiStrokeCount > 0 && (
-              <button
-                onClick={() => setExportAiStrokes(!exportAiStrokes)}
-                aria-pressed={exportAiStrokes}
-                title={
-                  exportAiStrokes
-                    ? `Ảnh xuất đang kèm ${aiStrokeCount} nét AI — bấm để tắt (mặc định không kèm)`
-                    : `Xuất ảnh kèm ${aiStrokeCount} nét AI đang hiện (mặc định không kèm)`
-                }
-                className={`h-7 px-2 rounded-lg flex items-center gap-1 text-[10px] font-semibold transition-all ${
-                  exportAiStrokes
-                    ? "bg-purple-500/25 text-purple-100 ring-1 ring-purple-400/40"
-                    : "text-white/40 hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <Sparkles size={11} />
-                <span>AI</span>
               </button>
             )}
 
@@ -273,12 +239,6 @@ export function CanvasTopBar({
             </div>
           )}
 
-          {/* Ghost indicator */}
-          {ghostType && ghostId && (
-            <span className="ml-1 px-1.5 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px]">
-              Ghost: {ghostType === "comp" ? "Bố cục" : "Tư thế"}
-            </span>
-          )}
         </>
       )}
     </div>

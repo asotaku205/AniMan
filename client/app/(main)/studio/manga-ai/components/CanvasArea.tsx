@@ -13,7 +13,6 @@ import {
   X,
 } from "lucide-react";
 import { GuideOverlay } from "./SvgComponent";
-import { AiGhostStrokeOverlay, type AiOverlayLayerView } from "./AiGhostStrokeOverlay";
 import {
   PRINCIPLE_LABELS,
   KNOWLEDGE_SOURCE_TITLES,
@@ -72,28 +71,8 @@ type Props = {
   resetView: () => void;
   /** Cỡ pixel thật của panel khi xuất PNG (null khi chưa mở khung) */
   panelBackingSize: { w: number; h: number } | null;
-  // Ghost / guides (AI dynamic strokes)
-  ghostOpacity: number;
-  /** Các lớp AI đang hiện của khung — nét AI là vector, không bấm được (5C.1/5C.3) */
-  aiStrokeLayers?: readonly AiOverlayLayerView[];
-  /** Đè nét AI lên trên nét người dùng (mặc định tắt — bất biến §1.2) */
-  aiOverlayAbove?: boolean;
-  setAiOverlayAbove?: (v: boolean) => void;
-  /** Xoá nét AI + lớp AI của khung đang mở */
-  clearPanelAiOverlay?: () => void;
-  /** Áp nét AI vào lớp người dùng đang chọn = một bước hoàn tác (5C.2) */
-  applyAiToActiveLayer?: () => void;
-  canApplyAiToLayer?: boolean;
-  /** Chế độ chọn từng nét ma trên lớp phủ */
-  ghostSelectMode?: boolean;
-  setGhostSelectMode?: (v: boolean) => void;
-  selectedGhostStrokes?: ReadonlySet<string>;
-  toggleGhostStrokeSelection?: (layerId: string, strokeIndex: number) => void;
-  applySelectedGhostStrokes?: () => void;
-  ghostStrokesSummary?: string | null;
   drawingPlaceholder?: DrawingPlaceholderId | null;
   setDrawingPlaceholder?: (v: DrawingPlaceholderId | null) => void;
-  setGhostOpacity: (v: number) => void;
   activeGuides: GuideId[];
   aiConsentEligible: boolean;
   // Text tool inline placement
@@ -152,22 +131,8 @@ export function CanvasArea({
   zoomBy,
   resetView,
   panelBackingSize,
-  ghostOpacity,
-  aiStrokeLayers,
-  aiOverlayAbove,
-  setAiOverlayAbove,
-  clearPanelAiOverlay,
-  applyAiToActiveLayer,
-  canApplyAiToLayer,
-  ghostSelectMode,
-  setGhostSelectMode,
-  selectedGhostStrokes,
-  toggleGhostStrokeSelection,
-  applySelectedGhostStrokes,
-  ghostStrokesSummary,
   drawingPlaceholder,
   setDrawingPlaceholder,
-  setGhostOpacity,
   activeGuides,
   aiConsentEligible,
   showTextInput,
@@ -952,27 +917,6 @@ export function CanvasArea({
                   </button>
                 </div>
               </div>
-            )}
-
-            {/* Nét AI (vector) — nằm dưới nét người dùng, không nhận sự kiện (5C.3) */}
-            {aiConsentEligible && aiStrokeLayers && aiStrokeLayers.length > 0 && (
-              <AiGhostStrokeOverlay
-                layers={aiStrokeLayers}
-                canvasWidth={canvasRef.current?.width ?? 400}
-                canvasHeight={canvasRef.current?.height ?? 300}
-                ghostOpacity={ghostOpacity}
-                setGhostOpacity={setGhostOpacity}
-                above={aiOverlayAbove === true}
-                setAbove={(v) => setAiOverlayAbove?.(v)}
-                onClear={() => clearPanelAiOverlay?.()}
-                onApplyToLayer={applyAiToActiveLayer}
-                canApplyToLayer={canApplyAiToLayer}
-                selectMode={ghostSelectMode}
-                setSelectMode={setGhostSelectMode}
-                selectedStrokeKeys={selectedGhostStrokes}
-                onToggleStroke={toggleGhostStrokeSelection}
-                onApplySelected={applySelectedGhostStrokes}
-              />
             )}
 
             {/* AI Review Findings Overlay (chỗ vẽ lệch / cần xem lại) */}

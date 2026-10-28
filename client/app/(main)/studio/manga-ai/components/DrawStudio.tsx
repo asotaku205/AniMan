@@ -112,15 +112,10 @@ export function DrawStudio({
           exportCurrentPanel={s.exportCurrentPanel}
           exportFullPage={s.exportFullPage}
           exportProjectPdf={s.exportProjectPdf}
-          aiStrokeCount={s.aiStrokeCount}
-          exportAiStrokes={s.exportAiStrokes}
-          setExportAiStrokes={s.setExportAiStrokes}
           clearCanvas={s.clearCanvas}
           panelFullscreen={s.panelFullscreen}
           setPanelFullscreen={s.setPanelFullscreen}
           activeGuides={aiConsentEligible ? s.activeGuides : []}
-          ghostType={aiConsentEligible ? s.ghostType : null}
-          ghostId={aiConsentEligible ? s.ghostId : null}
         />
 
         <ToolOptionsBar
@@ -161,22 +156,8 @@ export function DrawStudio({
           zoomBy={s.zoomBy}
           resetView={s.resetView}
           panelBackingSize={s.panelBackingSize}
-          ghostOpacity={s.ghostOpacity}
-          aiStrokeLayers={s.aiStrokeLayers}
-          aiOverlayAbove={s.aiOverlayAbove}
-          setAiOverlayAbove={s.setAiOverlayAbove}
-          clearPanelAiOverlay={s.clearPanelAiOverlay}
-          applyAiToActiveLayer={s.applyAiToActiveLayer}
-          canApplyAiToLayer={s.canApplyAiToLayer}
-          ghostSelectMode={s.ghostSelectMode}
-          setGhostSelectMode={s.setGhostSelectMode}
-          selectedGhostStrokes={s.selectedGhostStrokes}
-          toggleGhostStrokeSelection={s.toggleGhostStrokeSelection}
-          applySelectedGhostStrokes={s.applySelectedGhostStrokes}
-          ghostStrokesSummary={s.ghostStrokesSummary}
           drawingPlaceholder={s.drawingPlaceholder}
           setDrawingPlaceholder={s.setDrawingPlaceholder}
-          setGhostOpacity={s.setGhostOpacity}
           activeGuides={s.activeGuides}
           aiConsentEligible={aiConsentEligible}
           showTextInput={s.showTextInput}

@@ -354,217 +354,124 @@ describe("AI drawing response contract", () => {
     ).toThrow(/confidence must be between 0 and 1/);
   });
 
-  it("validates and parses a valid ghost stroke response for stroke_guidance", () => {
+});
+
+describe("AI drawing response contract — ghost stroke tasks removed (28/10/2026)", () => {
+  it("rejects responses for removed ghost tasks as unsupported", () => {
     const ghostResponse = {
       schemaVersion: "1",
-      task: AiDrawingTask.StrokeGuidance,
-      summary: "Gợi ý nét contour rõ ràng hơn quanh khuôn mặt và mắt.",
+      task: "stroke_guidance",
+      summary: "Gợi ý nét.",
       sourceIds: [],
-      strokes: [
-        {
-          kind: "path",
-          points: [
-            { x: 0.2, y: 0.3 },
-            { x: 0.25, y: 0.35 },
-            { x: 0.3, y: 0.32 },
-          ],
-          style: "proportion",
-          group: "subject",
-          label: "viền mặt",
-          opacity: 0.15,
-          strokeWidth: 0.005,
-          dashed: false,
-        },
-        {
-          kind: "line",
-          from: { x: 0.1, y: 0.1 },
-          to: { x: 0.5, y: 0.5 },
-          style: "flow",
-          group: "guide",
-          label: "đường dóng",
-          opacity: 0.15,
-          strokeWidth: 0.003,
-          dashed: true,
-        },
-        {
-          kind: "ellipse",
-          region: { x: 0.3, y: 0.2, width: 0.2, height: 0.25 },
-          style: "composition",
-          group: "detail",
-          label: "đầu",
-          opacity: 0.2,
-          strokeWidth: 0.004,
-        },
-      ],
+      strokes: [],
     };
+    for (const task of [
+      "stroke_guidance",
+      "composition_overlay",
+      "pose_guidance",
+    ]) {
+      expect(() =>
+        parseAiDrawingResponse(
+          { ...ghostResponse, task },
+          task as never,
+          new Set(),
+        ),
+      ).toThrow(/Unsupported AI drawing task/);
+    }
+  });
 
-    const parsed = parseAiDrawingResponse(
-      ghostResponse,
-      AiDrawingTask.StrokeGuidance,
+  /** Đổi nét đầu tiên của lớp background rồi dựng lại mảng strokes trải phẳng. */
+  function blueprintWithFirstStroke(
+    stroke: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const response = validBlueprintResponse();
+    const layers = response.layers as Array<Record<string, unknown>>;
+    const firstLayer = layers[0] as {
+      strokes: Array<Record<string, unknown>>;
+    };
+    firstLayer.strokes = [stroke, ...firstLayer.strokes.slice(1)];
+    response.strokes = layers.flatMap(
+      (layer) =>
+        (layer as { strokes: unknown[] }).strokes,
+    );
+    return response;
+  }
+
+  function parseBlueprint(response: Record<string, unknown>) {
+    return parseAiDrawingResponse(
+      response,
+      AiDrawingTask.SceneBlueprint,
       new Set(),
     );
+  }
 
-    expect(parsed.task).toBe(AiDrawingTask.StrokeGuidance);
-    expect((parsed as any).strokes.length).toBe(3);
-    expect((parsed as any).strokes[0].group).toBe("subject");
-    expect((parsed as any).strokes[1].label).toBe("đường dóng");
+  it("rejects blueprint strokes with opacity outside allowed bounds", () => {
+    const response = blueprintWithFirstStroke({
+      ...blueprintStroke("background"),
+      opacity: 0.95, // > trần 0.9
+    });
+    expect(() => parseBlueprint(response)).toThrow(
+      /opacity must be a finite number between 0.15 and 0.9/,
+    );
   });
 
-  it("rejects ghost stroke responses with opacity outside allowed bounds", () => {
-    const invalidResponse = {
-      schemaVersion: "1",
-      task: AiDrawingTask.CompositionOverlay,
-      summary: "Gợi ý đường dẫn mắt.",
-      sourceIds: [],
-      strokes: [
-        {
-          kind: "line",
-          from: { x: 0.1, y: 0.1 },
-          to: { x: 0.9, y: 0.9 },
-          style: "composition",
-          group: "guide",
-          label: "trục dẫn mắt",
-          opacity: 0.95, // > trần 0.9
-          strokeWidth: 0.005,
-        },
-      ],
-    };
-
-    expect(() =>
-      parseAiDrawingResponse(
-        invalidResponse,
-        AiDrawingTask.CompositionOverlay,
-        new Set(),
-      ),
-    ).toThrow(/opacity must be a finite number between 0.15 and 0.9/);
+  it("rejects blueprint strokes with points coordinates outside [0, 1]", () => {
+    const response = blueprintWithFirstStroke({
+      kind: "path",
+      points: [{ x: 1.5, y: 0.5 }], // x > 1
+      style: "proportion",
+      group: "background",
+      label: "cột sống",
+      opacity: 0.15,
+      strokeWidth: 0.005,
+    });
+    expect(() => parseBlueprint(response)).toThrow(
+      /must be a finite number between 0 and 1/,
+    );
   });
 
-  it("rejects ghost strokes with points coordinates outside [0, 1]", () => {
-    const invalidResponse = {
-      schemaVersion: "1",
-      task: AiDrawingTask.PoseGuidance,
-      summary: "Gợi ý tỷ lệ dáng.",
-      sourceIds: [],
-      strokes: [
-        {
-          kind: "path",
-          points: [{ x: 1.5, y: 0.5 }], // x > 1
-          style: "proportion",
-          group: "subject",
-          label: "cột sống",
-          opacity: 0.15,
-          strokeWidth: 0.005,
-        },
-      ],
-    };
+  it("yêu cầu mọi nét phải có group hợp lệ (BR-A08)", () => {
+    const noGroup = blueprintStroke("background");
+    delete noGroup.group;
+    expect(() => parseBlueprint(blueprintWithFirstStroke(noGroup))).toThrow(
+      /group is not one of the supported stroke groups/,
+    );
 
     expect(() =>
-      parseAiDrawingResponse(
-        invalidResponse,
-        AiDrawingTask.PoseGuidance,
-        new Set(),
-      ),
-    ).toThrow(/must be a finite number between 0 and 1/);
-  });
-
-  it("yêu cầu mọi nét AI phải có group hợp lệ (BR-A08)", () => {
-    const missingGroup = {
-      schemaVersion: "1",
-      task: AiDrawingTask.StrokeGuidance,
-      summary: "Thiếu group.",
-      sourceIds: [],
-      strokes: [
-        {
-          kind: "line",
-          from: { x: 0.1, y: 0.1 },
-          to: { x: 0.9, y: 0.9 },
-          style: "flow",
-          label: "nét thiếu nhóm",
-          opacity: 0.3,
-          strokeWidth: 0.005,
-        },
-      ],
-    };
-    expect(() =>
-      parseAiDrawingResponse(
-        missingGroup,
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
-      ),
-    ).toThrow(/group is not one of the supported stroke groups/);
-
-    const wrongGroup = structuredClone(missingGroup);
-    (wrongGroup.strokes[0] as Record<string, unknown>).group = "foreground";
-    expect(() =>
-      parseAiDrawingResponse(
-        wrongGroup,
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
+      parseBlueprint(
+        blueprintWithFirstStroke({
+          ...blueprintStroke("background"),
+          group: "foreground",
+        }),
       ),
     ).toThrow(/group is not one of the supported stroke groups/);
   });
 
   it("yêu cầu nhãn nét là chuỗi tối đa 60 ký tự và chặn trường lạ", () => {
-    const validStroke = {
-      kind: "line",
-      from: { x: 0.1, y: 0.1 },
-      to: { x: 0.9, y: 0.9 },
-      style: "flow",
-      group: "subject",
-      label: "nét hợp lệ",
-      opacity: 0.3,
-      strokeWidth: 0.005,
-    };
-    const build = (stroke: Record<string, unknown>) => ({
-      schemaVersion: "1",
-      task: AiDrawingTask.StrokeGuidance,
-      summary: "Kiểm tra nhãn.",
-      sourceIds: [],
-      strokes: [stroke],
-    });
-
+    const base = blueprintStroke("background");
     // Nhãn rỗng vẫn hợp lệ (model không đặt tên).
     expect(() =>
-      parseAiDrawingResponse(
-        build({ ...validStroke, label: "" }),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
-      ),
+      parseBlueprint(blueprintWithFirstStroke({ ...base, label: "" })),
     ).not.toThrow();
 
     expect(() =>
-      parseAiDrawingResponse(
-        build({ ...validStroke, label: "x".repeat(61) }),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
+      parseBlueprint(
+        blueprintWithFirstStroke({ ...base, label: "x".repeat(61) }),
       ),
     ).toThrow(/label must be a string of at most 60 characters/);
 
     expect(() =>
-      parseAiDrawingResponse(
-        build({ ...validStroke, label: 42 }),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
-      ),
+      parseBlueprint(blueprintWithFirstStroke({ ...base, label: 42 })),
     ).toThrow(/label must be a string of at most 60 characters/);
 
     expect(() =>
-      parseAiDrawingResponse(
-        build({ ...validStroke, color: "#ff0000" }),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
+      parseBlueprint(
+        blueprintWithFirstStroke({ ...base, color: "#ff0000" }),
       ),
     ).toThrow(/must not contain: color/);
   });
 
   it("chỉ cho tô kín khi nét khép kín và màu đúng dạng #rrggbb", () => {
-    const build = (stroke: Record<string, unknown>) => ({
-      schemaVersion: "1",
-      task: AiDrawingTask.StrokeGuidance,
-      summary: "Kiểm tra fill.",
-      sourceIds: [],
-      strokes: [stroke],
-    });
     const pathStroke = {
       kind: "path",
       points: [
@@ -573,7 +480,7 @@ describe("AI drawing response contract", () => {
         { x: 0.6, y: 0.6 },
       ],
       style: "lighting",
-      group: "effects",
+      group: "background",
       label: "mảng bóng đổ",
       opacity: 0.4,
       strokeWidth: 0.01,
@@ -581,88 +488,58 @@ describe("AI drawing response contract", () => {
 
     // Path khép kín + màu hợp lệ: nhận.
     expect(() =>
-      parseAiDrawingResponse(
-        build({ ...pathStroke, closed: true, fill: "#223344" }),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
+      parseBlueprint(
+        blueprintWithFirstStroke({ ...pathStroke, closed: true, fill: "#223344" }),
       ),
     ).not.toThrow();
 
     // Ellipse vốn khép kín nên không cần `closed`.
     expect(() =>
-      parseAiDrawingResponse(
-        build({
+      parseBlueprint(
+        blueprintWithFirstStroke({
           kind: "ellipse",
           region: { x: 0.2, y: 0.2, width: 0.3, height: 0.3 },
           style: "lighting",
-          group: "effects",
+          group: "background",
           label: "mảng tối",
           opacity: 0.4,
           strokeWidth: 0.01,
           fill: "#112233",
         }),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
       ),
     ).not.toThrow();
 
     expect(() =>
-      parseAiDrawingResponse(
-        build({ ...pathStroke, fill: "#223344" }),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
-      ),
+      parseBlueprint(blueprintWithFirstStroke({ ...pathStroke, fill: "#223344" })),
     ).toThrow(/fill requires a closed path/);
 
     expect(() =>
-      parseAiDrawingResponse(
-        build({ ...pathStroke, closed: true, fill: "red" }),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
+      parseBlueprint(
+        blueprintWithFirstStroke({
+          ...pathStroke,
+          closed: true,
+          fill: "red",
+        }),
       ),
     ).toThrow(/fill must be "none" or a "#rrggbb" colour/);
   });
 
-  it("chặn số nét và số điểm vượt trần hợp đồng v2", () => {
+  it("chặn số điểm vượt trần hợp đồng v2", () => {
     const stroke = (points: number) => ({
       kind: "path",
       points: Array.from({ length: points }, () => ({ x: 0.5, y: 0.5 })),
       style: "flow",
-      group: "detail",
+      group: "background",
       label: "nét",
       opacity: 0.5,
       strokeWidth: 0.005,
     });
-    const build = (strokes: unknown[]) => ({
-      schemaVersion: "1",
-      task: AiDrawingTask.StrokeGuidance,
-      summary: "Kiểm tra trần.",
-      sourceIds: [],
-      strokes,
-    });
 
+    expect(() => parseBlueprint(blueprintWithFirstStroke(stroke(121)))).toThrow(
+      /points must be an array of 1\.\.120 points/,
+    );
     expect(() =>
-      parseAiDrawingResponse(
-        build([stroke(121)]),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
-      ),
-    ).toThrow(/points must be an array of 1\.\.120 points/);
-
-    expect(() =>
-      parseAiDrawingResponse(
-        build(Array.from({ length: 61 }, () => stroke(2))),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
-      ),
-    ).toThrow(/strokes must be an array of at most 60 items/);
-
-    expect(() =>
-      parseAiDrawingResponse(
-        build([stroke(120)]),
-        AiDrawingTask.StrokeGuidance,
-        new Set(),
-      ),
+      parseBlueprint(blueprintWithFirstStroke(stroke(120))),
     ).not.toThrow();
   });
 });

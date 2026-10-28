@@ -312,7 +312,7 @@ describe("AI Drawing End-to-End Suite (Slice 7)", () => {
 
       await expect(
         driver.execute({
-          task: AiDrawingTask.StrokeGuidance,
+          task: AiDrawingTask.DrawingReview,
           prompt: "Vẽ giúp tôi một dáng người",
         }),
       ).rejects.toBeInstanceOf(BadRequestException);

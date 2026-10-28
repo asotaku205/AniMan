@@ -3,7 +3,6 @@ import {
   AI_DRAWING_ERROR_CODES,
   AI_DRAWING_MODEL_LABEL,
   AI_PANEL_CAMERAS,
-  AI_STROKE_GROUPS,
   MAX_STORY_FLOW_PANELS,
   MIN_BLUEPRINT_LAYERS,
   extractErrorMessage,
@@ -161,41 +160,6 @@ describe("Đối chiếu gợi ý khung với layout đang mở (VD-5)", () => {
   });
 });
 
-describe("Nét AI v2 phía client (Phase 5A)", () => {
-  it("có đúng sáu nhóm nội dung, đúng thứ tự vẽ của server", () => {
-    expect([...AI_STROKE_GROUPS]).toEqual([
-      "background",
-      "midground",
-      "subject",
-      "detail",
-      "effects",
-      "guide",
-    ]);
-  });
-
-  it("kiểu nét v2 nhận group/label và tùy chọn closed/fill", () => {
-    const stroke: AiStrokePath = {
-      kind: "path",
-      points: [
-        { x: 0.2, y: 0.2 },
-        { x: 0.6, y: 0.3 },
-        { x: 0.5, y: 0.7 },
-      ],
-      style: "lighting",
-      group: "effects",
-      label: "mảng bóng đổ dưới cằm",
-      opacity: 0.62,
-      strokeWidth: 0.012,
-      closed: true,
-      fill: "#223344",
-    };
-
-    expect(stroke.group).toBe("effects");
-    expect(stroke.label).toContain("bóng đổ");
-    expect(stroke.closed).toBe(true);
-  });
-});
-
 describe("Hợp đồng scene_blueprint phía client (Phase 5B)", () => {
   function stroke(group: AiStrokeGroup): AiStrokePath {
     return {
@@ -344,5 +308,23 @@ describe("Thông báo lỗi AI theo mã lỗi (Phase 5E)", () => {
     expect(extractErrorMessage({ code: "ai_something_new" }, 502)).toMatch(
       /Không thể hoàn thành/,
     );
+  });
+});
+
+describe("Hợp đồng client không còn task nét mờ AI (28/10/2026)", () => {
+  it("không còn hàm gọi ghost strokes và không còn task nét mờ trong hợp đồng", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const apiPath = path.resolve(
+      import.meta.dirname,
+      "../../../../../lib/ai-drawing-api.ts",
+    );
+    const source = fs.readFileSync(apiPath, "utf8");
+    expect(source).not.toContain("requestAiGhostStrokes");
+    expect(source).not.toContain("AiGhostStrokeResponse");
+    expect(source).not.toContain('| "stroke_guidance"');
+    expect(source).not.toContain('| "composition_overlay"');
+    expect(source).not.toContain('| "pose_guidance"');
+    expect(source).not.toContain("AiDrawingToolHint");
   });
 });

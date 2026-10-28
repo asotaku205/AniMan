@@ -1,14 +1,12 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   AlertTriangle,
-  ArrowRight,
   BarChart2,
   Bot,
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -19,10 +17,8 @@ import {
   Maximize2,
   MessageCircle,
   Mountain,
-  PenTool,
   PersonStanding,
   RefreshCw,
-  Sliders,
   Smile,
   Sparkles,
   User,
@@ -32,7 +28,6 @@ import {
 } from "lucide-react";
 import { GUIDE_CONFIG, GUIDE_DOT } from "../hooks/useDrawStudio";
 import {
-  AI_TOOLS,
   COMP_SUGGESTIONS,
   POSES,
   type GuideId,
@@ -41,15 +36,15 @@ import {
 } from "../data";
 import {
   AI_DRAWING_MODEL_LABEL,
-  AI_SCENE_BLUEPRINT_ENABLED,
   type AiDrawingQuota,
   type AiPageStoryFlowPanelHint,
   type AiPageStoryFlowResponse,
-  type AiSceneBlueprintResponse,
 } from "@/lib/ai-drawing-api";
-import { AI_STROKE_GROUP_LABELS } from "../lib/aiStrokeGeometry";
-import type { AiOverlayLayerView } from "./AiGhostStrokeOverlay";
-import { BlueprintPreview } from "./BlueprintPreview";
+import type {
+  ReferenceImageItem,
+  ReferenceImageSource,
+} from "../lib/referenceImages";
+import { ReferenceImagePanel } from "./ReferenceImagePanel";
 
 type Props = {
   sceneType: SceneType;
@@ -67,12 +62,9 @@ type Props = {
   /** Thời điểm nhận kết quả, ms — dòng nguồn AI (AC-D2.2) */
   storyAt: number | null;
   appliedStoryPanels: string[];
-  strokeCount: number;
   activePanel: string | null;
   runAnalysis: () => void;
-  processingTool: string | null;
   analyzing: boolean;
-  runTool: (id: string) => void;
   showCompSection: boolean;
   setShowCompSection: React.Dispatch<React.SetStateAction<boolean>>;
   applyComp: (id: string) => void;
@@ -82,52 +74,21 @@ type Props = {
   poseCategory: PoseCategory;
   setPoseCategory: (cat: PoseCategory) => void;
   applyPose: (id: string) => void;
-  ghostType: "comp" | "pose" | null;
-  ghostId: string | null;
-  ghostOpacity?: number;
-  setGhostOpacity?: (v: number) => void;
-  /** Các lớp AI đang hiện của khung mở (5C.1) — nét AI là vector, không nằm trong canvas */
-  aiStrokeLayers?: readonly AiOverlayLayerView[];
-  /** Tổng số nét AI đang hiện (chip 5C.4) */
-  aiStrokeCount?: number;
-  /** Xoá nét AI + lớp AI của khung đang mở (không đụng nét người dùng) */
-  clearPanelAiOverlay?: () => void;
-  /** Áp riêng một lớp AI xuống lớp đang chọn (từng phần, không cần áp hết) */
-  applyAiLayerToActiveLayer?: (layerId: string) => void;
-  canApplyAiToLayer?: boolean;
+  /** Tư thế mẫu đang chọn (chỉ tham chiếu, không gọi AI) */
+  selectedPoseId: string | null;
   /** Lượt AI còn lại (null = chưa lấy được thì ẩn dòng quota) */
   aiQuota?: AiDrawingQuota | null;
-  ghostStrokesSummary?: string | null;
-  /** Thời điểm + nguồn của nét gợi ý đang hiện (AC-D2.2) */
-  ghostAt?: number | null;
-  ghostSourceIds?: string[];
-  /** Model thật đã phục vụ nét AI (Phase 5E); thiếu thì hiện hằng dự phòng */
-  ghostModel?: string | null;
   userDrawingPrompt?: string;
   setUserDrawingPrompt?: (v: string) => void;
-  // Bức tranh toàn cảnh (A-2 — 5B.5/5B.6)
-  blueprint?: AiSceneBlueprintResponse | null;
-  blueprintLoading?: boolean;
-  blueprintError?: string | null;
-  blueprintApplied?: boolean;
-  /** Thời điểm nhận blueprint — dòng nguồn AI của thẻ xem trước (AC-D2.2) */
-  blueprintAt?: number | null;
-  runSceneBlueprint?: () => void;
-  cancelSceneBlueprint?: () => void;
-  applyBlueprintToPanel?: () => void;
-  dismissBlueprint?: () => void;
+  /** Ảnh mẫu tham khảo của khung đang mở (tối đa 3, kho riêng) */
+  referenceImages: ReferenceImageItem[];
+  onDeleteReferenceImage: (id: string) => void;
+  referenceSource: ReferenceImageSource;
+  onReferenceSourceChange: (source: ReferenceImageSource) => void;
   showGuideSection: boolean;
   setShowGuideSection: React.Dispatch<React.SetStateAction<boolean>>;
   toggleGuide: (g: GuideId) => void;
   activeGuides: GuideId[];
-};
-
-const TOOL_ICONS: Record<string, React.ReactNode> = {
-  "clean-lines": <PenTool size={15} className="text-indigo-400" />,
-  "screentone": <Grid3x3 size={15} className="text-sky-400" />,
-  "speech-bubble": <MessageCircle size={15} className="text-pink-400" />,
-  "speed-lines": <Zap size={15} className="text-emerald-400" />,
-  "fix-comp": <Maximize2 size={15} className="text-amber-400" />,
 };
 
 // Thông tin chi tiết và gợi ý riêng cho từng loại cảnh
@@ -143,7 +104,8 @@ const SCENE_METADATA: Record<
 > = {
   auto: {
     title: "AI Tự Phân Tích (Thông Minh)",
-    description: "AI tự động phân tích nét vẽ & mô tả ý tưởng để tự động xác định thể loại và sinh nét phác thảo phù hợp nhất.",
+    description:
+      "AI tự động phân tích nét vẽ và mô tả ý tưởng để xác định thể loại cảnh, làm ngữ cảnh cho phân tích nét vẽ và gợi ý mạch truyện.",
     badge: "Tự động • Đa thể loại",
     accentColor: "from-purple-500/20 to-pink-500/20 border-purple-500/30 text-purple-300",
     presets: [
@@ -273,12 +235,9 @@ export function AiTab({
   storyError,
   storyAt,
   appliedStoryPanels,
-  strokeCount,
   activePanel,
   runAnalysis,
-  processingTool,
   analyzing,
-  runTool,
   showCompSection,
   setShowCompSection,
   applyComp,
@@ -288,38 +247,21 @@ export function AiTab({
   poseCategory,
   setPoseCategory,
   applyPose,
-  ghostType,
-  ghostId,
-  ghostOpacity,
-  setGhostOpacity,
-  aiStrokeLayers,
-  aiStrokeCount,
-  clearPanelAiOverlay,
-  applyAiLayerToActiveLayer,
-  canApplyAiToLayer,
+  selectedPoseId,
   aiQuota,
-  ghostStrokesSummary,
-  ghostAt,
-  ghostSourceIds,
-  ghostModel,
   userDrawingPrompt,
   setUserDrawingPrompt,
-  blueprint,
-  blueprintLoading,
-  blueprintError,
-  blueprintApplied,
-  blueprintAt,
-  runSceneBlueprint,
-  cancelSceneBlueprint,
-  applyBlueprintToPanel,
-  dismissBlueprint,
+  referenceImages,
+  onDeleteReferenceImage,
+  referenceSource,
+  onReferenceSourceChange,
   showGuideSection,
   setShowGuideSection,
   toggleGuide,
   activeGuides,
 }: Props) {
   const currentScene = SCENE_METADATA[sceneType];
-  const isWorking = processingTool !== null || analyzing || storyLoading;
+  const isWorking = analyzing || storyLoading;
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#120a1f] text-white">
@@ -376,7 +318,7 @@ export function AiTab({
           </div>
         </div>
 
-        {/* 2. Mục Prompt Ý Tưởng Muốn Vẽ & Các Nút Thực Thi */}
+        {/* 2. Mục Prompt Ý Tưởng Muốn Vẽ + Phân Tích Nét Vẽ */}
         <div className="space-y-2.5 bg-white/[0.03] border border-white/10 rounded-2xl p-3 shadow-sm">
           <div className="flex items-center justify-between">
             <label className="text-white/80 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -396,7 +338,7 @@ export function AiTab({
           <textarea
             value={userDrawingPrompt ?? ""}
             onChange={(e) => setUserDrawingPrompt?.(e.target.value)}
-            placeholder={`Mô tả ý tưởng muốn vẽ (vd: ${currentScene.presets[0]}... AI sẽ phác thảo ngay cả từ trang trắng)`}
+            placeholder={`Mô tả ý tưởng muốn vẽ (vd: ${currentScene.presets[0]}...). Mô tả này làm ngữ cảnh cho phân tích nét vẽ và gợi ý mạch truyện.`}
             rows={2}
             className="w-full bg-[#0a0512] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-white/25 resize-none focus:outline-none focus:border-pink-500/60 focus:ring-1 focus:ring-pink-500/30 transition-all"
           />
@@ -437,220 +379,6 @@ export function AiTab({
             </div>
           )}
 
-          {/* CÁC NÚT BẤM THỰC THI TÍNH NĂNG THEO PROMPT */}
-          <div className="pt-1 space-y-1.5">
-            <button
-              onClick={() => runTool("clean-lines")}
-              disabled={isWorking || !activePanel}
-              className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md ${
-                !isWorking && activePanel
-                  ? "bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white shadow-pink-500/20 active:scale-[0.99]"
-                  : "bg-white/5 text-white/30 border border-white/5 cursor-not-allowed"
-              }`}
-            >
-              {processingTool === "clean-lines" ? (
-                <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                  <RefreshCw size={14} />
-                </motion.div>
-              ) : (
-                <Wand2 size={14} className="text-pink-300" />
-              )}
-              <span>{processingTool === "clean-lines" ? "AI đang sinh nét gợi ý..." : "AI Tạo Nét Gợi Ý Từ Ý Tưởng"}</span>
-            </button>
-
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={() => runTool("composition-overlay")}
-                disabled={isWorking || !activePanel}
-                className="py-1.5 px-2 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-200 text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40"
-              >
-                {processingTool === "composition-overlay" ? (
-                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                    <RefreshCw size={11} />
-                  </motion.div>
-                ) : (
-                  <Grid3x3 size={11} />
-                )}
-                <span>Gợi ý Bố cục</span>
-              </button>
-
-              <button
-                onClick={() => runTool("pose-guidance")}
-                disabled={isWorking || !activePanel}
-                className="py-1.5 px-2 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-200 text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40"
-              >
-                {processingTool === "pose-guidance" ? (
-                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                    <RefreshCw size={11} />
-                  </motion.div>
-                ) : (
-                  <PersonStanding size={11} />
-                )}
-                <span>Gợi ý Dáng vẽ</span>
-              </button>
-            </div>
-
-            {/* Bức tranh toàn cảnh (A-2 — 5B.5): blueprint vector + mô tả, không phải ảnh render (C3).
-                Ẩn khỏi UI khi AI_SCENE_BLUEPRINT_ENABLED = false (bản demo — xem cờ trong ai-drawing-api.ts) */}
-            {AI_SCENE_BLUEPRINT_ENABLED && (
-              <>
-            <button
-              onClick={
-                blueprintLoading
-                  ? cancelSceneBlueprint
-                  : runSceneBlueprint
-              }
-              disabled={
-                !activePanel ||
-                (blueprintLoading
-                  ? false
-                  : isWorking || !userDrawingPrompt?.trim())
-              }
-              className={`w-full py-2 px-3 rounded-xl font-semibold text-[11px] flex items-center justify-center gap-2 transition-all border ${
-                blueprintLoading
-                  ? "bg-indigo-500/20 border-indigo-400/40 text-indigo-100"
-                  : "bg-gradient-to-r from-indigo-500/25 to-purple-600/25 hover:from-indigo-500/35 hover:to-purple-600/35 border-indigo-400/30 text-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
-              }`}
-              title={
-                !userDrawingPrompt?.trim()
-                  ? "Hãy mô tả ý tưởng cho toàn cảnh ở ô bên trên trước"
-                  : "AI dựng toàn cảnh thành 5-6 lớp nội dung, xem trước rồi mới áp vào khung"
-              }
-            >
-              {blueprintLoading ? (
-                <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                  <RefreshCw size={12} />
-                </motion.div>
-              ) : (
-                <Mountain size={12} className="text-indigo-300" />
-              )}
-              <span>
-                {blueprintLoading
-                  ? "AI đang dựng toàn cảnh... (bấm để dừng)"
-                  : "AI Sinh Toàn Cảnh Từ Ý Tưởng"}
-              </span>
-            </button>
-
-            {blueprintError && (
-              <p className="text-red-300 text-[9px] leading-relaxed bg-red-500/10 border border-red-500/25 rounded-xl px-2 py-1.5">
-                {blueprintError}
-              </p>
-            )}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* 2b. Xem trước bức tranh toàn cảnh (5B.5) — chỉ vào khung khi người dùng bấm áp */}
-        {AI_SCENE_BLUEPRINT_ENABLED && blueprint && (
-          <BlueprintPreview
-            blueprint={blueprint}
-            applied={blueprintApplied === true}
-            onApply={() => applyBlueprintToPanel?.()}
-            onDismiss={() => dismissBlueprint?.()}
-            footer={
-              <AiSourceLine
-                at={blueprintAt ?? null}
-                sourceIds={blueprint.sourceIds}
-                model={blueprint.model}
-              />
-            }
-          />
-        )}
-
-        {/* 3. Thẻ Trạng Thái Nét AI (các lớp AI của khung đang mở — 5C.1/5C.4) */}
-        {aiStrokeLayers && aiStrokeLayers.length > 0 && (
-          <div className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-3 space-y-2 shadow-lg shadow-purple-900/10">
-            <div className="flex items-center justify-between">
-              <span className="text-purple-200 text-xs font-semibold flex items-center gap-1.5">
-                <CheckCircle2 size={13} className="text-emerald-400" />
-                Đang hiển thị {aiStrokeCount ?? 0} nét AI
-                <span className="text-purple-300/70 font-normal">
-                  (không nằm trong canvas của bạn)
-                </span>
-              </span>
-              <button
-                onClick={() => clearPanelAiOverlay?.()}
-                className="text-white/50 hover:text-white text-[10px] px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15 transition-colors font-medium flex-shrink-0"
-                title="Xoá toàn bộ nét AI của khung này (nét của bạn giữ nguyên)"
-              >
-                Ẩn nét
-              </button>
-            </div>
-
-            {/* Danh sách lớp AI: nhóm nội dung + số nét (độ mờ/bật tắt ở tab Layers) */}
-            <div className="space-y-1">
-              {aiStrokeLayers.map((layer) => (
-                <div
-                  key={layer.id}
-                  className="flex items-center gap-2 bg-white/[0.03] border border-white/5 rounded-xl px-2 py-1"
-                >
-                  <span className="text-[9px] font-mono text-purple-300/90 w-[62px] flex-shrink-0">
-                    {layer.group
-                      ? (AI_STROKE_GROUP_LABELS[layer.group] ?? layer.group)
-                      : "Gợi ý"}
-                  </span>
-                  <span className="text-white/70 text-[10px] truncate flex-1">
-                    {layer.name}
-                  </span>
-                  <span className="text-white/40 text-[9px] font-mono flex-shrink-0">
-                    {layer.strokes.length} nét
-                  </span>
-                  {applyAiLayerToActiveLayer && (
-                    <button
-                      onClick={() => applyAiLayerToActiveLayer(layer.id)}
-                      disabled={canApplyAiToLayer === false}
-                      className="text-purple-200/80 hover:text-purple-100 text-[9px] px-1.5 py-0.5 rounded-md bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/25 flex-shrink-0 disabled:opacity-40"
-                      title="Chỉ vẽ các nét của lớp này vào lớp đang chọn"
-                    >
-                      Áp lớp này
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {ghostStrokesSummary && (
-              <p className="text-purple-100 text-[10px] leading-relaxed italic bg-black/30 p-2.5 rounded-xl border border-white/5">
-                &ldquo;{ghostStrokesSummary}&rdquo;
-              </p>
-            )}
-
-            <AiSourceLine
-              at={ghostAt ?? null}
-              sourceIds={ghostSourceIds}
-              model={ghostModel}
-            />
-
-            {ghostOpacity !== undefined && setGhostOpacity && (
-              <div className="flex items-center gap-2 pt-1 border-t border-purple-500/20">
-                <Sliders size={11} className="text-purple-300 flex-shrink-0" />
-                <span className="text-white/50 text-[9px] flex-shrink-0">Độ đậm nét:</span>
-                <input
-                  type="range"
-                  min={10}
-                  max={80}
-                  value={ghostOpacity}
-                  onChange={(e) => setGhostOpacity(Number(e.target.value))}
-                  className="flex-1 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                />
-                <span className="text-white/60 text-[9px] font-mono w-6 text-right">
-                  {ghostOpacity}%
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 4. Bộ Công Cụ AI Vẽ Từng Phần (Dynamic Ghost Tools) */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-white/40 text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1">
-              <Zap size={11} className="text-yellow-400" />
-              Công Cụ Vẽ Hỗ Trợ AI
-            </span>
-          </div>
-
           <button
             onClick={runAnalysis}
             disabled={isWorking || !activePanel}
@@ -665,44 +393,21 @@ export function AiTab({
             )}
             <span>Phân Tích Nét Vẽ & Chỉ Lỗi Lệch</span>
           </button>
-
-          <div className="grid grid-cols-1 gap-1.5">
-            {AI_TOOLS.map((t) => {
-              const isProcessing = processingTool === t.id;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => runTool(t.id)}
-                  disabled={isWorking || !activePanel}
-                  className={`flex items-center gap-2.5 p-2 rounded-xl border text-left transition-all ${
-                    isProcessing
-                      ? "bg-purple-500/25 border-purple-400 ring-1 ring-purple-400/50"
-                      : "bg-white/[0.02] border-white/5 hover:bg-white/5 hover:border-white/10"
-                  } ${!activePanel ? "opacity-50 cursor-not-allowed" : ""}`}
-                >
-                  <div className="w-8 h-8 rounded-lg bg-[#0a0512] border border-white/10 flex items-center justify-center flex-shrink-0">
-                    {TOOL_ICONS[t.id] ?? <Wand2 size={14} className="text-purple-400" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-white text-xs font-medium truncate">{t.label}</span>
-                    </div>
-                    <p className="text-white/40 text-[9px] leading-tight truncate">{t.desc}</p>
-                  </div>
-                  {isProcessing ? (
-                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                      <RefreshCw size={12} className="text-purple-400" />
-                    </motion.div>
-                  ) : (
-                    <ChevronRight size={12} className="text-white/20" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          <p className="text-white/35 text-[9px] leading-relaxed">
+            Phân tích chỉ trả về nhận xét bằng chữ, không vẽ thêm nét nào lên
+            khung của bạn.
+          </p>
         </div>
 
-        {/* 5. Bố Cục Mẫu (tham chiếu, theo SceneType đang chọn) */}
+        {/* 2b. Ảnh mẫu tham khảo (sinh ảnh đang tắt — xem ReferenceImagePanel) */}
+        <ReferenceImagePanel
+          images={referenceImages}
+          source={referenceSource}
+          onSourceChange={onReferenceSourceChange}
+          onDeleteImage={onDeleteReferenceImage}
+        />
+
+        {/* 3. Bố Cục Mẫu (tham chiếu, theo SceneType đang chọn) */}
         <div className="border border-white/5 rounded-2xl overflow-hidden bg-white/[0.01]">
           <button
             onClick={() => setShowCompSection((v) => !v)}
@@ -731,14 +436,15 @@ export function AiTab({
                 <div className="p-3 pt-0 space-y-2">
                   <p className="text-[9px] text-white/40">
                     Bố cục do studio soạn sẵn để tham chiếu, không phải kết quả
-                    AI. Chọn một mẫu để AI sinh đường dẫn mắt theo mẫu đó:
+                    AI và không gọi AI. Chọn một mẫu để tham chiếu khi vẽ, bật
+                    đường dóng ở mục dưới để tự căn theo mẫu đã chọn.
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {COMP_SUGGESTIONS[sceneType].map((c) => (
                       <button
                         key={c.id}
                         onClick={() => applyComp(c.id)}
-                        disabled={isWorking || !activePanel}
+                        disabled={!activePanel}
                         className={`rounded-xl border p-2 text-left transition-all ${
                           selectedComp === c.id
                             ? "border-purple-400 bg-purple-500/15 ring-1 ring-purple-500/40"
@@ -759,7 +465,7 @@ export function AiTab({
           </AnimatePresence>
         </div>
 
-        {/* 6. Tư Thế Mẫu (tham chiếu) */}
+        {/* 4. Tư Thế Mẫu (tham chiếu) */}
         <div className="border border-white/5 rounded-2xl overflow-hidden bg-white/[0.01]">
           <button
             onClick={() => setShowPoseSection((v) => !v)}
@@ -786,20 +492,10 @@ export function AiTab({
                 className="overflow-hidden"
               >
                 <div className="p-3 pt-0 space-y-2">
-                  <button
-                    onClick={() => applyPose("auto")}
-                    disabled={isWorking || !activePanel}
-                    className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-500/25 to-purple-500/25 hover:from-indigo-500/35 hover:to-purple-500/35 border border-indigo-500/40 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-40"
-                  >
-                    {processingTool === "pose-guidance" ? (
-                      <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                        <RefreshCw size={13} />
-                      </motion.div>
-                    ) : (
-                      <Sparkles size={13} className="text-pink-300" />
-                    )}
-                    <span>AI Nhận Diện Nhân Vật & Sinh Khung Xương</span>
-                  </button>
+                  <p className="text-[9px] text-white/40">
+                    Tư thế mẫu chỉ để tham chiếu khi vẽ, không gọi AI và không
+                    sinh khung xương.
+                  </p>
 
                   <div className="flex gap-1 bg-white/5 p-1 rounded-xl">
                     {(
@@ -830,11 +526,15 @@ export function AiTab({
                       <button
                         key={pose.id}
                         onClick={() => applyPose(pose.id)}
-                        disabled={isWorking || !activePanel}
-                        className="rounded-xl border border-white/10 hover:border-pink-500/40 p-2 text-center bg-white/[0.02] hover:bg-pink-500/10 transition-all disabled:opacity-50"
+                        disabled={!activePanel}
+                        className={`rounded-xl border p-2 text-center transition-all disabled:opacity-50 ${
+                          selectedPoseId === pose.id
+                            ? "border-pink-400 bg-pink-500/15 ring-1 ring-pink-500/40"
+                            : "border-white/10 hover:border-pink-500/40 bg-white/[0.02] hover:bg-pink-500/10"
+                        }`}
                       >
                         <p className="text-[10px] text-white font-medium truncate">{pose.label}</p>
-                        <span className="text-[8px] text-pink-400 block mt-0.5">+ AI sinh dáng</span>
+                        <span className="text-[8px] text-pink-400 block mt-0.5">Tham chiếu</span>
                       </button>
                     ))}
                   </div>
@@ -844,7 +544,7 @@ export function AiTab({
           </AnimatePresence>
         </div>
 
-        {/* 7. Mạch Truyện Cả Trang — kết quả API thật, task `page_story_flow` (D-1) */}
+        {/* 5. Mạch Truyện Cả Trang — kết quả API thật, task `page_story_flow` (D-1) */}
         <div className="space-y-2 bg-gradient-to-br from-purple-950/20 to-black p-3 rounded-2xl border border-white/5">
           <span className="text-white/40 text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5">
             <Layers size={11} className="text-purple-400" />
@@ -968,7 +668,7 @@ export function AiTab({
           </AnimatePresence>
         </div>
 
-        {/* 8. Đường Dẫn Hướng Cố Định (Guides) */}
+        {/* 6. Đường Dẫn Hướng Cố Định (Guides) */}
         <div className="border border-white/5 rounded-2xl overflow-hidden bg-white/[0.01]">
           <button
             onClick={() => setShowGuideSection((v) => !v)}
