@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as argon2 from "argon2";
 import { randomUUID } from "node:crypto";
@@ -7,6 +7,7 @@ import {
   RegisterUserInput,
   UsersService,
 } from "../users/users.service.js";
+import { UserStatus } from "../users/user-status.enum.js";
 import { ACCESS_TOKEN_EXPIRES_IN_SECONDS } from "./auth.config.js";
 import {
   IssuedRefreshToken,
@@ -66,6 +67,11 @@ export class AuthService {
       throw new UnauthorizedException("Invalid username or password");
     }
 
+    // Lát 2: tài khoản bị khóa không đăng nhập được, dù mật khẩu đúng.
+    if (user.status === UserStatus.Suspended) {
+      throw new ForbiddenException("Account is suspended");
+    }
+
     return this.usersService.toPublicUser(user);
   }
 
@@ -110,6 +116,13 @@ export class AuthService {
     if (!user) {
       await this.refreshSessionsService.revoke(refreshToken.token);
       throw new UnauthorizedException("Invalid refresh token");
+    }
+
+    // Lát 2: tài khoản bị khóa cũng không làm mới phiên được; thu hồi
+    // refresh token để phiên hiện tại dừng hẳn, không chỉ hết hạn rồi thôi.
+    if (user.status === UserStatus.Suspended) {
+      await this.refreshSessionsService.revoke(refreshToken.token);
+      throw new ForbiddenException("Account is suspended");
     }
 
     const loginResult = await this.createLoginResult(user);

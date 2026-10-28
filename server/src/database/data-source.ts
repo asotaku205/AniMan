@@ -4,6 +4,7 @@ import { RefreshSession } from "../auth/refresh-session.entity.js";
 import { User } from "../users/user.entity.js";
 import { CreateAuthTables1780768800000 } from "./migrations/1780768800000-CreateAuthTables.js";
 import { AddUserRoles1791400000000 } from "./migrations/1791400000000-AddUserRoles.js";
+import { AddUserStatusAndMultipleAdmins1793228985000 } from "./migrations/1793228985000-AddUserStatusAndMultipleAdmins.js";
 
 function requiredEnvironmentVariable(name: string): string {
   const value = process.env[name];
@@ -24,6 +25,7 @@ export default new DataSource({
   migrations: [
     CreateAuthTables1780768800000,
     AddUserRoles1791400000000,
+    AddUserStatusAndMultipleAdmins1793228985000,
   ],
   synchronize: false,
 });

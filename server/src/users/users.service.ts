@@ -1,7 +1,9 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -11,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { QueryFailedError, Repository } from "typeorm";
 import { User } from "./user.entity.js";
 import { UserRole } from "./user-role.enum.js";
+import { UserStatus } from "./user-status.enum.js";
 
 export interface RegisterUserInput {
   displayName: string;
@@ -25,10 +28,34 @@ export type PublicUser = Pick<
   | "username"
   | "displayName"
   | "role"
+  | "status"
   | "termsAcceptedAt"
   | "createdAt"
   | "updatedAt"
 >;
+
+export interface ListAdminUsersInput {
+  page: number;
+  pageSize: number;
+  q?: string;
+  role?: UserRole;
+  status?: UserStatus;
+}
+
+export interface AdminUserCounts {
+  total: number;
+  admin: number;
+  active: number;
+  suspended: number;
+}
+
+export interface AdminUserList {
+  items: PublicUser[];
+  total: number;
+  page: number;
+  pageSize: number;
+  counts: AdminUserCounts;
+}
 
 function isUsernameConflict(error: unknown): boolean {
   return isConstraintConflict(error, "uq_users_username");
@@ -58,6 +85,8 @@ function isConstraintConflict(error: unknown, constraint: string): boolean {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
@@ -85,6 +114,7 @@ export class UsersService {
       displayName: input.displayName,
       passwordHash,
       role: UserRole.User,
+      status: UserStatus.Active,
       termsAcceptedAt: confirmedAt,
     });
 
@@ -126,6 +156,132 @@ export class UsersService {
     }
   }
 
+  /**
+   * Danh sách user cho trang Admin (Lát 2). `total` là số user sau khi lọc
+   * (dùng cho phân trang), `counts` là số liệu toàn hệ thống (dùng cho 4 thẻ
+   * số liệu). Tìm kiếm không phân biệt hoa thường trên username và tên hiển thị.
+   */
+  async listUsers(input: ListAdminUsersInput): Promise<AdminUserList> {
+    const page = Math.max(1, Math.floor(input.page) || 1);
+    const pageSize = Math.min(50, Math.max(1, Math.floor(input.pageSize) || 20));
+    const query = this.usersRepository.createQueryBuilder("user");
+    const search = input.q?.trim();
+    if (search) {
+      query.andWhere(
+        "(user.username ILIKE :search OR user.displayName ILIKE :search)",
+        { search: `%${search}%` },
+      );
+    }
+    if (input.role) {
+      query.andWhere("user.role = :role", { role: input.role });
+    }
+    if (input.status) {
+      query.andWhere("user.status = :status", { status: input.status });
+    }
+    query
+      .orderBy("user.createdAt", "DESC")
+      .addOrderBy("user.id", "ASC")
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
+    const [users, total] = await query.getManyAndCount();
+    const [totalCount, adminCount, activeCount, suspendedCount] =
+      await Promise.all([
+        this.usersRepository.count(),
+        this.usersRepository.countBy({ role: UserRole.Admin }),
+        this.usersRepository.countBy({ status: UserStatus.Active }),
+        this.usersRepository.countBy({ status: UserStatus.Suspended }),
+      ]);
+    return {
+      items: users.map((user) => this.toPublicUser(user)),
+      total,
+      page,
+      pageSize,
+      counts: {
+        total: totalCount,
+        admin: adminCount,
+        active: activeCount,
+        suspended: suspendedCount,
+      },
+    };
+  }
+
+  /**
+   * Đổi vai trò user (Lát 2, phương án M: nhiều admin).
+   *
+   * Chặn tự đổi vai trò của chính mình, và chặn hạ quyền admin cuối cùng.
+   * Đếm số admin và lưu thay đổi trong cùng một transaction để hai lần hạ
+   * quyền đồng thời không làm hệ thống mất hết admin.
+   */
+  async changeRole(
+    actorId: string,
+    targetId: string,
+    role: UserRole,
+  ): Promise<PublicUser> {
+    return this.usersRepository.manager.transaction(async (manager) => {
+      const repository = manager.getRepository(User);
+      const target = await repository.findOneBy({ id: targetId });
+      if (!target) {
+        throw new NotFoundException("User not found");
+      }
+      if (actorId === targetId) {
+        throw new ForbiddenException("Cannot change your own role");
+      }
+      if (target.role === role) {
+        return this.toPublicUser(target);
+      }
+      if (target.role === UserRole.Admin && role === UserRole.User) {
+        const adminCount = await repository.countBy({ role: UserRole.Admin });
+        if (adminCount <= 1) {
+          throw new ConflictException("Cannot demote the last admin");
+        }
+      }
+      target.role = role;
+      const saved = await repository.save(target);
+      // Ghi log tạm thay audit log thật cho tới Lát 3.
+      this.logger.log(
+        `Admin ${actorId} changed role of user ${targetId} to ${role}`,
+      );
+      return this.toPublicUser(saved);
+    });
+  }
+
+  /**
+   * Khóa hoặc mở khóa tài khoản (Lát 2). Khóa là tạm thời, mở lại được.
+   *
+   * Chặn tự khóa chính mình và chặn khóa tài khoản quản trị viên. Mở khóa
+   * tài khoản quản trị viên (trường hợp bị khóa trước khi lên admin) vẫn
+   * cho phép.
+   */
+  async changeStatus(
+    actorId: string,
+    targetId: string,
+    status: UserStatus,
+  ): Promise<PublicUser> {
+    const target = await this.usersRepository.findOneBy({ id: targetId });
+    if (!target) {
+      throw new NotFoundException("User not found");
+    }
+    if (actorId === targetId) {
+      throw new ForbiddenException("Cannot change your own account status");
+    }
+    if (
+      status === UserStatus.Suspended &&
+      target.role === UserRole.Admin
+    ) {
+      throw new ForbiddenException("Cannot suspend an admin account");
+    }
+    if (target.status === status) {
+      return this.toPublicUser(target);
+    }
+    target.status = status;
+    const saved = await this.usersRepository.save(target);
+    // Ghi log tạm thay audit log thật cho tới Lát 3.
+    this.logger.log(
+      `Admin ${actorId} changed status of user ${targetId} to ${status}`,
+    );
+    return this.toPublicUser(saved);
+  }
+
   findByUsernameForAuthentication(username: string): Promise<User | null> {
     return this.usersRepository.findOneBy({ username: username.toLowerCase() });
   }
@@ -141,6 +297,7 @@ export class UsersService {
       username: user.username,
       displayName: user.displayName,
       role: user.role,
+      status: user.status,
       termsAcceptedAt: user.termsAcceptedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { RefreshSession } from "./auth/refresh-session.entity.js";
 import { CreateAuthTables1780768800000 } from "./database/migrations/1780768800000-CreateAuthTables.js";
 import { AddUserRoles1791400000000 } from "./database/migrations/1791400000000-AddUserRoles.js";
+import { AddUserStatusAndMultipleAdmins1793228985000 } from "./database/migrations/1793228985000-AddUserStatusAndMultipleAdmins.js";
 import { User } from "./users/user.entity.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { AiConsentModule } from "./ai/consent/ai-consent.module.js";
@@ -37,6 +38,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         migrations: [
           CreateAuthTables1780768800000,
           AddUserRoles1791400000000,
+          AddUserStatusAndMultipleAdmins1793228985000,
         ],
         migrationsRun: false,
         synchronize: false,

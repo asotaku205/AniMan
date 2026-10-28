@@ -3,6 +3,7 @@ export interface AuthUser {
   username: string;
   displayName: string;
   role: "user" | "admin";
+  status: "active" | "suspended";
   termsAcceptedAt: string;
   createdAt: string;
   updatedAt: string;

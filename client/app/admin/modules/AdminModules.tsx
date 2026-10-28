@@ -231,8 +231,8 @@ export function SBdg({ s }: { s: string }) {
     return <Bdg c="blue">{{ scheduled: "Lên lịch", draft: "Bản nháp" }[s] ?? s}</Bdg>;
   if (["Sắp ra mắt", "pending", "open", "refunded"].includes(s))
     return <Bdg c="yellow">{{ pending: "Chờ duyệt", open: "Chờ xử lý", refunded: "Hoàn tiền" }[s] ?? s}</Bdg>;
-  if (["banned", "rejected", "failed", "dismissed"].includes(s))
-    return <Bdg c="red">{{ banned: "Đã khoá", rejected: "Từ chối", failed: "Thất bại", dismissed: "Đã bỏ qua" }[s] ?? s}</Bdg>;
+  if (["banned", "suspended", "rejected", "failed", "dismissed"].includes(s))
+    return <Bdg c="red">{{ banned: "Đã khoá", suspended: "Đã khóa", rejected: "Từ chối", failed: "Thất bại", dismissed: "Đã bỏ qua" }[s] ?? s}</Bdg>;
   return <Bdg>{s}</Bdg>;
 }
 
