@@ -5,23 +5,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Toaster, toast } from "sonner";
 import { Bell, BarChart3, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Feather, Film, Flag, Globe, KeyRound, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquare, Radio, ScrollText, Search, Settings, Shield, Swords, Tags, Tv, Users, Wand2, X } from "lucide-react";
-import { NAV_GROUPS, PAGE_TITLE } from "../modules/AdminModules";
+import { useAuth } from "@/app/auth/AuthProvider";
+import { ADMIN_DEMO_BADGE_TEXT, HIDDEN_ADMIN_NAV_IDS, NAV_GROUPS, PAGE_TITLE } from "../modules/AdminModules";
 
 // ── Admin Page ──────────────────────────────────────────────────
 export function AdminPage({ initialActive = "dashboard", children }: { initialActive?: string; children?: React.ReactNode }) {
   const router = useRouter();
+  const { user, signOut } = useAuth();
   const [active, setActive] = useState(initialActive);
   const [sideOpen, setSideOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expanded, setExpanded] = useState(["Tổng quan", "Quản lý nội dung", "Cộng đồng", "Kiểm duyệt & Kinh doanh", "Hệ thống"]);
-  const [notifCount, setNotifCount] = useState(7);
   const [globalSearch, setGlobalSearch] = useState("");
 
-  const allItems = useMemo(() => NAV_GROUPS.flatMap(g => g.items), []);
+  // Lát 1 (D1): ẩn tạm mục Phân quyền khỏi sidebar cho tới khi có mô hình vai trò.
+  const visibleGroups = useMemo(
+    () => NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => !HIDDEN_ADMIN_NAV_IDS.includes(i.id)) })).filter(g => g.items.length > 0),
+    [],
+  );
+  const allItems = useMemo(() => visibleGroups.flatMap(g => g.items), [visibleGroups]);
   const searchResults = globalSearch ? allItems.filter(i => i.label.toLowerCase().includes(globalSearch.toLowerCase())) : [];
   const toggleGroup = (l: string) => setExpanded(g => g.includes(l) ? g.filter(x => x !== l) : [...g, l]);
   const activeItem = allItems.find(i => i.id === active);
-  const activeGroup = NAV_GROUPS.find(g => g.items.some(i => i.id === active))?.label;
+  const activeGroup = visibleGroups.find(g => g.items.some(i => i.id === active))?.label;
   const go = (id: string) => {
     setMobileOpen(false);
     router.push(id === "dashboard" ? "/admin" : `/admin/${id}`);
@@ -55,7 +61,7 @@ export function AdminPage({ initialActive = "dashboard", children }: { initialAc
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3" style={{ scrollbarWidth: "none" }}>
-        {NAV_GROUPS.map(g => (
+        {visibleGroups.map(g => (
           <div key={g.label} className="mb-1">
             {(sideOpen || mobile) && (
               <button onClick={() => toggleGroup(g.label)} className="w-full flex items-center justify-between px-4 py-1.5 text-[10px] font-semibold tracking-widest text-white/30 hover:text-white/50 transition uppercase">
@@ -88,8 +94,22 @@ export function AdminPage({ initialActive = "dashboard", children }: { initialAc
           </div>
           {(sideOpen || mobile) && (
             <>
-              <div className="flex-1 min-w-0"><div className="text-xs font-medium text-white truncate">Admin Hệ thống</div><div className="text-[10px] text-white/40">Super Admin</div></div>
-              <Link href="/dang-nhap" className="text-white/30 hover:text-white transition" title="Đăng xuất"><LogOut className="w-4 h-4" /></Link>
+              <div className="flex-1 min-w-0"><div className="text-xs font-medium text-white truncate">{user?.displayName ?? user?.username ?? "Admin"}</div><div className="text-[10px] text-white/40">Quản trị viên</div></div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await signOut();
+                    router.replace("/auth");
+                  } catch {
+                    toast.error("Không thể đăng xuất khỏi phiên hiện tại.");
+                  }
+                }}
+                className="text-white/30 hover:text-white transition"
+                title="Đăng xuất"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </>
           )}
         </div>
@@ -135,9 +155,8 @@ export function AdminPage({ initialActive = "dashboard", children }: { initialAc
                 </div>
               )}
             </div>
-            <button onClick={() => { setNotifCount(0); toast.info("Đã đọc tất cả thông báo"); }} className="relative p-2 rounded-xl hover:bg-white/[0.06] text-white/50 hover:text-white transition">
+            <button onClick={() => { toast.info("Chưa có thông báo mới"); }} className="relative p-2 rounded-xl hover:bg-white/[0.06] text-white/50 hover:text-white transition" title="Thông báo">
               <Bell className="w-5 h-5" />
-              {notifCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 rounded-full text-[9px] text-white flex items-center justify-center font-bold" style={{ background: "#d72638" }}>{notifCount}</span>}
             </button>
             <Link href="/" className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white/60 hover:text-white hover:border-white/20 text-xs transition">
               <Globe className="w-3.5 h-3.5" /> Về site
@@ -146,6 +165,11 @@ export function AdminPage({ initialActive = "dashboard", children }: { initialAc
         </header>
 
         <main className="flex-1 p-4 md:p-6 overflow-auto">
+          {ADMIN_DEMO_BADGE_TEXT[active] && (
+            <div className="mb-5 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] px-4 py-2.5 text-xs text-amber-200/90">
+              {ADMIN_DEMO_BADGE_TEXT[active]}
+            </div>
+          )}
           {children}
         </main>
       </div>

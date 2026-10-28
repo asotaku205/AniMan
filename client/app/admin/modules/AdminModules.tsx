@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Toaster, toast } from "sonner";
@@ -10,58 +10,14 @@ import {
   Bell, Search, Menu, X, ChevronRight, ChevronDown,
   Eye, Star, Shield, Ban, CheckCircle, Plus, Edit, Trash2,
   Filter, Download, AlertTriangle, Check, XCircle, Globe, Hash,
-  ArrowUpRight, ArrowDownRight, RefreshCw, UserCheck, Crown,
+  RefreshCw, UserCheck, Crown,
   Swords, LogOut, ChevronLeft, Flag, CreditCard, KeyRound,
   Megaphone, ScrollText, Send, Pin, Lock, Unlock, Save,
   Tags, GripVertical, Upload, Image as ImageIcon, FileVideo,
   Link2, Clapperboard,
 } from "lucide-react";
-import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
-} from "recharts";
 
 // ── Seed data ───────────────────────────────────────────────────
-const STATS = [
-  { label: "Tổng người dùng", value: "148,320", delta: "+12.4%", up: true, icon: Users, color: "from-pink-500 to-rose-600" },
-  { label: "Nội dung hiện có", value: "4,872", delta: "+38 tuần này", up: true, icon: Tv, color: "from-violet-500 to-purple-600" },
-  { label: "Lượt xem hôm nay", value: "2.4M", delta: "+8.2%", up: true, icon: Eye, color: "from-amber-500 to-orange-500" },
-  { label: "Watch Party đang diễn ra", value: "127", delta: "-3 so với hôm qua", up: false, icon: Radio, color: "from-cyan-500 to-blue-500" },
-];
-
-const VIEWS_CHART = [
-  { t: "T2", anime: 420, phim: 180, manga: 320, novel: 90 },
-  { t: "T3", anime: 380, phim: 210, manga: 290, novel: 110 },
-  { t: "T4", anime: 510, phim: 195, manga: 340, novel: 85 },
-  { t: "T5", anime: 460, phim: 230, manga: 310, novel: 130 },
-  { t: "T6", anime: 590, phim: 270, manga: 390, novel: 145 },
-  { t: "T7", anime: 780, phim: 350, manga: 520, novel: 180 },
-  { t: "CN", anime: 860, phim: 390, manga: 560, novel: 200 },
-];
-
-const USER_GROWTH = [
-  { m: "T1", v: 82000 }, { m: "T2", v: 95000 }, { m: "T3", v: 103000 },
-  { m: "T4", v: 112000 }, { m: "T5", v: 118000 }, { m: "T6", v: 128000 },
-  { m: "T7", v: 135000 }, { m: "T8", v: 141000 }, { m: "T9", v: 148320 },
-];
-
-const PIE_DATA = [
-  { name: "Anime", value: 1840, color: "#f4536b" },
-  { name: "Phim", value: 620, color: "#d4a648" },
-  { name: "Manga", value: 1540, color: "#a78bfa" },
-  { name: "Tiểu thuyết", value: 872, color: "#5e8a7a" },
-];
-
-const ACTIVITIES = [
-  { msg: "Người dùng mới đăng ký: sakura_vn98", time: "2 phút trước", icon: UserCheck, color: "text-emerald-400" },
-  { msg: "Anime mới được tải lên: Jujutsu Kaisen S4", time: "15 phút trước", icon: Tv, color: "text-pink-400" },
-  { msg: "Báo cáo bình luận vi phạm #3842", time: "32 phút trước", icon: AlertTriangle, color: "text-amber-400" },
-  { msg: "Watch Party mới: One Piece 1100+", time: "48 phút trước", icon: Radio, color: "text-cyan-400" },
-  { msg: "Tác phẩm mới chờ duyệt: Manga fan-art", time: "1 giờ trước", icon: Wand2, color: "text-violet-400" },
-  { msg: "Tài khoản bị khoá: spam_bot_01", time: "2 giờ trước", icon: Ban, color: "text-rose-400" },
-];
-
 export type Episode = { id: number; num: number; title: string; duration: string; videoName: string; videoSize: string; published: boolean };
 export type Chapter = { id: number; num: number; title: string; pages: number; published: boolean };
 export type Content = { id: number; title: string; studio: string; year: number; ep: number; status: string; score: number; views: string; tags: string[]; type: string; episodes?: Episode[]; chapters?: Chapter[] };
@@ -145,21 +101,6 @@ export const AUDIT_SEED: Audit[] = [
   { id: 5, actor: "Admin Hệ thống", action: "Đăng thông báo", target: "Bảo trì hệ thống 04/09", time: "01/09/2026 09:00", ip: "113.161.0.12" },
 ];
 
-const PERMISSIONS = [
-  { key: "content", label: "Quản lý nội dung" },
-  { key: "users", label: "Quản lý người dùng" },
-  { key: "moderation", label: "Kiểm duyệt & báo cáo" },
-  { key: "billing", label: "Thanh toán & gói cước" },
-  { key: "settings", label: "Cài đặt hệ thống" },
-  { key: "roles", label: "Phân quyền" },
-];
-const ROLE_SEED = [
-  { role: "Super Admin", color: "red", perms: { content: true, users: true, moderation: true, billing: true, settings: true, roles: true } },
-  { role: "Quản trị nội dung", color: "violet", perms: { content: true, users: false, moderation: true, billing: false, settings: false, roles: false } },
-  { role: "Kiểm duyệt viên", color: "blue", perms: { content: false, users: true, moderation: true, billing: false, settings: false, roles: false } },
-  { role: "Kế toán", color: "amber", perms: { content: false, users: false, moderation: false, billing: true, settings: false, roles: false } },
-];
-
 export type Announce = { id: number; title: string; body: string; audience: string; date: string; status: string; image?: string };
 export const ANNOUNCE_SEED: Announce[] = [
   { id: 1, title: "Bảo trì hệ thống 04/09", body: "Hệ thống sẽ bảo trì từ 02:00–04:00 sáng.", audience: "Tất cả", date: "01/09/2026", status: "sent" },
@@ -236,6 +177,32 @@ export const PAGE_TITLE: Record<string, string> = {
   announcements: "Thông báo hệ thống", audit: "Nhật ký hoạt động",
   settings: "Cài đặt hệ thống",
 };
+
+/**
+ * Lát 1 (29/10/2026, quyết định D1): nhãn trung thực trên các màn hình
+ * chưa có dữ liệu thật. Màn hình không có trong bảng này thì không gắn
+ * nhãn (dashboard, users, audit, settings sẽ thành dữ liệu thật ở Lát 2-4;
+ * studio gắn nhãn riêng cho tới Lát 2A). Khi một màn hình thành thật thì
+ * xóa mục của nó khỏi bảng này trong cùng lát cắt đó.
+ */
+export const ADMIN_DEMO_BADGE_TEXT: Record<string, string> = {
+  analytics: "Dữ liệu demo: số liệu và biểu đồ trong màn hình này chưa lấy từ hệ thống thật.",
+  anime: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
+  phim: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
+  manga: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
+  novel: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
+  categories: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
+  schedule: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
+  studio: "Dữ liệu demo, đang hoàn thiện: duyệt và đăng tác phẩm của user sẽ làm thật ở Lát 2A.",
+  watchparty: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
+  forum: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
+  reports: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
+  billing: "Dữ liệu demo: AniMan miễn phí, không có thanh toán thật.",
+  announcements: "Dữ liệu demo: thông báo ở đây chưa gửi đi đâu.",
+};
+
+/** Mục sidebar ẩn tạm theo quyết định D1 (roles, cho tới khi có mô hình vai trò). Route trực tiếp vẫn mở được. */
+export const HIDDEN_ADMIN_NAV_IDS: string[] = ["roles"];
 
 export const SON = { background: "linear-gradient(135deg,#ff7a8c,#d72638,#b81e2e)" };
 const TT = { backgroundColor: "#1a0f2e", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px", color: "#fff", fontSize: 12 };
@@ -412,140 +379,6 @@ export function VideoUpload({ label, name, size, onChange, hint }: { label: stri
   );
 }
 
-// ── Sections ────────────────────────────────────────────────────
-function Dashboard({ go }: { go: (id: string) => void }) {
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {STATS.map(s => (
-          <Card key={s.label} className="p-5 hover:border-white/15 transition-colors">
-            <div className="flex items-start justify-between mb-4">
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center`}>
-                <s.icon className="w-5 h-5 text-white" />
-              </div>
-              <span className={`flex items-center gap-1 text-xs font-medium ${s.up ? "text-emerald-400" : "text-rose-400"}`}>
-                {s.up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                {s.delta}
-              </span>
-            </div>
-            <div className="text-2xl font-bold text-white">{s.value}</div>
-            <div className="text-xs text-white/50 mt-1">{s.label}</div>
-          </Card>
-        ))}
-      </div>
-
-      <Card className="p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-white/40 mr-1">Thao tác nhanh:</span>
-          {[["anime", "Thêm anime", Plus], ["reports", "Xử lý báo cáo", Flag], ["studio", "Duyệt tác phẩm", Wand2], ["announcements", "Gửi thông báo", Megaphone]].map(([id, label, Icon]) => (
-            <button key={id as string} onClick={() => go(id as string)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-xs text-white/70 hover:text-white hover:border-white/20 transition">
-              {(() => { const I = Icon as React.ElementType; return <I className="w-3.5 h-3.5" />; })()}{label as string}
-            </button>
-          ))}
-        </div>
-      </Card>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Card className="xl:col-span-2 p-5">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <div className="text-white font-semibold">Lượt xem theo nội dung</div>
-              <div className="text-xs text-white/40 mt-0.5">7 ngày gần nhất (nghìn lượt)</div>
-            </div>
-            <select className="bg-white/5 border border-white/10 text-white/60 text-xs rounded-lg px-3 py-1.5 focus:outline-none">
-              <option>7 ngày</option><option>30 ngày</option>
-            </select>
-          </div>
-          <ResponsiveContainer width="100%" height={210}>
-            <AreaChart data={VIEWS_CHART} margin={{ top: 5, right: 5, left: -30, bottom: 0 }}>
-              <defs key="area-gradients">
-                {[["anime", "#f4536b"], ["phim", "#d4a648"], ["manga", "#a78bfa"], ["novel", "#5e8a7a"]].map(([k, c]) => (
-                  <linearGradient key={k} id={`g${k}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={c} stopOpacity={0.3} /><stop offset="95%" stopColor={c} stopOpacity={0} />
-                  </linearGradient>
-                ))}
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="t" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={TT} />
-              <Area type="monotone" dataKey="anime" stroke="#f4536b" fill="url(#ganime)" strokeWidth={2} name="Anime" />
-              <Area type="monotone" dataKey="phim" stroke="#d4a648" fill="url(#gphim)" strokeWidth={2} name="Phim" />
-              <Area type="monotone" dataKey="manga" stroke="#a78bfa" fill="url(#gmanga)" strokeWidth={2} name="Manga" />
-              <Area type="monotone" dataKey="novel" stroke="#5e8a7a" fill="url(#gnovel)" strokeWidth={2} name="Tiểu thuyết" />
-            </AreaChart>
-          </ResponsiveContainer>
-          <div className="flex gap-4 mt-3">
-            {[["Anime", "#f4536b"], ["Phim", "#d4a648"], ["Manga", "#a78bfa"], ["Tiểu thuyết", "#5e8a7a"]].map(([l, c]) => (
-              <div key={l} className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: c }} />
-                <span className="text-xs text-white/50">{l}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="p-5">
-          <div className="text-white font-semibold mb-1">Phân bổ nội dung</div>
-          <div className="text-xs text-white/40 mb-2">Tổng 4,872 tác phẩm</div>
-          <ResponsiveContainer width="100%" height={170}>
-            <PieChart>
-              <Pie data={PIE_DATA} cx="50%" cy="50%" innerRadius={48} outerRadius={72} paddingAngle={3} dataKey="value">
-                {PIE_DATA.map((e, i) => <Cell key={i} fill={e.color} stroke="transparent" />)}
-              </Pie>
-              <Tooltip contentStyle={TT} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-2 mt-2">
-            {PIE_DATA.map(d => (
-              <div key={d.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} /><span className="text-xs text-white/60">{d.name}</span></div>
-                <span className="text-xs text-white font-medium">{d.value.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Card className="xl:col-span-2 p-5">
-          <div className="text-white font-semibold mb-1">Tăng trưởng người dùng</div>
-          <div className="text-xs text-white/40 mb-4">9 tháng gần nhất</div>
-          <ResponsiveContainer width="100%" height={150}>
-            <LineChart data={USER_GROWTH} margin={{ top: 5, right: 5, left: -30, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="m" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}K`} />
-              <Tooltip contentStyle={TT} formatter={(v: unknown) => [Number(v ?? 0).toLocaleString(), "Người dùng"]} />
-              <Line type="monotone" dataKey="v" stroke="#d4a648" strokeWidth={2.5} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-white font-semibold">Hoạt động gần đây</div>
-            <button onClick={() => go("audit")} className="text-xs text-white/40 hover:text-white/70 transition">Xem tất cả</button>
-          </div>
-          <div className="space-y-3">
-            {ACTIVITIES.map((a, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <div className={`w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center shrink-0 ${a.color}`}>
-                  <a.icon className="w-3.5 h-3.5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs text-white/75 line-clamp-2">{a.msg}</div>
-                  <div className="text-[10px] text-white/30 mt-0.5">{a.time}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 export const emptyContent = (type: string): Content => ({ id: 0, title: "", studio: "", year: new Date().getFullYear(), ep: 0, status: "Sắp ra mắt", score: 0, views: "—", tags: [], type, episodes: [], chapters: [] });
 
 export const isVideoType = (t: string) => t === "anime" || t === "phim";
@@ -653,61 +486,4 @@ export const COLOR_CHOICES = ["pink", "violet", "cyan", "blue", "green", "amber"
 export const emptyCat = (type: string): Category => ({ id: 0, name: "", slug: "", type, count: 0, color: "pink", active: true, desc: "", cover: "" });
 
 export const emptySched = (): Sched => ({ id: 0, time: "12:00", title: "", ep: "", day: "T2", type: "Anime" });
-function RolesMgmt() {
-  const [roles, setRoles] = useState(ROLE_SEED);
-  const toggle = (ri: number, key: string) => {
-    setRoles(roles.map((r, i) => i === ri ? { ...r, perms: { ...r.perms, [key]: !r.perms[key as keyof typeof r.perms] } } : r));
-  };
-  const savePerms = () => toast.success("Đã lưu ma trận phân quyền");
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3 flex-wrap">
-        <p className="text-sm text-white/50">Bật/tắt quyền cho từng vai trò. Super Admin luôn có toàn quyền.</p>
-        <PrimaryBtn icon={Save} onClick={savePerms} className="ml-auto">Lưu thay đổi</PrimaryBtn>
-      </div>
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b border-white/[0.08]">
-              <th className="p-4 text-left text-white/40 font-medium text-xs">VAI TRÒ</th>
-              {PERMISSIONS.map(p => <th key={p.key} className="p-4 text-center text-white/40 font-medium text-xs whitespace-nowrap">{p.label}</th>)}
-            </tr></thead>
-            <tbody className="divide-y divide-white/[0.05]">
-              {roles.map((r, ri) => (
-                <tr key={r.role} className="hover:bg-white/[0.03] transition-colors">
-                  <td className="p-4"><Bdg c={r.color}>{r.role}</Bdg></td>
-                  {PERMISSIONS.map(p => {
-                    const on = r.perms[p.key as keyof typeof r.perms];
-                    const locked = r.role === "Super Admin";
-                    return (
-                      <td key={p.key} className="p-4 text-center">
-                        <button disabled={locked} onClick={() => toggle(ri, p.key)} className={`w-6 h-6 rounded-lg inline-flex items-center justify-center transition ${on ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-white/[0.04] text-white/20 border border-white/10 hover:border-white/20"} ${locked ? "opacity-60 cursor-not-allowed" : ""}`}>
-                          {on ? <Check className="w-3.5 h-3.5" /> : <X className="w-3 h-3" />}
-                        </button>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-      <Card className="p-5">
-        <div className="text-white font-semibold mb-1">Nhân sự quản trị</div>
-        <div className="text-xs text-white/40 mb-4">Tài khoản có quyền truy cập admin</div>
-        <div className="space-y-3">
-          {[["Admin Hệ thống", "Super Admin", "red"], ["anime_lord_vn", "Kiểm duyệt viên", "blue"], ["content_team_01", "Quản trị nội dung", "violet"]].map(([n, role, c]) => (
-            <div key={n} className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg,#d72638,#d4a648)" }}><Shield className="w-4 h-4 text-white" /></div>
-              <div className="flex-1"><div className="text-sm text-white font-medium">{n}</div></div>
-              <Bdg c={c as string}>{role}</Bdg>
-            </div>
-          ))}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
 const DEFAULT_CFG = { darkDefault: true, sakura: true, watchParty: true, studioAI: true, communityWorks: true, maintenance: false, registration: true, premiumRequired: false };
