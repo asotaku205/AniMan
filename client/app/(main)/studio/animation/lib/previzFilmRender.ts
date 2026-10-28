@@ -23,11 +23,16 @@ import {
   sampleFocus,
   samplePrevizCamera,
   samplePrevizObject,
-  type PrevizObjectKind,
   type PrevizScene,
 } from "./previz";
 import { dialogueLineAt } from "./dialogue";
-import { loadModelForScene } from "./modelLoader";
+import { loadModelForSceneWithClips } from "./modelLoader";
+import { createMixerState, updateMixerState, type MixerState } from "./clipPlayer";
+import { sampleActionSegment } from "./actionTrack";
+import { samplePoseKeys } from "./poseTrack";
+import { applyPoseToBones } from "./posePlayer";
+import { applyVrmExpressions, updateLoadedVrms } from "./gltfLoader";
+import { buildPrevizCharacter, buildPrevizProp, type CharacterParts } from "./previzGeometry";
 import { effectiveFilmPost, filmPostActive } from "./filmPost";
 import {
   createWeatherPoints,
@@ -56,89 +61,6 @@ import {
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
-interface CharacterParts {
-  root: THREE.Group;
-  armL: THREE.Group;
-  armR: THREE.Group;
-  legL: THREE.Group;
-  legR: THREE.Group;
-  head: THREE.Group;
-  torso: THREE.Group;
-}
-
-function buildCharacter(color: string, height: number): CharacterParts {
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
-  const dark = new THREE.MeshStandardMaterial({
-    color: "#2b2440",
-    roughness: 0.8,
-  });
-  const root = new THREE.Group();
-  const legLen = height * 0.47;
-  const torsoH = height * 0.32;
-
-  const mkLimb = (w: number, len: number) => {
-    const pivot = new THREE.Group();
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, len, w), mat);
-    mesh.position.y = -len / 2;
-    pivot.add(mesh);
-    return pivot;
-  };
-
-  const legL = mkLimb(0.11, legLen);
-  legL.position.set(-0.11, legLen, 0);
-  const legR = mkLimb(0.11, legLen);
-  legR.position.set(0.11, legLen, 0);
-
-  const torso = new THREE.Group();
-  torso.position.y = legLen;
-  const torsoMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.42, torsoH, 0.22),
-    mat,
-  );
-  torsoMesh.position.y = torsoH / 2;
-  torso.add(torsoMesh);
-
-  const armL = mkLimb(0.09, height * 0.36);
-  armL.position.set(-0.27, torsoH - 0.03, 0);
-  const armR = mkLimb(0.09, height * 0.36);
-  armR.position.set(0.27, torsoH - 0.03, 0);
-  torso.add(armL, armR);
-
-  const head = new THREE.Group();
-  head.position.y = torsoH + 0.05;
-  const headMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(0.13, 20, 16),
-    dark,
-  );
-  headMesh.position.y = 0.13;
-  head.add(headMesh);
-  torso.add(head);
-
-  root.add(legL, legR, torso);
-  return { root, armL, armR, legL, legR, head, torso };
-}
-
-function buildProp(
-  kind: PrevizObjectKind,
-  color: string,
-  size: number,
-): THREE.Object3D {
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
-  if (kind === "cylinder") {
-    return new THREE.Mesh(
-      new THREE.CylinderGeometry(size * 0.4, size * 0.4, size, 20),
-      mat,
-    );
-  }
-  if (kind === "wall") {
-    return new THREE.Mesh(
-      new THREE.BoxGeometry(size * 3, size * 2.2, 0.15),
-      mat,
-    );
-  }
-  return new THREE.Mesh(new THREE.BoxGeometry(size, size, size), mat);
-}
-
 export interface PrevizFilmRenderer {
   /** Canvas 2D tổng hợp (hình 3D + phụ đề) — nguồn cho captureStream. */
   canvas: HTMLCanvasElement;
@@ -164,6 +86,10 @@ export function createPrevizFilmRenderer(
   opts: { applyScenePost?: boolean; effectFormulas?: EffectFormula[] } = {},
 ): PrevizFilmRenderer {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
   renderer.setSize(width, height);
   const threeScene = new THREE.Scene();
   const shotCam = new THREE.PerspectiveCamera(45, width / height, 0.1, 200);
@@ -192,9 +118,17 @@ export function createPrevizFilmRenderer(
   composer.addPass(new OutputPass());
   bokehUniforms(bokehPass)["aspect"].value = width / height;
 
-  threeScene.add(new THREE.AmbientLight(0xffffff, 0.75));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  threeScene.add(new THREE.HemisphereLight(0xdceaff, 0x736044, 1.15));
+  threeScene.add(new THREE.AmbientLight(0xffffff, 0.35));
+  const sun = new THREE.DirectionalLight(0xfff0d6, 2.2);
   sun.position.set(5, 9, 4);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1536, 1536);
+  sun.shadow.camera.left = -18;
+  sun.shadow.camera.right = 18;
+  sun.shadow.camera.top = 18;
+  sun.shadow.camera.bottom = -18;
+  sun.shadow.bias = -0.00015;
   threeScene.add(sun);
   const hemi = new THREE.HemisphereLight(0xffffff, 0x332244, 0);
   threeScene.add(hemi);
@@ -207,6 +141,7 @@ export function createPrevizFilmRenderer(
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.01;
+  ground.receiveShadow = true;
   threeScene.add(ground);
   // Mặt đất phong cảnh (dựng từ lưới cao độ, đúng như trình dựng);
   // cảnh không có environment thì ẩn đi, giữ mặt đất phẳng cũ.
@@ -214,6 +149,7 @@ export function createPrevizFilmRenderer(
     createTerrainGeometry(createTerrainGrid()),
     new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
   );
+  terrainMesh.receiveShadow = true;
   terrainMesh.visible = false;
   threeScene.add(terrainMesh);
 
@@ -223,8 +159,10 @@ export function createPrevizFilmRenderer(
   const ctx2d = canvas.getContext("2d")!;
 
   const groups = new Map<string, THREE.Object3D>();
+  const mixers = new Map<string, MixerState>();
   const characters = new Map<string, CharacterParts>();
   let current: PrevizScene = createPrevizScene();
+  let lastDrawTime: number | null = null;
   // Đổi cảnh thì khung dư ảnh cũ phải xoá (không để vệt cảnh trước
   // lem sang cảnh sau): khung đầu của cảnh mới vẽ với damp = 0 rồi
   // mới trả về damp thật — khung đó vừa là hình đúng vừa xoá tích lũy.
@@ -232,6 +170,7 @@ export function createPrevizFilmRenderer(
 
   const loadScene = async (scene: AnimScene) => {
     current = scene.previz ?? createPrevizScene();
+    lastDrawTime = null;
     postResetNeeded = true;
     syncEnvironment(scene);
     syncWeather(scene);
@@ -239,6 +178,8 @@ export function createPrevizFilmRenderer(
     syncEffectGroups();
     effectSceneLoaded = true;
     for (const group of groups.values()) threeScene.remove(group);
+    for (const state of mixers.values()) state.mixer.stopAllAction();
+    mixers.clear();
     groups.clear();
     characters.clear();
     for (const obj of current.objects) {
@@ -248,19 +189,21 @@ export function createPrevizFilmRenderer(
         threeScene.add(holder);
         if (obj.modelAssetId) {
           try {
-            holder.add(await loadModelForScene(obj.modelAssetId));
+            const loaded = await loadModelForSceneWithClips(obj.modelAssetId);
+            holder.add(loaded.group);
+            const mixer = createMixerState(loaded.group, loaded.clips);
+            if (mixer) mixers.set(obj.id, mixer);
           } catch {
             // Mô hình lỗi/không còn trong thư viện — bỏ qua vật thể này
           }
         }
       } else if (obj.kind === "character") {
-        const parts = buildCharacter(obj.color, obj.size);
+        const parts = buildPrevizCharacter(obj.color, obj.size);
         characters.set(obj.id, parts);
         groups.set(obj.id, parts.root);
         threeScene.add(parts.root);
       } else {
-        const mesh = buildProp(obj.kind, obj.color, obj.size);
-        mesh.position.y = obj.kind === "wall" ? obj.size * 1.1 : obj.size / 2;
+        const mesh = buildPrevizProp(obj.kind, obj.color, obj.size, obj.name);
         groups.set(obj.id, mesh);
         threeScene.add(mesh);
       }
@@ -429,6 +372,10 @@ export function createPrevizFilmRenderer(
   };
 
   const drawAt = (scene: AnimScene, t: number) => {
+    const vrmDelta = lastDrawTime === null || t < lastDrawTime
+      ? 0
+      : Math.min(0.1, t - lastDrawTime);
+    lastDrawTime = t;
     if (particlePts) updateParticlePoints(particlePts, t);
     if (weatherPoints) updateWeatherPoints(weatherPoints, t);
     if (envPoints) updateWeatherPoints(envPoints, t);
@@ -451,6 +398,19 @@ export function createPrevizFilmRenderer(
       );
       group.rotation.y = rad(sampled.rotationY);
       if (obj.kind === "model") group.scale.setScalar(obj.size);
+      if (obj.kind === "model") {
+        applyVrmExpressions(group, obj.expressions);
+        updateLoadedVrms(group, vrmDelta);
+      }
+      const mixer = mixers.get(obj.id);
+      if (mixer) {
+        const active = sampleActionSegment(obj.actions, t);
+        updateMixerState(mixer, t, active);
+        if (!active && !mixer.current && !mixer.fading && obj.poseKeys?.length) {
+          const pose = samplePoseKeys(obj.poseKeys, t);
+          if (pose) applyPoseToBones(mixer.boneByName, pose);
+        }
+      }
       const glow = sampled.glow;
       group.traverse((node) => {
         const mesh = node as THREE.Mesh;
@@ -579,6 +539,8 @@ export function createPrevizFilmRenderer(
       if (effectSceneLoaded) syncEffectGroups();
     },
     dispose: () => {
+      for (const state of mixers.values()) state.mixer.stopAllAction();
+      mixers.clear();
       for (const g of effectGroups.values()) {
         threeScene.remove(g.points.group);
         g.points.dispose();

@@ -40,6 +40,7 @@ import {
 import {
   buildSampleProject2D,
   buildSampleProject3D,
+  ensureSampleQuaterniusModel,
   SAMPLE_VOICE_FILES,
 } from "../lib/sampleProjects";
 import {
@@ -125,14 +126,31 @@ export function ProjectHub() {
   };
 
   const handleCreateSample = async (kind: "2d" | "3d") => {
-    const sample =
-      kind === "2d" ? buildSampleProject2D() : buildSampleProject3D();
-    await saveAnimProject(sample);
-    await seedSampleAudio(sample);
-    await refresh();
-    setTransferNote(
-      `Đã tạo "${sample.name}" — dự án đã có sẵn giọng mẫu và nhạc nền: mở dự án bấm Phát thử là nghe được ngay. Muốn dùng giọng của bạn thì vào từng cảnh thu đè trong mục Thoại.`,
-    );
+    try {
+      let finalSample: AnimProject;
+      if (kind === "2d") {
+        finalSample = buildSampleProject2D();
+      } else {
+        const modelId = await ensureSampleQuaterniusModel();
+        const previousSample = (await listAnimProjects()).find((project) =>
+          project.kind === "3d" && [
+            "Dự án mẫu 3D — Lớp học và con đường",
+            "Dự án mẫu 3D — Tấm bản đồ trong gáy sách",
+          ].includes(project.name),
+        );
+        finalSample = buildSampleProject3D(modelId, previousSample);
+      }
+      await saveAnimProject(finalSample);
+      await seedSampleAudio(finalSample);
+      await refresh();
+      setTransferNote(
+        kind === "3d"
+          ? `Đã tạo/cập nhật "${finalSample.name}" — 4 cảnh dùng model Quaternius, clip chuyển động trong GLB, phong cảnh và nhạc nền. Mở dự án rồi bấm Phát thử.`
+          : `Đã tạo "${finalSample.name}" — dự án đã có sẵn giọng mẫu và nhạc nền: mở dự án bấm Phát thử là nghe được ngay. Muốn dùng giọng của bạn thì vào từng cảnh thu đè trong mục Thoại.`,
+      );
+    } catch (err) {
+      setTransferNote(err instanceof Error ? err.message : "Không tạo được dự án mẫu.");
+    }
   };
 
   const handleCreateTemplate = async (id: ProjectTemplateId) => {
@@ -222,8 +240,8 @@ export function ProjectHub() {
         <span className="flex-1 min-w-[240px]">
           <span className="block font-medium">Bắt đầu nhanh với dự án mẫu hoàn chỉnh</span>
           <span className="block text-[13px] text-white/45 leading-relaxed mt-0.5">
-            Dự án mẫu có sẵn cảnh, phong cảnh, nhân vật, chuyển động, camera
-            và lời thoại — mở ra học theo, thu giọng rồi xuất thành phim.
+            Phim 3D mẫu có bốn cảnh, model GLB có chuyển động, phong cảnh,
+            camera, thoại và nhạc — mở ra để xem một quy trình phim hoàn chỉnh.
           </span>
         </span>
         <span className="flex gap-2">

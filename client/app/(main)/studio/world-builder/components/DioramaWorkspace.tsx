@@ -303,13 +303,38 @@ export function DioramaWorkspace() {
   // Nạp danh sách GLB từ kho tài sản Animation Studio (W2): vật 3D
   // thật đặt lên sa bàn dùng chung 1 kho, không copy file.
   useEffect(() => {
-    listAnimAssets()
-      .then((all) =>
-        setGlbAssets(
-          all.filter((a): a is Model3DAsset => a.kind === "model3d"),
-        ),
-      )
-      .catch(() => undefined);
+    let cancelled = false;
+    void (async () => {
+      const existing = await listAnimAssets().catch(() => []);
+      const bundledName = "Character Animated by Quaternius - DgOCW9ZCRJ";
+      let assets = existing.filter((a) => a.kind === "model3d") as Model3DAsset[];
+      if (!assets.some((asset) => asset.name === bundledName)) {
+        try {
+          const response = await fetch("/models/Character-Animated-by-Quaternius-DgOCW9ZCRJ.glb");
+          if (!response.ok) throw new Error("Bundled GLB unavailable");
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          let binary = "";
+          for (let i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          }
+          const dataUrl = `data:model/gltf-binary;base64,${btoa(binary)}`;
+          const model: Model3DAsset = {
+            kind: "model3d",
+            id: newAssetId("model"),
+            name: bundledName,
+            format: "glb",
+            dataUrl,
+            createdAt: Date.now(),
+          };
+          await saveAnimAsset(model);
+          assets = [...assets, model];
+        } catch {
+          // Keep the world usable when the optional bundled model cannot load.
+        }
+      }
+      if (!cancelled) setGlbAssets(assets);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Lưu bền (debounce) theo world đang mở — lỗi lưu hiển thị,

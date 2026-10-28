@@ -7,12 +7,12 @@
  */
 
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { listAnimAssets } from "./animStorage";
 import type { Model3DAsset } from "./animAssets";
 import type { RigJoint } from "./rig";
 import { gltfBonesToRigJoints } from "./clipRetarget";
+import { createAnimationGltfLoader, prepareLoadedVrm } from "./gltfLoader";
 
 interface CachedModel {
   group: THREE.Group;
@@ -22,14 +22,19 @@ interface CachedModel {
 
 const cache = new Map<string, Promise<CachedModel>>();
 
-async function fetchModelGroup(assetId: string): Promise<CachedModel> {
-  const assets = await listAnimAssets();
-  const asset = assets.find(
-    (a): a is Model3DAsset => a.kind === "model3d" && a.id === assetId,
-  );
-  if (!asset) throw new Error("Không tìm thấy mô hình trong thư viện.");
-  const loader = new GLTFLoader();
-  const gltf = await loader.parseAsync(asset.dataUrl, "");
+/** GLTFLoader.parseAsync accepts GLB bytes (or JSON text), not a data URL. */
+async function parseAsset(loader: ReturnType<typeof createAnimationGltfLoader>, dataUrl: string) {
+  const response = await fetch(dataUrl);
+  if (!response.ok) throw new Error(`Không đọc được dữ liệu model (${response.status}).`);
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength < 4) throw new Error("File model bị rỗng hoặc không hợp lệ.");
+  return loader.parseAsync(bytes, "");
+}
+
+async function fetchModelGroup(asset: Model3DAsset): Promise<CachedModel> {
+  const loader = createAnimationGltfLoader();
+  const gltf = await parseAsset(loader, asset.dataUrl);
+  const vrm = prepareLoadedVrm(gltf);
   const group = new THREE.Group();
   group.add(gltf.scene);
   // Chuẩn hoá: đưa chân về y=0 và chiều cao về 1
@@ -43,7 +48,17 @@ async function fetchModelGroup(assetId: string): Promise<CachedModel> {
   wrapper.scale.setScalar(1 / height);
   const outer = new THREE.Group();
   outer.add(wrapper);
+  if (vrm) outer.userData.vrm = vrm;
   return { group: outer, clips: gltf.animations ?? [] };
+}
+
+async function findModelAsset(assetId: string): Promise<Model3DAsset> {
+  const assets = await listAnimAssets();
+  const asset = assets.find(
+    (a): a is Model3DAsset => a.kind === "model3d" && a.id === assetId,
+  );
+  if (!asset) throw new Error("Không tìm thấy mô hình trong thư viện.");
+  return asset;
 }
 
 /** Lấy một BẢN SAO của mô hình (đã chuẩn hoá), sẵn sàng đặt vào cảnh. */
@@ -58,9 +73,22 @@ export async function loadModelForScene(
 export async function loadModelForSceneWithClips(
   assetId: string,
 ): Promise<{ group: THREE.Object3D; clips: THREE.AnimationClip[] }> {
-  if (!cache.has(assetId)) {
-    cache.set(assetId, fetchModelGroup(assetId));
+  if (cache.has(assetId)) {
+    const cached = await cache.get(assetId)!;
+    return {
+      group: cloneSkeleton(cached.group) as THREE.Object3D,
+      clips: cached.clips,
+    };
   }
+  const asset = await findModelAsset(assetId);
+  const isVrm =
+    asset.format === "vrm" ||
+    asset.inspection?.format === "vrm" ||
+    asset.name.toLowerCase().endsWith(".vrm");
+  // VRM holds per-instance humanoid, expression, and spring-bone managers.
+  // Parse a fresh instance rather than cloning a shared VRM scene graph.
+  if (isVrm) return fetchModelGroup(asset);
+  cache.set(assetId, fetchModelGroup(asset));
   const proto = await cache.get(assetId)!;
   return { group: cloneSkeleton(proto.group) as THREE.Object3D, clips: proto.clips };
 }
@@ -92,8 +120,9 @@ export async function loadClipSourceAsset(
           (a): a is Model3DAsset => a.kind === "model3d" && a.id === assetId,
         );
         if (!asset) throw new Error("not-found");
-        const loader = new GLTFLoader();
-        const gltf = await loader.parseAsync(asset.dataUrl, "");
+        const loader = createAnimationGltfLoader();
+        const gltf = await parseAsset(loader, asset.dataUrl);
+        prepareLoadedVrm(gltf);
         const skinnedMeshes: THREE.SkinnedMesh[] = [];
         gltf.scene.traverse((obj) => {
           const skinned = obj as THREE.SkinnedMesh;

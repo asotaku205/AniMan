@@ -399,6 +399,8 @@ export interface SceneLayer {
   color: string;
   /** Hình của layer (data URL) — panel manga nạp ở slice sau, upload tay cũng vào đây. */
   imageDataUrl: string | null;
+  /** Cách khớp ảnh vào sân khấu; ảnh tải lên mới mặc định giữ trọn ảnh. */
+  imageFit?: "cover" | "contain";
   visible: boolean;
   keys: TransformKey[];
   motions: LayerMotion[];

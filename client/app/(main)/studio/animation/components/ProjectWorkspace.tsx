@@ -60,6 +60,7 @@ import {
 import { createSceneLayer } from "../lib/timeline";
 import { CAMERA_PRESETS } from "../lib/motionPresets";
 import { exportPresetOf, resolveExportSize } from "../lib/exportPresets";
+import { buildSampleProject3D, ensureSampleQuaterniusModel } from "../lib/sampleProjects";
 
 /**
  * Workspace dự án phim — Slice 1: khung workspace + **bảng phân cảnh**
@@ -91,10 +92,21 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    void getAnimProject(projectId).then((p) => {
+    void getAnimProject(projectId).then(async (p) => {
       if (cancelled) return;
-      if (p) setProject(p);
-      else setMissing(true);
+      if (!p) { setMissing(true); return; }
+      const isSample3d = p.kind === "3d" && p.name.startsWith("Dự án mẫu 3D");
+      if (isSample3d) {
+        const modelId = await ensureSampleQuaterniusModel();
+        const modelObjects = p.scenes.flatMap((s) => s.previz?.objects ?? []).filter((o) => o.kind === "model");
+        const needsModelRepair = modelObjects.length === 0 || modelObjects.some((o) => o.modelAssetId !== modelId);
+        if (needsModelRepair) {
+          const repaired = buildSampleProject3D(modelId, { id: p.id, createdAt: p.createdAt });
+          await saveAnimProject(repaired);
+          p = repaired;
+        }
+      }
+      if (!cancelled) setProject(p);
     });
     return () => {
       cancelled = true;
@@ -519,6 +531,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                   <PrevizEditor
                     key={sc.id}
                     scene={sc}
+                    fps={project.fps}
                     exportAspect={
                       resolveExportSize(exportPresetOf(project)).width /
                       resolveExportSize(exportPresetOf(project)).height

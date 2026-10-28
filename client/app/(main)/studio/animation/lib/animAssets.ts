@@ -58,7 +58,9 @@ export interface Model3DAsset {
   kind: "model3d";
   id: string;
   name: string;
-  /** Toàn bộ file .glb dạng data URL (base64). */
+  /** Định dạng nguồn; không có giá trị nghĩa là tài sản GLB đời cũ. */
+  format?: "glb" | "vrm";
+  /** Toàn bộ file .glb/.vrm dạng data URL (base64). */
   dataUrl: string;
   createdAt: number;
   /** Kết quả kiểm tra cấu trúc lúc nạp (xương/clip/tam giác...) — mô

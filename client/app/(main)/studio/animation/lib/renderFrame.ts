@@ -75,7 +75,9 @@ export function drawSceneFrame(
     }
     const img = layer.imageDataUrl ? getImage(layer.imageDataUrl) : null;
     if (img && img.complete && img.naturalWidth > 0) {
-      const scale = Math.max(width / img.naturalWidth, height / img.naturalHeight);
+      const scale = layer.imageFit === "contain"
+        ? Math.min(width / img.naturalWidth, height / img.naturalHeight)
+        : Math.max(width / img.naturalWidth, height / img.naturalHeight);
       const w = img.naturalWidth * scale;
       const h = img.naturalHeight * scale;
       ctx.drawImage(img, -w / 2, -h / 2, w, h);

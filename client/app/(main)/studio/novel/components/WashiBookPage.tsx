@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Plus } from "lucide-react";
 import { StickyNotesMargin } from "./StickyNotesMargin";
 import { BIBLE_KIND_LABEL } from "../lib/novel";
-import { joinSceneText, pageMetrics, paginateText } from "../lib/pagination";
+import { joinSceneText, paginateTextToFit } from "../lib/pagination";
 import type { NovelStudioState } from "../hooks/useNovelStudio";
 
 interface MentionState {
@@ -39,11 +39,49 @@ const LINE_HEIGHT: Record<"normal" | "relaxed" | "loose", number> = {
   loose: 2.1,
 };
 
+function paginateToRenderedPage(text: string, pageContent: HTMLElement): string[] {
+  const computed = window.getComputedStyle(pageContent);
+  const probe = document.createElement("div");
+  Object.assign(probe.style, {
+    position: "fixed",
+    left: "-100000px",
+    top: "0",
+    visibility: "hidden",
+    pointerEvents: "none",
+    boxSizing: "border-box",
+    width: `${pageContent.clientWidth}px`,
+    height: `${pageContent.clientHeight}px`,
+    margin: "0",
+    padding: "0",
+    overflow: "hidden",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "break-word",
+    wordBreak: "normal",
+    fontFamily: computed.fontFamily,
+    fontSize: computed.fontSize,
+    fontWeight: computed.fontWeight,
+    fontStyle: computed.fontStyle,
+    lineHeight: computed.lineHeight,
+    letterSpacing: computed.letterSpacing,
+    wordSpacing: computed.wordSpacing,
+    textIndent: computed.textIndent,
+  });
+  document.body.appendChild(probe);
+  try {
+    return paginateTextToFit(text, (candidate) => {
+      probe.textContent = candidate;
+      return probe.scrollHeight <= probe.clientHeight + 1;
+    });
+  } finally {
+    probe.remove();
+  }
+}
+
 function Page({ children, right, theme }: { children: React.ReactNode; right?: boolean; theme: DisplayTheme }) {
   const t = PAGE_THEME[theme];
   return (
     <div
-      className={`relative aspect-[3/4] overflow-hidden p-10 ${right ? "rounded-r-[6px]" : "rounded-l-[6px]"}`}
+      className={`relative aspect-[3/4] overflow-hidden px-7 py-8 pb-14 sm:px-10 sm:py-10 sm:pb-14 ${right ? "rounded-r-[6px]" : "rounded-l-[6px]"}`}
       style={{
         backgroundColor: t.bg,
         color: t.text,
@@ -60,6 +98,9 @@ function Page({ children, right, theme }: { children: React.ReactNode; right?: b
 
 export function WashiBookPage({ s }: { s: NovelStudioState }) {
   const [mention, setMention] = useState<MentionState | null>(null);
+  const studioPageRef = useRef<HTMLDivElement>(null);
+  const bookTextRef = useRef<HTMLDivElement>(null);
+  const [bookPages, setBookPages] = useState([""]);
 
   useEffect(() => {
     setMention(null);
@@ -222,27 +263,43 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.writeMode]);
 
-  // Phan trang che do Quyen sach (chi doc): moi canh duoc chia thanh cac
-  // trang vua khung trang co dinh, moi trai hien thi 2 trang. Sua van ban
-  // thuc hien o che do Mac dinh, noi hai o soan thao van ton tai.
+  // Chế độ quyển sách là bản xem trước; nội dung được phân trang theo vùng
+  // chữ thật trên giấy. Việc soạn thảo vẫn dùng hai ô nội dung bên dưới.
   const [spreadIdx, setSpreadIdx] = useState(0);
   const wantLastSpreadRef = useRef(false);
   const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bookMetrics = pageMetrics(s.displayFontSize, s.displayLineHeight);
-  const bookPages = useMemo(() => {
-    if (!s.selectedScene) return [""];
-    return paginateText(
-      joinSceneText(s.selectedScene.contentLeft, s.selectedScene.contentRight),
-      bookMetrics.charsPerLine,
-      bookMetrics.linesPerPage,
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    s.selectedScene?.contentLeft,
-    s.selectedScene?.contentRight,
-    s.displayFontSize,
-    s.displayLineHeight,
-  ]);
+  const sceneText = s.selectedScene
+    ? joinSceneText(s.selectedScene.contentLeft, s.selectedScene.contentRight)
+    : "";
+  useLayoutEffect(() => {
+    if (s.writeMode !== "book") return;
+    const pageContent = bookTextRef.current;
+    if (!pageContent) return;
+
+    let active = true;
+    const paginate = () => {
+      if (!active || !pageContent.clientWidth || !pageContent.clientHeight) return;
+      const nextPages = paginateToRenderedPage(sceneText, pageContent);
+      setBookPages((current) => {
+        const unchanged =
+          current.length === nextPages.length &&
+          current.every((page, i) => page === nextPages[i]);
+        return unchanged ? current : nextPages;
+      });
+    };
+
+    paginate();
+    const observer = new ResizeObserver(paginate);
+    observer.observe(pageContent);
+    const fontSet = document.fonts;
+    fontSet?.ready.then(paginate);
+    fontSet?.addEventListener("loadingdone", paginate);
+    return () => {
+      active = false;
+      observer.disconnect();
+      fontSet?.removeEventListener("loadingdone", paginate);
+    };
+  }, [sceneText, s.writeMode, s.font, s.displayFontSize, s.displayLineHeight]);
   const maxSpread = Math.max(0, Math.ceil(bookPages.length / 2) - 1);
   const safeSpread = Math.min(spreadIdx, maxSpread);
   const leftPageNo = safeSpread * 2 + 1;
@@ -259,12 +316,9 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
     }
     if (wantLastSpreadRef.current) {
       wantLastSpreadRef.current = false;
-      const m = pageMetrics(s.displayFontSize, s.displayLineHeight);
-      const pg = paginateText(
-        joinSceneText(sc.contentLeft, sc.contentRight),
-        m.charsPerLine,
-        m.linesPerPage,
-      );
+      const pg = bookTextRef.current
+        ? paginateToRenderedPage(joinSceneText(sc.contentLeft, sc.contentRight), bookTextRef.current)
+        : bookPages;
       setSpreadIdx(Math.max(0, Math.ceil(pg.length / 2) - 1));
     } else {
       setSpreadIdx(0);
@@ -277,6 +331,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
     flipTimeoutRef.current = setTimeout(() => setFlip(null), 750);
   };
   const goNextSpread = () => {
+    studioPageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (safeSpread < maxSpread) {
       showSpreadFlip(bookPages[safeSpread * 2 + 1] ?? "", 1);
       setSpreadIdx(safeSpread + 1);
@@ -286,6 +341,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
     }
   };
   const goPrevSpread = () => {
+    studioPageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (safeSpread > 0) {
       showSpreadFlip(bookPages[safeSpread * 2] ?? "", -1);
       setSpreadIdx(safeSpread - 1);
@@ -324,7 +380,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
     );
   }
   return (
-    <div className="relative mx-auto w-full max-w-6xl">
+    <div ref={studioPageRef} className="relative mx-auto w-full max-w-6xl scroll-mt-20">
       {/* Chế độ hiển thị — giống bên đọc tiểu thuyết */}
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-2.5 backdrop-blur">
         <span className="text-xs text-amber-100/70">Cỡ chữ</span>
@@ -402,8 +458,9 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
           {/* Left page */}
           <Page theme={s.displayTheme}>
             <div
+              ref={bookTextRef}
               style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
-              className={`${EDITOR_SIZE[s.displayFontSize]} whitespace-pre-wrap break-words`}
+              className={`${EDITOR_SIZE[s.displayFontSize]} h-full w-full overflow-hidden whitespace-pre-wrap break-words`}
             >
               {bookPages[safeSpread * 2] ?? ""}
             </div>
@@ -413,7 +470,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
           <Page right theme={s.displayTheme}>
             <div
               style={{ fontFamily: s.font, lineHeight: LINE_HEIGHT[s.displayLineHeight] }}
-              className={`${EDITOR_SIZE[s.displayFontSize]} whitespace-pre-wrap break-words`}
+              className={`${EDITOR_SIZE[s.displayFontSize]} h-full w-full overflow-hidden whitespace-pre-wrap break-words`}
             >
               {bookPages[safeSpread * 2 + 1] ?? ""}
             </div>
@@ -439,7 +496,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
               onAnimationComplete={() => setFlip(null)}
             >
               <div
-                className="absolute inset-0 overflow-hidden p-10"
+                className="absolute inset-0 overflow-hidden px-7 py-8 pb-14 sm:px-10 sm:py-10 sm:pb-14"
                 style={{
                   backfaceVisibility: "hidden",
                   backgroundColor: pageTheme.bg,
@@ -559,6 +616,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
             type="button"
             disabled={!prevScene}
             onClick={() => {
+              studioPageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
               flipDirRef.current = -1;
               if (prevScene) s.selectScene(prevScene.id);
             }}
@@ -570,6 +628,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
             type="button"
             disabled={!nextScene}
             onClick={() => {
+              studioPageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
               flipDirRef.current = 1;
               if (nextScene) s.selectScene(nextScene.id);
             }}

@@ -15,11 +15,11 @@ export function NovelStudio() {
   const [view, setView] = useState<"write" | "outline">("write");
 
   return (
-    <section className="relative py-24 overflow-hidden bg-[#1a0f06]">
+    <section className="relative py-12 overflow-hidden bg-[#1a0f06]">
       <div className="absolute inset-0 [background:radial-gradient(ellipse_at_center,#3a2412_0%,#1a0f06_70%)]" />
       <div className="absolute inset-0 opacity-30 [background:repeating-linear-gradient(90deg,transparent_0_60px,rgba(0,0,0,0.4)_60px_61px)]" />
 
-      <div className="relative max-w-[1400px] mx-auto px-6">
+      <div className="relative max-w-[1600px] mx-auto px-4 sm:px-6">
         <SectionEyebrow
           eyebrow="Novel Studio"
           title="Viết tiểu thuyết trên giấy washi"
@@ -60,7 +60,7 @@ export function NovelStudio() {
             <OutlineView s={s} onOpenScene={(id) => { s.selectScene(id); setView("write"); }} authenticatedFetch={authenticatedFetch} />
           </div>
         ) : (
-        <div className="mt-12 grid gap-8 items-start xl:grid-cols-[260px_minmax(0,1fr)_320px]">
+        <div className="mt-6 grid gap-4 items-start xl:grid-cols-[220px_minmax(0,1fr)_280px] 2xl:grid-cols-[260px_minmax(0,1fr)_320px]">
           {/* Cây sách */}
           <NovelBinder s={s} />
 

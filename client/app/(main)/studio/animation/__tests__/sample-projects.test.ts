@@ -6,24 +6,23 @@ import {
 import { checkProjectForExport, hasExportErrors } from "../lib/exportCheck";
 
 describe("dự án mẫu 3D (quy trình làm phim mẫu)", () => {
-  it("đủ 2 cảnh dùng phong cảnh + nhân vật thư viện, có thoại, không lỗi xuất bản", () => {
+  it("đủ 4 cảnh có model GLB, phong cảnh, chuyển động và thoại, không lỗi xuất bản", () => {
     const project = buildSampleProject3D();
     expect(project.kind).toBe("3d");
-    expect(project.scenes).toHaveLength(2);
-    for (const scene of project.scenes) {
-      expect(scene.previz?.objects.length ?? 0).toBeGreaterThanOrEqual(5);
+    expect(project.scenes).toHaveLength(4);
+    for (const [index, scene] of project.scenes.entries()) {
+      expect(scene.previz?.objects.length ?? 0).toBeGreaterThanOrEqual(7);
       expect(
-        scene.previz?.objects.some((o) => o.kind === "character"),
+        scene.previz?.objects.some((o) => o.kind === "model" && o.modelAssetId),
       ).toBe(true);
       expect(scene.dialogue?.length).toBe(1);
       expect(scene.dialogue?.[0].text).toBe(
-        SAMPLE_DIALOGUE_3D.find((d) => d.scene === scene.name)?.text,
+        SAMPLE_DIALOGUE_3D[index]?.text,
       );
+      expect(scene.environment).toBeDefined();
     }
-    // Nhân vật đi ngang phải quay mặt theo hướng đi (bài học từ phim mẫu)
-    const street = project.scenes[1];
-    const walker = street.previz?.objects.find((o) => o.name === "Linh");
-    expect(walker?.keys[0].rotationY).toBe(90);
+    expect(project.scenes[1].previz?.objects.find((o) => o.name === "Mai")?.actions?.[0].clipName).toBe("Walk");
+    expect(project.scenes[2].previz?.objects.find((o) => o.name === "Mai")?.actions?.[1].clipName).toBe("PickUp");
     const issues = checkProjectForExport(project);
     expect(hasExportErrors(issues)).toBe(false);
   });
@@ -36,11 +35,12 @@ describe("dự án mẫu có sẵn tiếng", () => {
     );
     const { selectedDialogueTake } = await import("../lib/dialogue");
     const p = buildSampleProject3D();
-    for (const scene of p.scenes) {
+    for (const scene of p.scenes.slice(0, 2)) {
       for (const line of scene.dialogue ?? []) {
         expect(selectedDialogueTake(line)).not.toBeNull();
       }
     }
+    expect(p.scenes.slice(2).every((scene) => scene.dialogue?.[0].takes == null)).toBe(true);
     expect(p.bgm?.name).toContain("Nhạc nền mẫu");
     expect(SAMPLE_VOICE_FILES.filter((e) => e.kind === "3d")).toHaveLength(2);
   });

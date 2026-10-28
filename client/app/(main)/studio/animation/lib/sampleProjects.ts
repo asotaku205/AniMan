@@ -21,9 +21,12 @@ import {
   IDENTITY_TRANSFORM,
   type SceneLayer,
 } from "./timeline";
-import { BUILTIN_SCENERY, characterObjectFromAsset } from "./animAssets";
-import { bgmBlobKey } from "./animStorage";
-import { newPrevizId, vec3 } from "./previz";
+import { newAssetId, type Model3DAsset } from "./animAssets";
+import { bgmBlobKey, listAnimAssets, saveAnimAsset } from "./animStorage";
+import { createPrevizObject, newPrevizId, vec3 } from "./previz";
+import { createActionSegment } from "./actionTrack";
+import { buildPreset } from "./sceneEnvironment";
+import { DEFAULT_POST } from "./postFx";
 import type { DialogueLine } from "./dialogue";
 
 // ── Lời thoại mẫu (dùng chung cho bản dựng + kiểm thử cấu trúc) ──────────────
@@ -47,9 +50,42 @@ export const SAMPLE_DIALOGUE_3D: Array<{
   startSec: number;
   durationSec: number;
 }> = [
-  { scene: "Trong lớp học", speaker: "Thầy giáo", text: "Các em mở sách ra, hôm nay chúng ta học bài mới.", startSec: 0.4, durationSec: 3.8 },
-  { scene: "Trên đường về", speaker: "Linh", text: "Tan học rồi! Mình ghé hiệu sách một chút nhé.", startSec: 0.4, durationSec: 4.2 },
+  { scene: "Tiết học cuối ngày", speaker: "Thầy giáo", text: "Các em mở sách ra, hôm nay chúng ta học bài mới.", startSec: 0.4, durationSec: 3.8 },
+  { scene: "Ghé hiệu sách", speaker: "Linh", text: "Tan học rồi! Mình ghé hiệu sách một chút nhé.", startSec: 0.4, durationSec: 4.2 },
+  { scene: "Tấm bản đồ trong gáy sách", speaker: "Linh", text: "Có ai đó đã giấu một tấm bản đồ ở đây.", startSec: 0.6, durationSec: 3.2 },
+  { scene: "Kho báu dưới tán cây", speaker: "Hùng", text: "Kho báu là cuốn sách được chuyền tay cho người tiếp theo.", startSec: 0.6, durationSec: 3.7 },
 ];
+
+export const SAMPLE_QUATERNIUS_MODEL_NAME = "Character Animated by Quaternius - DgOCW9ZCRJ";
+const SAMPLE_QUATERNIUS_MODEL_URL = "/models/Character-Animated-by-Quaternius-DgOCW9ZCRJ.glb";
+
+/** Bảo đảm model mẫu nằm trong thư viện chung để dự án còn mở được sau F5. */
+export async function ensureSampleQuaterniusModel(): Promise<string> {
+  const assets = await listAnimAssets();
+  const existing = assets.find(
+    (asset): asset is Model3DAsset =>
+      asset.kind === "model3d" && asset.name === SAMPLE_QUATERNIUS_MODEL_NAME,
+  );
+  if (existing) return existing.id;
+
+  const response = await fetch(SAMPLE_QUATERNIUS_MODEL_URL);
+  if (!response.ok) throw new Error("Không tải được model GLB mẫu trong dự án.");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  const asset: Model3DAsset = {
+    kind: "model3d",
+    id: newAssetId("model"),
+    name: SAMPLE_QUATERNIUS_MODEL_NAME,
+    format: "glb",
+    dataUrl: `data:model/gltf-binary;base64,${btoa(binary)}`,
+    createdAt: Date.now(),
+  };
+  await saveAnimAsset(asset);
+  return asset.id;
+}
 
 /**
  * Giọng mẫu đóng gói sẵn (dữ liệu base64 trong lib/sampleAudioData.ts,
@@ -339,62 +375,168 @@ export function buildSampleProject2D(): AnimProject {
   return project;
 }
 
-export function buildSampleProject3D(): AnimProject {
-  const project = createAnimProject(
-    "Dự án mẫu 3D — Lớp học và con đường",
-    "3d",
-  );
-  const classroom = BUILTIN_SCENERY[0];
-  const street = BUILTIN_SCENERY[1];
-
-  const teacher = characterObjectFromAsset(
-    { kind: "character3d", id: "sample-teacher", name: "Thầy giáo", color: "#c9b48a", size: 1.78, createdAt: 0 },
-    -1.8,
-    -2.1,
-  );
-  teacher.keys = [
-    { ...teacher.keys[0], poseId: "point", position: vec3(-1.8, 0, -2.1) },
+function sampleActor(
+  name: string,
+  modelAssetId: string,
+  size: number,
+  start: { x: number; z: number },
+  end?: { timeSec: number; x: number; z: number },
+  clip?: string,
+): ReturnType<typeof createPrevizObject> {
+  const actor = createPrevizObject("model", name);
+  actor.modelAssetId = modelAssetId;
+  actor.size = size;
+  actor.keys = [
+    { ...actor.keys[0], position: vec3(start.x, 0, start.z), rotationY: 0 },
+    ...(end
+      ? [{
+          id: newPrevizId("pkey"),
+          timeSec: end.timeSec,
+          position: vec3(end.x, 0, end.z),
+          rotationY: 0,
+          poseId: "stand",
+          easing: "ease-in-out" as const,
+        }]
+      : []),
   ];
-  const s1 = createAnimScene("Trong lớp học", 5);
+  if (clip) actor.actions = [createActionSegment(clip, 0, end?.timeSec ?? 5)];
+  return actor;
+}
+
+function sampleProp(
+  kind: "box" | "cylinder" | "wall",
+  name: string,
+  color: string,
+  size: number,
+  x: number,
+  y: number,
+  z: number,
+) {
+  const object = createPrevizObject(kind, name);
+  object.color = color;
+  object.size = size;
+  object.keys[0] = { ...object.keys[0], position: vec3(x, y, z) };
+  return object;
+}
+
+export function buildSampleProject3D(
+  modelAssetId = "sample-quaternius-character-animated",
+  existingProject?: Pick<AnimProject, "id" | "createdAt">,
+): AnimProject {
+  const project = createAnimProject("Dự án mẫu 3D — Tấm bản đồ trong gáy sách", "3d");
+  if (existingProject) {
+    project.id = existingProject.id;
+    project.createdAt = existingProject.createdAt;
+    project.updatedAt = Date.now();
+  }
+  project.fps = 24;
+  const room = buildPreset("room");
+  const street = buildPreset("street");
+  const forest = buildPreset("forest");
+
+  // 1 — Lời dặn trong lớp học mở câu chuyện về cuốn sách cũ.
+  const teacher = sampleActor("Thầy giáo", modelAssetId, 1.72, { x: -1.1, z: -1.2 }, undefined, "Idle");
+  const maiClass = sampleActor("Mai", modelAssetId, 1.62, { x: 1.05, z: 0.1 }, undefined, "Idle");
+  const s1 = createAnimScene("Tiết học cuối ngày", 5);
+  s1.environment = { ...room.environment, time: 15, weather: "clear" };
   s1.previz = {
-    backdrop: classroom.backdrop,
-    objects: [...classroom.build(), teacher],
+    backdrop: "#c5d9e8",
+    objects: [
+      ...room.objects.slice(0, 3),
+      sampleProp("box", "Bàn giáo viên", "#76513a", 1.1, -1.1, 0, -1.55),
+      sampleProp("box", "Bàn học", "#8b6749", 0.85, 1, 0, 0.35),
+      sampleProp("box", "Cuốn sách xanh", "#315f70", 0.24, 1, 0.92, 0.28),
+      teacher,
+      maiClass,
+    ],
     cameraKeys: [
-      { id: newPrevizId("cam"), timeSec: 0, position: vec3(0, 1.7, 6.2), target: vec3(0, 1.2, -1), easing: "ease-in-out" },
-      { id: newPrevizId("cam"), timeSec: 5, position: vec3(0, 1.5, 3.4), target: vec3(-0.6, 1.2, -1.8), easing: "ease-in-out" },
+      { id: newPrevizId("cam"), timeSec: 0, position: vec3(0.2, 2.3, 7.2), target: vec3(0, 1.15, -0.7), easing: "ease-in-out" },
+      { id: newPrevizId("cam"), timeSec: 5, position: vec3(1.35, 1.8, 5.6), target: vec3(0.8, 1.05, -0.1), easing: "ease-in-out" },
     ],
   };
   s1.dialogue = [sampleLine(SAMPLE_DIALOGUE_3D[0])];
+  s1.shotType = "Trung cảnh";
 
-  const linh = characterObjectFromAsset(
-    { kind: "character3d", id: "sample-linh", name: "Linh", color: "#e8a0b4", size: 1.62, createdAt: 0 },
-    -2.4,
-    0.8,
-  );
-  linh.keys = [
-    { ...linh.keys[0], poseId: "walk", position: vec3(-2.4, 0, 0.8), rotationY: 90 },
-    { id: newPrevizId("pkey"), timeSec: 5.5, poseId: "walk", position: vec3(1.6, 0, 0.8), rotationY: 90, easing: "linear" },
-  ];
-  const hung = characterObjectFromAsset(
-    { kind: "character3d", id: "sample-hung", name: "Hùng", color: "#a0c4e8", size: 1.7, createdAt: 0 },
-    -3.4,
-    1.5,
-  );
-  hung.keys = [
-    { ...hung.keys[0], poseId: "walk", position: vec3(-3.4, 0, 1.5), rotationY: 90 },
-    { id: newPrevizId("pkey"), timeSec: 5.5, poseId: "walk", position: vec3(0.6, 0, 1.5), rotationY: 90, easing: "linear" },
-  ];
-  const s2 = createAnimScene("Trên đường về", 5.5);
+  // 2 — Tan học, Mai và Hùng tìm tới hiệu sách cũ trong cơn mưa đầu mùa.
+  const maiStreet = sampleActor("Mai", modelAssetId, 1.62, { x: -2.8, z: 1.2 }, { timeSec: 5.5, x: 0.5, z: 0.9 }, "Walk");
+  const hungStreet = sampleActor("Hùng", modelAssetId, 1.7, { x: -3.5, z: 2.3 }, { timeSec: 5.5, x: -0.3, z: 2 }, "Walk");
+  const s2 = createAnimScene("Ghé hiệu sách", 5.5);
+  s2.environment = { ...street.environment, time: 17.4, weather: "rain", fogDensity: 0.18 };
+  s2.weather = { type: "rain", intensity: 0.55 };
   s2.previz = {
-    backdrop: street.backdrop,
-    objects: [...street.build(), linh, hung],
+    backdrop: "#53677a",
+    objects: [
+      ...street.objects,
+      sampleProp("wall", "Hiệu sách Mưa", "#6f5367", 2.5, 3.2, 0, -3.8),
+      sampleProp("box", "Biển hiệu hiệu sách", "#e8bd78", 0.45, 3.2, 2.55, -3.5),
+      maiStreet,
+      hungStreet,
+    ],
     cameraKeys: [
-      { id: newPrevizId("cam"), timeSec: 0, position: vec3(0, 2, 7), target: vec3(0, 1, 0), easing: "ease-in-out" },
+      { id: newPrevizId("cam"), timeSec: 0, position: vec3(-0.4, 2.4, 8), target: vec3(-0.5, 1.1, 0.5), easing: "ease-in-out" },
+      { id: newPrevizId("cam"), timeSec: 5.5, position: vec3(1.5, 2, 6.1), target: vec3(0.8, 1.05, 0.5), easing: "ease-in-out" },
     ],
   };
   s2.dialogue = [sampleLine(SAMPLE_DIALOGUE_3D[1])];
+  s2.shotType = "Toàn cảnh";
 
-  project.scenes = [s1, s2];
+  // 3 — Một tấm bản đồ được giấu trong gáy quyển sách, clip PickUp lấy
+  // thẳng từ file GLB để minh họa chuyển động model thật.
+  const maiShop = sampleActor("Mai", modelAssetId, 1.62, { x: -1.25, z: 0.2 }, { timeSec: 4.8, x: -0.65, z: 0.2 }, "Idle");
+  maiShop.actions = [
+    createActionSegment("Idle", 0, 1.8),
+    createActionSegment("PickUp", 1.8, 3),
+  ];
+  const hungShop = sampleActor("Hùng", modelAssetId, 1.7, { x: 1.45, z: 0.5 }, undefined, "Idle");
+  const s3 = createAnimScene("Tấm bản đồ trong gáy sách", 4.8);
+  s3.environment = { ...room.environment, time: 18.1, weather: "rain", fogDensity: 0.08 };
+  s3.previz = {
+    backdrop: "#31364a",
+    objects: [
+      ...room.objects.slice(0, 3),
+      sampleProp("box", "Kệ sách trái", "#624b42", 1.45, -3.1, 0, -1.1),
+      sampleProp("box", "Kệ sách phải", "#76533e", 1.5, 3.1, 0, -1.1),
+      sampleProp("box", "Quầy sách", "#815d45", 1.05, 0.2, 0, -2.2),
+      sampleProp("box", "Quyển sách cũ", "#8b4e3f", 0.28, -0.65, 1.05, -2.15),
+      maiShop,
+      hungShop,
+    ],
+    cameraKeys: [
+      { id: newPrevizId("cam"), timeSec: 0, position: vec3(-3.7, 2.2, 6.8), target: vec3(0, 1.1, -0.8), easing: "ease-in-out" },
+      { id: newPrevizId("cam"), timeSec: 4.8, position: vec3(-0.8, 1.7, 4.7), target: vec3(-0.5, 1.05, -1.3), easing: "ease-in-out" },
+    ],
+  };
+  s3.dialogue = [sampleLine(SAMPLE_DIALOGUE_3D[2])];
+  s3.shotType = "Cận cảnh";
+
+  // 4 — Bản đồ dẫn tới gốc cây phượng; món quà là sách để lại cho người sau.
+  const maiFinal = sampleActor("Mai", modelAssetId, 1.62, { x: -2.4, z: 2.2 }, { timeSec: 5, x: -0.4, z: 0.5 }, "Walk");
+  const hungFinal = sampleActor("Hùng", modelAssetId, 1.7, { x: 2.4, z: 2.7 }, { timeSec: 5, x: 0.65, z: 0.7 }, "Walk");
+  const s4 = createAnimScene("Kho báu dưới tán cây", 5);
+  s4.environment = { ...forest.environment, time: 7.1, weather: "clear", fogDensity: 0.04 };
+  s4.previz = {
+    backdrop: "#a7c9da",
+    objects: [
+      ...forest.objects,
+      sampleProp("cylinder", "Cây phượng già", "#9b6847", 3.4, 0, 0, -2.3),
+      sampleProp("box", "Hộp sách gỗ", "#805b3c", 0.65, 0.15, 0, -0.9),
+      sampleProp("box", "Cuốn sách trao lại", "#d3b273", 0.24, 0.15, 0.68, -0.9),
+      maiFinal,
+      hungFinal,
+    ],
+    cameraKeys: [
+      { id: newPrevizId("cam"), timeSec: 0, position: vec3(0, 3.2, 10), target: vec3(0, 1.1, 0), easing: "ease-in-out" },
+      { id: newPrevizId("cam"), timeSec: 5, position: vec3(1.4, 2.4, 7.2), target: vec3(0, 1.1, 0), easing: "ease-in-out" },
+    ],
+  };
+  s4.dialogue = [sampleLine(SAMPLE_DIALOGUE_3D[3])];
+  s4.shotType = "Toàn cảnh kết";
+
+  project.scenes = [s1, s2, s3, s4];
+  project.post = {
+    ...DEFAULT_POST,
+    creditsLines: ["TẤM BẢN ĐỒ TRONG GÁY SÁCH", "Một phim ngắn dựng trong AniMan", "Model: Quaternius Character Animated"],
+  };
   attachSampleAudio(project, "3d");
   return project;
 }

@@ -12,7 +12,11 @@ import {
   Pause,
   Play,
   Plus,
+  SkipBack,
+  SkipForward,
   Trash2,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import type { AnimScene } from "../lib/animProject";
 import { sceneSpeed } from "../lib/animProject";
@@ -65,6 +69,8 @@ import { newDialogueId, type DialogueLine } from "../lib/dialogue";
 import { loadModelForSceneWithClips, loadClipSourceAsset } from "../lib/modelLoader";
 import { createActionSegment, sampleActionSegment } from "../lib/actionTrack";
 import { createMixerState, updateMixerState, type MixerState } from "../lib/clipPlayer";
+import { applyVrmExpressions, updateLoadedVrms } from "../lib/gltfLoader";
+import { buildPrevizCharacter, buildPrevizProp, type CharacterParts } from "../lib/previzGeometry";
 import { bakeClipForTarget, mixerBindToRigJoints } from "../lib/clipRetarget";
 import { createPoseKey, eulerDegToQuat, expandPoseTemplate, quatToEulerDeg, samplePoseKeys, type BoneQuat } from "../lib/poseTrack";
 import { applyPoseToBones, capturePose } from "../lib/posePlayer";
@@ -109,60 +115,6 @@ import type { AnimProject } from "../lib/animProject";
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
-interface CharacterParts {
-  root: THREE.Group;
-  armL: THREE.Group;
-  armR: THREE.Group;
-  legL: THREE.Group;
-  legR: THREE.Group;
-  head: THREE.Group;
-  torso: THREE.Group;
-}
-
-/** Mannequin khớp nối đơn giản (khối + cầu) — đủ cho previz blocking/pose. */
-function buildCharacter(color: string, height: number): CharacterParts {
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
-  const dark = new THREE.MeshStandardMaterial({ color: "#2b2440", roughness: 0.8 });
-  const root = new THREE.Group();
-  const legLen = height * 0.47;
-  const torsoH = height * 0.32;
-
-  const mkLimb = (w: number, len: number) => {
-    const pivot = new THREE.Group();
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, len, w), mat);
-    mesh.position.y = -len / 2;
-    pivot.add(mesh);
-    return pivot;
-  };
-
-  const legL = mkLimb(0.11, legLen);
-  legL.position.set(-0.11, legLen, 0);
-  const legR = mkLimb(0.11, legLen);
-  legR.position.set(0.11, legLen, 0);
-
-  const torso = new THREE.Group();
-  torso.position.y = legLen;
-  const torsoMesh = new THREE.Mesh(new THREE.BoxGeometry(0.42, torsoH, 0.22), mat);
-  torsoMesh.position.y = torsoH / 2;
-  torso.add(torsoMesh);
-
-  const armL = mkLimb(0.09, height * 0.36);
-  armL.position.set(-0.27, torsoH - 0.03, 0);
-  const armR = mkLimb(0.09, height * 0.36);
-  armR.position.set(0.27, torsoH - 0.03, 0);
-  torso.add(armL, armR);
-
-  const head = new THREE.Group();
-  head.position.y = torsoH + 0.05;
-  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 16), dark);
-  headMesh.position.y = 0.13;
-  head.add(headMesh);
-  torso.add(head);
-
-  root.add(legL, legR, torso);
-  return { root, armL, armR, legL, legR, head, torso };
-}
-
 /** Chuyển động gắn thêm đã khớp xong, sẵn sàng phát qua mixer. */
 interface AttachedClipInfo {
   /** Tên clip trong mixer (clip đã khớp mang hậu tố "(đã khớp)"). */
@@ -172,17 +124,6 @@ interface AttachedClipInfo {
   sourceName: string;
   status: "direct" | "retargeted";
   missingBones: string[];
-}
-
-function buildProp(kind: PrevizObjectKind, color: string, size: number): THREE.Object3D {
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
-  if (kind === "cylinder") {
-    return new THREE.Mesh(new THREE.CylinderGeometry(size * 0.4, size * 0.4, size, 20), mat);
-  }
-  if (kind === "wall") {
-    return new THREE.Mesh(new THREE.BoxGeometry(size * 3, size * 2.2, 0.15), mat);
-  }
-  return new THREE.Mesh(new THREE.BoxGeometry(size, size, size), mat);
 }
 
 /**
@@ -203,6 +144,16 @@ function PrevizStrip({
   selectedId,
   onSelect,
   onSeek,
+  playing,
+  onTogglePlayback,
+  onAddKey,
+  onMoveKey,
+  onDeleteKey,
+  onStep,
+  onMoveDialogue,
+  onMoveAudio,
+  onMoveAction,
+  fps,
 }: {
   previz: PrevizScene;
   dialogue: DialogueLine[];
@@ -212,17 +163,91 @@ function PrevizStrip({
   selectedId: string | null;
   onSelect: (id: string) => void;
   onSeek: (t: number) => void;
+  playing: boolean;
+  onTogglePlayback: () => void;
+  onAddKey: (trackId: string) => void;
+  onMoveKey: (trackId: string, keyId: string, timeSec: number) => void;
+  onDeleteKey: (trackId: string, keyId: string) => void;
+  onStep: (direction: -1 | 1) => void;
+  onMoveDialogue: (id: string, startSec: number) => void;
+  onMoveAudio: (id: string, startSec: number) => void;
+  onMoveAction: (objectId: string, actionId: string, startSec: number) => void;
+  fps: 12 | 24;
 }) {
+  const [zoom, setZoom] = useState(1);
+  const [keyNotice, setKeyNotice] = useState("");
+  const [selectedKey, setSelectedKey] = useState<{ trackId: string; keyId: string } | null>(null);
+  const [activeTrackId, setActiveTrackId] = useState(selectedId ?? "camera");
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const dragKeyRef = useRef<{ trackId: string; keyId: string; lastTimeSec: number | null } | null>(null);
+  const dragClipRef = useRef<{ kind: "dialogue" | "audio" | "action"; trackId: string; clipId: string; grabOffsetSec: number; lastTimeSec: number | null } | null>(null);
+  const scrubbingRef = useRef(false);
+  useEffect(() => {
+    setActiveTrackId(selectedId ?? "camera");
+  }, [selectedId]);
   const pct = (t: number) =>
     `${Math.max(0, Math.min(100, (t / duration) * 100))}%`;
   const seekFromEvent = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width === 0) return;
     const ratio = (e.clientX - rect.left) / rect.width;
-    onSeek(Math.max(0, Math.min(duration, ratio * duration)));
+    onSeek(Math.max(0, Math.min(duration, Math.round(ratio * duration * fps) / fps)));
   };
   const ticks: number[] = [];
   for (let t = 0; t <= duration + 0.001; t += duration > 12 ? 2 : 1) ticks.push(t);
+  const beginKeyDrag = (
+    e: React.PointerEvent<HTMLSpanElement>,
+    trackId: string,
+    keyId: string,
+  ) => {
+    e.stopPropagation();
+    dragKeyRef.current = { trackId, keyId, lastTimeSec: null };
+    setSelectedKey({ trackId, keyId });
+    setActiveTrackId(trackId);
+    if (trackId !== "camera") onSelect(trackId);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const dragSelectedKey = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const active = dragKeyRef.current;
+    const rect = timelineRef.current?.getBoundingClientRect();
+    if (!active || !rect || rect.width <= 0) return;
+    e.stopPropagation();
+    const rawTime = ((e.clientX - rect.left) / rect.width) * duration;
+    const t = Math.max(0, Math.min(duration, Math.round(rawTime * fps) / fps));
+    if (active.lastTimeSec === t) return;
+    active.lastTimeSec = t;
+    onMoveKey(active.trackId, active.keyId, t);
+  };
+  const finishKeyDrag = () => { dragKeyRef.current = null; };
+  const beginClipDrag = (
+    e: React.PointerEvent<HTMLSpanElement>,
+    kind: "dialogue" | "audio" | "action",
+    trackId: string,
+    clipId: string,
+    startSec: number,
+  ) => {
+    e.stopPropagation();
+    const rect = timelineRef.current?.getBoundingClientRect();
+    const pointerTime = rect?.width
+      ? ((e.clientX - rect.left) / rect.width) * duration
+      : startSec;
+    dragClipRef.current = { kind, trackId, clipId, grabOffsetSec: pointerTime - startSec, lastTimeSec: null };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const dragClip = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const active = dragClipRef.current;
+    const rect = timelineRef.current?.getBoundingClientRect();
+    if (!active || !rect || rect.width <= 0) return;
+    e.stopPropagation();
+    const rawTime = ((e.clientX - rect.left) / rect.width) * duration;
+    const startSec = Math.max(0, Math.min(duration, Math.round((rawTime - active.grabOffsetSec) * fps) / fps));
+    if (active.lastTimeSec === startSec) return;
+    active.lastTimeSec = startSec;
+    if (active.kind === "dialogue") onMoveDialogue(active.clipId, startSec);
+    else if (active.kind === "audio") onMoveAudio(active.clipId, startSec);
+    else onMoveAction(active.trackId, active.clipId, startSec);
+  };
+  const finishClipDrag = () => { dragClipRef.current = null; };
   const rows: { id: string; label: string; color: string; onClick?: () => void }[] = [
     { id: "camera", label: "Camera", color: "#38bdf8" },
     ...previz.objects.map((o) => ({
@@ -231,29 +256,54 @@ function PrevizStrip({
       color: "#a78bfa",
       onClick: () => onSelect(o.id),
     })),
+    ...previz.objects
+      .filter((o) => o.kind === "model" && (o.actions?.length ?? 0) > 0)
+      .map((o) => ({ id: `actions:${o.id}`, label: `↳ Hành động · ${o.name}`, color: "#c084fc", onClick: () => onSelect(o.id) })),
     { id: "dialogue", label: "Thoại", color: "#f472b6" },
     ...(audioClips.length > 0
       ? [{ id: "audio", label: "Âm thanh", color: "#34d399" }]
       : []),
   ];
+  const canAddKey = activeTrackId === "camera" || previz.objects.some((obj) => obj.id === activeTrackId);
   return (
     <div className="shrink-0 border-t border-white/10 pt-2">
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
         <span className="text-[11px] font-semibold tracking-wide text-white/50">
-          TIMELINE — BẤM ĐỂ TUA · BẤM TÊN VẬT THỂ ĐỂ CHỌN
+          TIMELINE — TRACK · KEYFRAME · THOẠI · ÂM THANH
         </span>
-        <span className="text-[11px] text-white/40 tabular-nums">
-          {timeSec.toFixed(2)}s / {duration.toFixed(1)}s
-        </span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => onStep(-1)} title="Lùi 1 frame" aria-label="Lùi 1 frame" className="grid place-items-center w-7 h-7 rounded hover:bg-white/10 text-white/65"><SkipBack className="w-3.5 h-3.5" /></button>
+          <button onClick={onTogglePlayback} title={playing ? "Tạm dừng" : "Phát"} aria-label={playing ? "Tạm dừng" : "Phát"} className="grid place-items-center w-7 h-7 rounded bg-sky-500/20 text-sky-200 hover:bg-sky-500/30">{playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}</button>
+          <button onClick={() => onStep(1)} title="Tiến 1 frame" aria-label="Tiến 1 frame" className="grid place-items-center w-7 h-7 rounded hover:bg-white/10 text-white/65"><SkipForward className="w-3.5 h-3.5" /></button>
+          <span className="mx-1 text-[11px] text-white/40 tabular-nums">{timeSec.toFixed(2)}s / {duration.toFixed(1)}s</span>
+          <button disabled={!canAddKey} onClick={() => { onAddKey(activeTrackId); setKeyNotice(`Đã lưu key tại ${timeSec.toFixed(2)}s cho ${activeTrackId === "camera" ? "Camera" : previz.objects.find((obj) => obj.id === activeTrackId)?.name ?? "vật thể"}.`); }} title="Lưu trạng thái track đang chọn tại playhead" aria-label="Thêm keyframe" className="flex items-center gap-1 px-2 h-7 rounded bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 text-[11px] disabled:opacity-30"><Plus className="w-3 h-3" /> Add key</button>
+          <button
+            disabled={!selectedKey}
+            onClick={() => {
+              if (!selectedKey) return;
+              onDeleteKey(selectedKey.trackId, selectedKey.keyId);
+              setSelectedKey(null);
+            }}
+            title="Xóa keyframe đang chọn"
+            aria-label="Xóa keyframe"
+            className="px-2 h-7 rounded text-[11px] text-white/55 hover:text-rose-300 hover:bg-white/5 disabled:opacity-30"
+          ><Trash2 className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setZoom((v) => Math.max(1, v / 1.25))} title="Thu nhỏ timeline" aria-label="Thu nhỏ timeline" className="grid place-items-center w-7 h-7 rounded hover:bg-white/10 text-white/65"><ZoomOut className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setZoom((v) => Math.min(8, v * 1.25))} title="Phóng to timeline" aria-label="Phóng to timeline" className="grid place-items-center w-7 h-7 rounded hover:bg-white/10 text-white/65"><ZoomIn className="w-3.5 h-3.5" /></button>
+        </div>
       </div>
-      <div className="max-h-[188px] overflow-y-auto overflow-x-clip">
+      {keyNotice && <p role="status" className="mb-1 text-[10px] text-amber-200/80">{keyNotice}</p>}
+      <div className="max-h-[220px] overflow-auto">
         <div className="grid grid-cols-[116px_minmax(0,1fr)]">
-          <div>
+          <div className="sticky left-0 z-20 bg-[#0a0614]">
             <div className="h-4 sticky top-0 bg-[#0a0614] z-10" />
             {rows.map((r) => (
               <button
                 key={r.id}
-                onClick={r.onClick}
+                onClick={() => {
+                  setActiveTrackId(r.id);
+                  r.onClick?.();
+                }}
                 className={`h-6 w-full flex items-center gap-1.5 px-1.5 text-xs truncate text-left rounded ${
                   r.id === selectedId
                     ? "bg-sky-500/15 text-white"
@@ -268,7 +318,20 @@ function PrevizStrip({
               </button>
             ))}
           </div>
-          <div className="relative" onPointerDown={seekFromEvent}>
+          <div
+            ref={timelineRef}
+            className="relative"
+            style={{ width: `${zoom * 100}%`, touchAction: "none" }}
+            onPointerDown={(e) => {
+              if ((e.target as HTMLElement).dataset.timelineKey === "true") return;
+              scrubbingRef.current = true;
+              e.currentTarget.setPointerCapture(e.pointerId);
+              seekFromEvent(e);
+            }}
+            onPointerMove={(e) => { if (scrubbingRef.current) seekFromEvent(e); }}
+            onPointerUp={() => { scrubbingRef.current = false; }}
+            onPointerCancel={() => { scrubbingRef.current = false; }}
+          >
             <div className="h-4 relative border-b border-white/10 cursor-pointer sticky top-0 bg-[#0a0614] z-10">
               {ticks.map((t) => (
                 <span
@@ -298,11 +361,33 @@ function PrevizStrip({
                     <span
                       key={k.id}
                       title={`Key camera tại ${k.timeSec.toFixed(2)}s`}
-                      className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-sky-400"
-                      style={{ left: `calc(${pct(k.timeSec)} - 4px)` }}
+                      onPointerDown={(e) => beginKeyDrag(e, "camera", k.id)}
+                      data-timeline-key="true"
+                      onPointerMove={dragSelectedKey}
+                      onPointerUp={finishKeyDrag}
+                      className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 cursor-ew-resize touch-none ${selectedKey?.trackId === "camera" && selectedKey.keyId === k.id ? "bg-white ring-2 ring-sky-400" : "bg-sky-400"}`}
+                      style={{ left: `calc(${pct(k.timeSec)} - 5px)` }}
+                      onClick={() => onSeek(k.timeSec)}
                     />
                   ))}
-                {r.id !== "camera" &&
+                {r.id.startsWith("actions:") && (() => {
+                  const objectId = r.id.slice("actions:".length);
+                  const obj = previz.objects.find((item) => item.id === objectId);
+                  return obj?.actions?.map((action) => (
+                    <span
+                      key={action.id}
+                      data-timeline-key="true"
+                      title={`${action.clipName} · ${action.startSec.toFixed(2)}s`}
+                      onPointerDown={(e) => beginClipDrag(e, "action", obj.id, action.id, action.startSec)}
+                      onPointerMove={dragClip}
+                      onPointerUp={finishClipDrag}
+                      onClick={() => onSeek(action.startSec)}
+                      className="absolute top-[2px] bottom-[2px] rounded bg-violet-500/45 border border-violet-300/50 text-[9px] text-white/90 px-1 truncate leading-[17px] cursor-grab touch-none"
+                      style={{ left: pct(action.startSec), width: `${Math.max(2, (action.durationSec / duration) * 100)}%` }}
+                    >{action.clipName}</span>
+                  ));
+                })()}
+                {r.id !== "camera" && !r.id.startsWith("actions:") &&
                   r.id !== "dialogue" &&
                   r.id !== "audio" &&
                   (() => {
@@ -315,8 +400,13 @@ function PrevizStrip({
                           <span
                             key={k.id}
                             title={`Key tại ${k.timeSec.toFixed(2)}s`}
-                            className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-amber-400"
-                            style={{ left: `calc(${pct(k.timeSec)} - 4px)` }}
+                            onPointerDown={(e) => beginKeyDrag(e, obj.id, k.id)}
+                            data-timeline-key="true"
+                            onPointerMove={dragSelectedKey}
+                            onPointerUp={finishKeyDrag}
+                            className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 cursor-ew-resize touch-none ${selectedKey?.trackId === obj.id && selectedKey.keyId === k.id ? "bg-white ring-2 ring-amber-400" : "bg-amber-400"}`}
+                            style={{ left: `calc(${pct(k.timeSec)} - 5px)` }}
+                            onClick={() => onSeek(k.timeSec)}
                           />
                         ))}
                       </>
@@ -327,7 +417,12 @@ function PrevizStrip({
                     <span
                       key={line.id}
                       title={`${line.speaker}: ${line.text}`}
-                      className="absolute top-[2px] bottom-[2px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px]"
+                      data-timeline-key="true"
+                      onPointerDown={(e) => beginClipDrag(e, "dialogue", "dialogue", line.id, line.startSec)}
+                      onPointerMove={dragClip}
+                      onPointerUp={finishClipDrag}
+                      onClick={() => onSeek(line.startSec)}
+                      className="absolute top-[2px] bottom-[2px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px] cursor-grab touch-none"
                       style={{
                         left: pct(line.startSec),
                         width: `${Math.max(2, (line.durationSec / duration) * 100)}%`,
@@ -341,7 +436,12 @@ function PrevizStrip({
                     <span
                       key={clip.id}
                       title={clip.name}
-                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px]"
+                      data-timeline-key="true"
+                      onPointerDown={(e) => beginClipDrag(e, "audio", "audio", clip.id, clip.startSec)}
+                      onPointerMove={dragClip}
+                      onPointerUp={finishClipDrag}
+                      onClick={() => onSeek(clip.startSec)}
+                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px] cursor-grab touch-none"
                       style={{
                         left: pct(clip.startSec),
                         width: `${Math.max(2, (clip.durationSec / duration) * 100)}%`,
@@ -375,6 +475,7 @@ function bokehUniforms(pass: BokehPass): Record<string, { value: number }> {
 export function PrevizEditor({
   scene,
   onChange,
+  fps = 24,
   onDialogueChange,
   onWeatherChange,
   onAudioChange,
@@ -384,6 +485,7 @@ export function PrevizEditor({
   exportAspect,
 }: {
   scene: AnimScene;
+  fps?: 12 | 24;
   /** Tỉ lệ khung xuất của dự án (dọc 9:16 thì khung chóp hẹp lại). */
   exportAspect?: number;
   onChange: (previz: PrevizScene) => void;
@@ -473,6 +575,7 @@ export function PrevizEditor({
     weatherPoints: THREE.Points | null;
     particlePoints: THREE.Points | null;
     sunLight: THREE.DirectionalLight;
+    sunVisual: THREE.Group;
     envHemi: THREE.HemisphereLight | null;
     flashLight: THREE.AmbientLight;
     terrainMesh: THREE.Mesh | null;
@@ -601,13 +704,40 @@ export function PrevizEditor({
   const stageInteractRef = useRef<{
     onPick: (id: string) => void;
     onDrag: (id: string, pos: { x: number; y: number; z: number }) => void;
+    onDragEnd: (id: string, pos: { x: number; y: number; z: number }) => void;
   } | null>(null);
   stageInteractRef.current = {
-    onPick: (id) => setSelectedId(id),
+    onPick: (id) => {
+      // Mỗi vật thể có bản nháp vị trí riêng. Nếu giữ draftDirty khi đổi
+      // selection trên sân khấu, draftPos của vật thể vừa kéo sẽ bị áp
+      // lên nhân vật mới và khiến hai nhân vật chồng đúng cùng tọa độ.
+      setSelectedId(id);
+      setDraftDirty(false);
+    },
     onDrag: (id, pos) => {
       setSelectedId(id);
       setDraftPos(pos);
       setDraftDirty(true);
+    },
+    onDragEnd: (id, pos) => {
+      const target = previz.objects.find((obj) => obj.id === id);
+      if (!target) return;
+      const atTime = target.keys.find((key) => Math.abs(key.timeSec - timeSec) < 1e-4);
+      const template = atTime ?? target.keys.reduce((best, key) =>
+        Math.abs(key.timeSec - timeSec) < Math.abs(best.timeSec - timeSec) ? key : best,
+      target.keys[0]);
+      onChange({
+        ...previz,
+        objects: previz.objects.map((obj) => obj.id === id
+          ? { ...obj, keys: upsertPrevizKey(obj.keys, {
+              ...template,
+              id: atTime?.id ?? newPrevizId("pkey"),
+              timeSec,
+              position: pos,
+            }) }
+          : obj),
+      });
+      setDraftDirty(false);
     },
   };
 
@@ -617,6 +747,7 @@ export function PrevizEditor({
   const [draftPose, setDraftPose] = useState("stand");
   /** Tên clip xương đã nạp cho từng vật thể model (Phase 4). */
   const [modelClipNames, setModelClipNames] = useState<Record<string, string[]>>({});
+  const [modelLoadErrors, setModelLoadErrors] = useState<Record<string, string>>({});
   /** Model nào có xương (để gắn chuyển động từ file khác). */
   const [modelHasSkeleton, setModelHasSkeleton] = useState<Record<string, boolean>>({});
   /** Chuyển động gắn thêm đã khớp xong cho từng vật thể model. */
@@ -710,6 +841,10 @@ export function PrevizEditor({
     const mount = mountRef.current;
     if (!mount) return;
     const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setSize(mount.clientWidth, mount.clientHeight, false);
     mount.appendChild(renderer.domElement);
@@ -753,10 +888,30 @@ export function PrevizEditor({
     composer.addPass(afterimagePass);
     composer.addPass(new OutputPass());
 
-    threeScene.add(new THREE.AmbientLight(0xffffff, 0.75));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    threeScene.add(new THREE.HemisphereLight(0xdceaff, 0x736044, 1.15));
+    threeScene.add(new THREE.AmbientLight(0xffffff, 0.35));
+    const sun = new THREE.DirectionalLight(0xfff0d6, 2.2);
     sun.position.set(5, 9, 4);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1536, 1536);
+    sun.shadow.camera.left = -18;
+    sun.shadow.camera.right = 18;
+    sun.shadow.camera.top = 18;
+    sun.shadow.camera.bottom = -18;
+    sun.shadow.bias = -0.00015;
     threeScene.add(sun);
+    const sunVisual = new THREE.Group();
+    const sunDisc = new THREE.Mesh(
+      new THREE.SphereGeometry(2.2, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffe7a3, fog: false, toneMapped: false }),
+    );
+    const sunGlow = new THREE.Mesh(
+      new THREE.SphereGeometry(3.6, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffbd59, transparent: true, opacity: 0.22, fog: false, depthWrite: false, toneMapped: false }),
+    );
+    sunVisual.add(sunGlow, sunDisc);
+    sunVisual.renderOrder = 5;
+    threeScene.add(sunVisual);
     const grid = new THREE.GridHelper(30, 30, 0x554477, 0x332a4d);
     threeScene.add(grid);
     // Mặt đất phong cảnh (giai đoạn B): lưới cao độ, mặc định phẳng.
@@ -765,6 +920,7 @@ export function PrevizEditor({
       createTerrainGeometry(initialEnv.terrain),
       new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
     );
+    terrainMesh.receiveShadow = true;
     threeScene.add(terrainMesh);
     const flashLight = new THREE.AmbientLight(0xffffff, 0);
     threeScene.add(flashLight);
@@ -830,6 +986,7 @@ export function PrevizEditor({
       effectGroups: new Map(),
       previewPoints: null,
       sunLight: sun,
+      sunVisual,
       envHemi: null,
       flashLight,
       terrainMesh,
@@ -897,7 +1054,8 @@ export function PrevizEditor({
     const raycaster = new THREE.Raycaster();
     const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     let dragId: string | null = null;
-    let downAt: { x: number; y: number } | null = null;
+    let dragMoved = false;
+    let lastDragPosition: Vec3 | null = null;
     const ndcOf = (e: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
       return new THREE.Vector2(
@@ -996,10 +1154,11 @@ export function PrevizEditor({
         }
         return;
       }
-      downAt = { x: e.clientX, y: e.clientY };
       const id = pickAt(e);
       if (id) {
         dragId = id;
+        dragMoved = false;
+        lastDragPosition = null;
         dragLockRef.current = true;
         controls.enabled = false;
         stageInteractRef.current?.onPick(id);
@@ -1055,6 +1214,12 @@ export function PrevizEditor({
           y: heightAtGrid(envRef.current.terrain, nx, nz),
           z: nz,
         });
+        lastDragPosition = {
+          x: nx,
+          y: heightAtGrid(envRef.current.terrain, nx, nz),
+          z: nz,
+        };
+        dragMoved = true;
       }
     };
     const onPointerUp = () => {
@@ -1063,8 +1228,13 @@ export function PrevizEditor({
         paintingRef.current = false;
         commitBrushRef.current();
       }
+      const completedDragId = dragId;
       dragId = null;
-      downAt = null;
+      if (dragMoved && lastDragPosition) {
+        stageInteractRef.current?.onDragEnd(completedDragId ?? "", lastDragPosition);
+      }
+      dragMoved = false;
+      lastDragPosition = null;
       dragLockRef.current = false;
       controls.enabled =
         stateRef.current.viewMode === "orbit" && !stateRef.current.camMoveMode;
@@ -1182,21 +1352,20 @@ export function PrevizEditor({
       (ctx.waterMesh.material as THREE.Material).dispose();
       ctx.waterMesh = null;
     }
-    const env = scene.environment;
-    if (!env) {
-      ctx.scene.fog = null;
-      return;
-    }
+    const env = scene.environment ?? DEFAULT_ENVIRONMENT;
     const sky = environmentSky(env);
     ctx.scene.background = new THREE.Color(sky.skyBg);
     ctx.sunLight.color.set(sky.sunColor);
     ctx.sunLight.intensity = sky.sunIntensity;
     const angle = ((env.time - 6) / 12) * Math.PI;
+    const sunElevation = Math.sin(angle);
     ctx.sunLight.position.set(
       Math.cos(angle) * 20,
-      Math.max(1, Math.sin(angle) * 18 + 2),
+      Math.max(0.5, sunElevation * 18 + 2),
       6,
     );
+    ctx.sunVisual.position.set(Math.cos(angle) * 70, sunElevation * 45 + 16, -52);
+    ctx.sunVisual.visible = sunElevation > -0.28;
     if (!ctx.envHemi) {
       ctx.envHemi = new THREE.HemisphereLight(0xffffff, 0x332244, 0.3);
       ctx.scene.add(ctx.envHemi);
@@ -1261,7 +1430,7 @@ export function PrevizEditor({
       ctx.envPoints = createWeatherPoints({ type: "snow", intensity: 0.6 });
       ctx.scene.add(ctx.envPoints);
     }
-  }, [scene.environment]);
+  }, [environment]);
 
   // ── Thời tiết 3D (S2): gắn hạt vào scene khi thời tiết thay đổi ──────────
   useEffect(() => {
@@ -1392,7 +1561,6 @@ export function PrevizEditor({
     const models: Model3DAsset[] = [];
     for (const a of assets) {
       if (a.kind !== "model3d") continue;
-      if (a.inspection && a.inspection.animations.length === 0) continue;
       models.push(a);
     }
     setClipSourceAssets(models);
@@ -1499,6 +1667,7 @@ export function PrevizEditor({
             void loadModelForSceneWithClips(obj.modelAssetId)
               .then((loaded) => {
                 if (ctx.groups.get(obj.id) !== holder) return;
+                setModelLoadErrors((prev) => { const next = { ...prev }; delete next[obj.id]; return next; });
                 holder.add(loaded.group);
                 const ms = createMixerState(loaded.group, loaded.clips);
                 if (ms) {
@@ -1511,20 +1680,30 @@ export function PrevizEditor({
                 }));
                 setModelHasSkeleton((prev) => ({ ...prev, [obj.id]: ms !== null }));
               })
-              .catch(() => undefined);
+              .catch((error: unknown) => {
+                if (ctx.groups.get(obj.id) !== holder) return;
+                const message = error instanceof Error ? error.message : "Lỗi không xác định";
+                setModelLoadErrors((prev) => ({ ...prev, [obj.id]: `Không hiển thị được model: ${message}` }));
+                setModelClipNames((prev) => ({ ...prev, [obj.id]: [] }));
+              });
           }
         } else if (obj.kind === "character") {
-          const parts = buildCharacter(obj.color, obj.size);
+          const parts = buildPrevizCharacter(obj.color, obj.size);
           ctx.characters.set(obj.id, parts);
           ctx.groups.set(obj.id, parts.root);
           ctx.scene.add(parts.root);
         } else {
-          const mesh = buildProp(obj.kind, obj.color, obj.size);
-          mesh.position.y = obj.kind === "wall" ? obj.size * 1.1 : obj.size / 2;
+          const mesh = buildPrevizProp(obj.kind, obj.color, obj.size, obj.name);
           ctx.groups.set(obj.id, mesh);
           ctx.scene.add(mesh);
         }
       }
+      // Tag ngay trong lượt tạo đầu tiên. Trước đây chỉ gắn objectId lên
+      // group đã tồn tại từ lượt render sau, nhưng effect này chỉ chạy khi
+      // previz đổi — model mở từ project vì thế nhìn thấy được mà không
+      // thể raycast chọn/kéo trên sân khấu.
+      const registeredGroup = ctx.groups.get(obj.id);
+      if (registeredGroup) registeredGroup.userData.objectId = obj.id;
       // Vật thể đã có sẵn: chỉ hòa giải chuyển động gắn thêm (clipSources đổi).
       if (obj.kind === "model" && ctx.groups.has(obj.id)) {
         const ms = ctx.mixers.get(obj.id);
@@ -1562,8 +1741,13 @@ export function PrevizEditor({
   stateRef.current = { previz, timeSec, viewMode, draftDirty, draftPos, draftRotY, draftPose, selectedId, draftCamDirty, draftCamPos, draftCamTarget, draftCamTimeSec, previewFormula, previewStartSec, environment, camMoveMode, showCamModel, exportAspect };
   useEffect(() => {
     let raf = 0;
-    const loop = () => {
+    let lastFrameMs = 0;
+    const loop = (frameMs: number) => {
       raf = requestAnimationFrame(loop);
+      const vrmDelta = lastFrameMs === 0
+        ? 0
+        : Math.min(0.1, Math.max(0, (frameMs - lastFrameMs) / 1000));
+      lastFrameMs = frameMs;
       const ctx = threeRef.current;
       if (!ctx) return;
       const st = stateRef.current;
@@ -1592,6 +1776,8 @@ export function PrevizEditor({
           }
         });
         if (obj.kind === "model") {
+          applyVrmExpressions(group, obj.expressions);
+          updateLoadedVrms(group, vrmDelta);
           const ms = ctx.mixers.get(obj.id);
           if (ms) {
             const activeSeg = sampleActionSegment(obj.actions, st.timeSec);
@@ -2033,10 +2219,16 @@ export function PrevizEditor({
                         ? `Nhân vật ${previz.objects.filter((o) => o.kind === "character").length + 1}`
                         : label.replace("+ ", ""),
                     );
+                    const sameKindCount = previz.objects.filter((o) => o.kind === kind).length;
+                    const spawnX = sameKindCount === 0
+                      ? 0
+                      : (sameKindCount % 2 === 1
+                        ? Math.ceil(sameKindCount / 2)
+                        : -Math.ceil(sameKindCount / 2)) * 1.4;
                     obj.keys[0] = {
                       ...obj.keys[0],
                       position: {
-                        x: 0,
+                        x: spawnX,
                         y: heightAtGrid(environment.terrain, 0, 0),
                         z: 0,
                       },
@@ -2387,7 +2579,7 @@ export function PrevizEditor({
               {(() => {
                 const embedded = modelClipNames[selected.id];
                 if (embedded === undefined) {
-                  return <p className="text-[11px] text-white/40">Đang nạp model…</p>;
+                  return <p className="text-[11px] text-white/40">{modelLoadErrors[selected.id] ?? "Đang nạp model…"}</p>;
                 }
                 const attached = attachedClipInfo[selected.id] ?? [];
                 const clipOptions = [
@@ -2399,9 +2591,38 @@ export function PrevizEditor({
                 ];
                 const clip = clipOptions.find((o) => o.value === draftActClip)?.value ?? clipOptions[0]?.value ?? "";
                 const attachedOfClip = attached.find((a) => a.bakedName === clip);
-                const sourceOptions = clipSourceAssets.filter((a) => a.id !== selected.modelAssetId);
+                const selectedModelAsset = clipSourceAssets.find((a) => a.id === selected.modelAssetId);
+                const expressionNames = selectedModelAsset?.inspection?.expressionNames ?? [];
+                const sourceOptions = clipSourceAssets.filter(
+                  (a) => a.id !== selected.modelAssetId && (a.inspection?.animations.length ?? 0) > 0,
+                );
                 return (
                   <>
+                    {expressionNames.length > 0 && (
+                      <div className="space-y-2 rounded-lg border border-white/5 bg-black/20 p-2">
+                        <p className="text-[11px] font-medium text-white/60">BIỂU CẢM VRM</p>
+                        {expressionNames.map((name) => (
+                          <label key={name} className="flex items-center gap-2 text-[11px] text-white/55">
+                            <span className="w-20 truncate" title={name}>{name}</span>
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.01"
+                              value={selected.expressions?.[name] ?? 0}
+                              onChange={(e) => updateObject(selected.id, {
+                                expressions: {
+                                  ...selected.expressions,
+                                  [name]: Number(e.currentTarget.value),
+                                },
+                              })}
+                              className="flex-1 accent-violet-400"
+                            />
+                            <span className="w-8 text-right tabular-nums">{Math.round((selected.expressions?.[name] ?? 0) * 100)}%</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
                       {(selected.actions ?? []).map((a) => (
                         <span
@@ -2628,7 +2849,7 @@ export function PrevizEditor({
                 DÁNG MỐC (tự dựng, không cần clip)
               </h3>
               {modelClipNames[selected.id] === undefined ? (
-                <p className="text-[11px] text-white/40">Đang nạp model…</p>
+                <p className="text-[11px] text-white/40">{modelLoadErrors[selected.id] ?? "Đang nạp model…"}</p>
               ) : (
                 <>
                   {poseMsg && <p className="text-[11px] text-emerald-300 leading-relaxed">{poseMsg}</p>}
@@ -3267,12 +3488,118 @@ export function PrevizEditor({
         dialogue={scene.dialogue ?? []}
         audioClips={scene.audioClips ?? []}
         duration={duration}
+        fps={fps}
         timeSec={timeSec}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        playing={playing}
+        onTogglePlayback={() => setPlaying((value) => !value)}
+        onStep={(direction) => {
+          setPlaying(false);
+          setTimeSec((value) => Math.max(0, Math.min(duration, value + direction / fps)));
+        }}
+        onSelect={(id) => {
+          setSelectedId(id);
+          setDraftDirty(false);
+        }}
+        onAddKey={(trackId) => {
+          if (trackId === "camera") {
+            const sampled = samplePrevizCamera(previz.cameraKeys, timeSec);
+            const nearest = previz.cameraKeys.reduce<(typeof previz.cameraKeys)[number] | undefined>((best, key) =>
+              !best || Math.abs(key.timeSec - timeSec) < Math.abs(best.timeSec - timeSec) ? key : best,
+            undefined);
+            onChange({
+              ...previz,
+              cameraKeys: upsertPrevizCameraKey(previz.cameraKeys, {
+                id: newPrevizId("cam"),
+                timeSec,
+                position: draftCamDirty ? draftCamPos : sampled.position,
+                target: draftCamDirty ? draftCamTarget : sampled.target,
+                easing: nearest?.easing ?? "linear",
+              }),
+            });
+            setDraftCamDirty(false);
+            return;
+          }
+          const target = previz.objects.find((obj) => obj.id === trackId);
+          if (!target) return;
+          const sampled = samplePrevizObject(target, timeSec);
+          const nearest = target.keys.reduce<(typeof target.keys)[number] | undefined>((best, key) =>
+            !best || Math.abs(key.timeSec - timeSec) < Math.abs(best.timeSec - timeSec) ? key : best,
+          undefined);
+          onChange({
+            ...previz,
+            objects: previz.objects.map((obj) => obj.id === target.id
+              ? { ...obj, keys: upsertPrevizKey(obj.keys, {
+                  id: newPrevizId("pkey"),
+                  timeSec,
+                  position: draftDirty && selectedId === target.id ? draftPos : sampled.position,
+                  rotationY: draftDirty && selectedId === target.id ? draftRotY : sampled.rotationY,
+                  poseId: nearest?.poseId ?? "stand",
+                  glow: nearest?.glow ?? obj.glow ?? 0,
+                  easing: nearest?.easing ?? "linear",
+                }) }
+              : obj),
+          });
+          if (selectedId === target.id) setDraftDirty(false);
+        }}
+        onMoveKey={(trackId, keyId, nextTime) => {
+          const clamped = Math.max(0, Math.min(duration, Math.round(nextTime * fps) / fps));
+          if (trackId === "camera") {
+            onChange({
+              ...previz,
+              cameraKeys: previz.cameraKeys
+                .map((key) => key.id === keyId ? { ...key, timeSec: clamped } : key)
+                .sort((a, b) => a.timeSec - b.timeSec),
+            });
+          } else {
+            onChange({
+              ...previz,
+              objects: previz.objects.map((obj) => obj.id === trackId
+                ? { ...obj, keys: obj.keys
+                    .map((key) => key.id === keyId ? { ...key, timeSec: clamped } : key)
+                    .sort((a, b) => a.timeSec - b.timeSec) }
+                : obj),
+            });
+          }
+        }}
+        onDeleteKey={(trackId, keyId) => {
+          if (trackId === "camera") {
+            if (previz.cameraKeys.length <= 1) return;
+            onChange({ ...previz, cameraKeys: previz.cameraKeys.filter((key) => key.id !== keyId) });
+          } else {
+            onChange({
+              ...previz,
+              objects: previz.objects.map((obj) => obj.id === trackId && obj.keys.length > 1
+                ? { ...obj, keys: obj.keys.filter((key) => key.id !== keyId) }
+                : obj),
+            });
+          }
+        }}
+        onMoveDialogue={(id, startSec) => {
+          const next = (scene.dialogue ?? []).map((line) => line.id === id
+            ? { ...line, startSec: Math.min(startSec, Math.max(0, duration - line.durationSec)) }
+            : line);
+          onDialogueChange?.(next);
+        }}
+        onMoveAudio={(id, startSec) => {
+          const next = (scene.audioClips ?? []).map((clip) => clip.id === id
+            ? { ...clip, startSec: Math.min(startSec, Math.max(0, duration - clip.durationSec)) }
+            : clip);
+          onAudioChange?.(next);
+        }}
+        onMoveAction={(objectId, actionId, startSec) => {
+          onChange({
+            ...previz,
+            objects: previz.objects.map((obj) => obj.id === objectId
+              ? { ...obj, actions: (obj.actions ?? []).map((action) => action.id === actionId
+                  ? { ...action, startSec: Math.min(startSec, Math.max(0, duration - action.durationSec)) }
+                  : action) }
+              : obj),
+          });
+        }}
         onSeek={(t) => {
           setPlaying(false);
-          setTimeSec(t);
+          setTimeSec(Math.round(t * fps) / fps);
         }}
       />
     </div>

@@ -8,9 +8,9 @@
  */
 
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { computeSkinWeights, type RigJoint } from "./rig";
+import { createAnimationGltfLoader, prepareLoadedVrm } from "./gltfLoader";
 
 async function dataUrlToBuffer(dataUrl: string): Promise<ArrayBuffer> {
   const res = await fetch(dataUrl);
@@ -38,8 +38,9 @@ export interface LoadedModel {
 
 export async function loadModelForRig(dataUrl: string): Promise<LoadedModel> {
   const buf = await dataUrlToBuffer(dataUrl);
-  const loader = new GLTFLoader();
+  const loader = createAnimationGltfLoader();
   const gltf = await loader.parseAsync(buf, "");
+  prepareLoadedVrm(gltf);
   const scene = gltf.scene;
   let hasSkeleton = false;
   let boneCount = 0;

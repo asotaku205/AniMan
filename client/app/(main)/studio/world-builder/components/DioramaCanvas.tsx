@@ -225,7 +225,8 @@ export function DioramaCanvas({
   } | null>(null);
   const brushingRef = useRef(false);
   const lastBrushRef = useRef(0);
-  const glbCacheRef = useRef<Map<string, THREE.Group>>(new Map());
+  const glbCacheRef = useRef<Map<string, { group: THREE.Group; clips: THREE.AnimationClip[] }>>(new Map());
+  const glbMixersRef = useRef<THREE.AnimationMixer[]>([]);
   const glbFailedRef = useRef<Set<string>>(new Set());
   const [glbTick, setGlbTick] = useState(0);
   const callbacksRef = useRef({
@@ -779,6 +780,7 @@ export function DioramaCanvas({
         }
         w.points.geometry.getAttribute("position").needsUpdate = true;
       }
+      for (const mixer of glbMixersRef.current) mixer.update(dt);
       controls.update();
       renderer.render(scene, camera);
     };
@@ -793,6 +795,8 @@ export function DioramaCanvas({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       controls.dispose();
+      for (const mixer of glbMixersRef.current) mixer.stopAllAction();
+      glbMixersRef.current = [];
       if (terrainRef.current) disposeObject(terrainRef.current.meshes);
       terrainRef.current?.water.geometry.dispose();
       (terrainRef.current?.water.material as THREE.Material).dispose();
@@ -800,7 +804,7 @@ export function DioramaCanvas({
       terrainRef.current?.skirt.geometry.dispose();
       (terrainRef.current?.skirt.material as THREE.Material).dispose();
       terrainRef.current = null;
-      for (const g of glbCacheRef.current.values()) disposeObject(g);
+      for (const g of glbCacheRef.current.values()) disposeObject(g.group);
       glbCacheRef.current.clear();
       disposeObject(objects);
       scene.traverse((child) => {
@@ -834,6 +838,8 @@ export function DioramaCanvas({
   useEffect(() => {
     const t = threeRef.current;
     if (!t) return;
+    for (const mixer of glbMixersRef.current) mixer.stopAllAction();
+    glbMixersRef.current = [];
     for (const child of [...t.objects.children]) {
       t.objects.remove(child);
       // Clone GLB chia sẻ geometry với cache — dispose nó là hỏng cache.
@@ -846,7 +852,7 @@ export function DioramaCanvas({
       if (p.glbAssetId) {
         const cached = glbCacheRef.current.get(p.glbAssetId);
         if (cached) {
-          const clone = cached.clone(true);
+          const clone = cached.group.clone(true);
           clone.position.set(p.x, heightAt(terrain, p.x, p.z), p.z);
           clone.rotation.set(p.rotationX ?? 0, p.rotationY, p.rotationZ ?? 0);
           clone.scale.set(
@@ -856,6 +862,18 @@ export function DioramaCanvas({
           );
           clone.userData.placementId = p.id;
           clone.userData.sharedGlb = true;
+          clone.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          if (cached.clips.length > 0) {
+            const mixer = new THREE.AnimationMixer(clone);
+            const idle = cached.clips.find((clip) => /idle/i.test(clip.name));
+            mixer.clipAction(idle ?? cached.clips[0]).play();
+            glbMixersRef.current.push(mixer);
+          }
           t.objects.add(clone);
           continue;
         }
@@ -873,17 +891,25 @@ export function DioramaCanvas({
             .loadAsync(dataUrl)
             .then((gltf) => {
               const scene = gltf.scene;
-              // Chuẩn hoá về chiều cao ~2 đơn vị (file ngoài đơn vị
-              // tuỳ ý: mét/cm) rồi cache để lần sau clone thẳng.
+              // Chuẩn hoá trục gốc: chân chạm mặt đất, tâm nằm trên gốc
+              // placement; scale nhất quán cho model tính bằng cm/m.
               const box = new THREE.Box3().setFromObject(scene);
               const size = new THREE.Vector3();
               box.getSize(size);
               const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-              scene.scale.setScalar(2 / maxDim);
+              const normalize = 2 / maxDim;
+              const center = box.getCenter(new THREE.Vector3());
+              scene.scale.setScalar(normalize);
+              scene.position.set(-center.x * normalize, -box.min.y * normalize, -center.z * normalize);
               scene.traverse((child) => {
-                if (child instanceof THREE.Mesh) child.castShadow = true;
+                if (child instanceof THREE.Mesh) {
+                  child.castShadow = true;
+                  child.receiveShadow = true;
+                }
               });
-              glbCacheRef.current.set(assetId, scene);
+              const normalizedGroup = new THREE.Group();
+              normalizedGroup.add(scene);
+              glbCacheRef.current.set(assetId, { group: normalizedGroup, clips: gltf.animations ?? [] });
               setGlbTick((v) => v + 1);
             })
             .catch(() => {

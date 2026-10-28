@@ -1,102 +1,65 @@
 /**
- * Phan trang che do Quyen sach (Novel Studio).
- *
- * Khung trang co dinh: trai giay rong 576px (nua trai max-w-6xl), padding
- * p-10 hai ben nen vung chu rong 496px; ti le 3/4 nen khung cao 768px,
- * vung chu cao 688px. So dong va so chu moi trang duoc tinh tu khung nay
- * voi co chu va gian dong hien tai, chu khong ghi cung mot con so.
+ * Phân trang theo hàm đo thật của trình duyệt. Mỗi trang là một lát cắt
+ * liên tiếp của chuỗi gốc nên ghép các trang lại sẽ không làm mất ký tự.
  */
+export function paginateTextToFit(
+  text: string,
+  fits: (candidate: string) => boolean,
+): string[] {
+  if (!text) return [""];
 
-export const PAGE_CONTENT_WIDTH = 496;
-export const PAGE_CONTENT_HEIGHT = 688;
+  const tokens = [...text.matchAll(/\S+|\s+/gu)].map((match) => ({
+    end: (match.index ?? 0) + match[0].length,
+  }));
+  if (tokens.length === 0) return [text];
 
-const FONT_PX = { sm: 16, md: 18, lg: 20, xl: 24 } as const;
-const LINE_H = { normal: 1.6, relaxed: 1.8, loose: 2.1 } as const;
-/** Be rong trung binh cua mot ky tu tieng Viet o font ti le (~0.5em). */
-const AVG_CHAR_EM = 0.5;
+  const pages: string[] = [];
+  let start = 0;
+  let tokenIndex = 0;
+  while (start < text.length) {
+    while (tokenIndex < tokens.length && tokens[tokenIndex].end <= start) tokenIndex++;
+    if (tokenIndex >= tokens.length) break;
+    let low = tokenIndex;
+    let high = tokens.length - 1;
+    let bestEnd = start;
 
-export type NovelFontSize = keyof typeof FONT_PX;
-export type NovelLineHeight = keyof typeof LINE_H;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const end = tokens[mid].end;
+      if (end <= start) {
+        low = mid + 1;
+      } else if (fits(text.slice(start, end))) {
+        bestEnd = end;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
 
-export interface PageMetrics {
-  charsPerLine: number;
-  linesPerPage: number;
-  charsPerPage: number;
-}
+    // Một từ dài hơn cả trang: tìm điểm cắt an toàn theo code point.
+    if (bestEnd === start) {
+      let chunk = "";
+      let firstPointLength = 1;
+      for (const point of text.slice(start)) {
+        if (!chunk) firstPointLength = point.length;
+        if (chunk && !fits(chunk + point)) break;
+        chunk += point;
+      }
+      bestEnd = start + Math.max(chunk.length, firstPointLength);
+    }
 
-export function pageMetrics(
-  fontSize: NovelFontSize,
-  lineHeight: NovelLineHeight,
-): PageMetrics {
-  const px = FONT_PX[fontSize];
-  const lhPx = px * LINE_H[lineHeight];
-  const charsPerLine = Math.max(
-    10,
-    Math.floor(PAGE_CONTENT_WIDTH / (AVG_CHAR_EM * px)),
-  );
-  const linesPerPage = Math.max(
-    1,
-    Math.floor(PAGE_CONTENT_HEIGHT / lhPx),
-  );
-  return { charsPerLine, linesPerPage, charsPerPage: charsPerLine * linesPerPage };
+    pages.push(text.slice(start, bestEnd));
+    start = bestEnd;
+  }
+  return pages.length ? pages : [text];
 }
 
 /**
- * Ghep chu cua mot canh (truong trai + truong phai) thanh van ban doc lien
- * mach. Moi noi chi them mot khoang trang khi ca hai phia deu khong co
- * khoang trang, de khong dinh hai tu lai voi nhau.
+ * Ghép nội dung hai ô của một cảnh; chỉ thêm dấu cách nếu điểm nối chưa có.
  */
 export function joinSceneText(left: string, right: string): string {
   if (!left) return right;
   if (!right) return left;
   const needsSpace = !/\s$/.test(left) && !/^\s/.test(right);
   return left + (needsSpace ? " " : "") + right;
-}
-
-/**
- * Chia van ban thanh cac trang. Moi dong khong vuot qua charsPerLine ky tu
- * (ngat theo tu, tu qua dai thi cat cung theo ky tu); moi trang khong vuot
- * qua linesPerPage dong; doan van (xuống dong) duoc giu nguyen thanh dong
- * trong. Van ban rong tra ve mot trang trong.
- */
-export function paginateText(
-  text: string,
-  charsPerLine: number,
-  linesPerPage: number,
-): string[] {
-  const lines: string[] = [];
-  for (const para of text.split("\n")) {
-    if (para === "") {
-      lines.push("");
-      continue;
-    }
-    const words = para.split(/\s+/).filter(Boolean);
-    let cur = "";
-    for (const word of words) {
-      let rest = word;
-      while (rest.length > 0) {
-        if (cur === "") {
-          if (rest.length <= charsPerLine) {
-            cur = rest;
-            rest = "";
-          } else {
-            lines.push(rest.slice(0, charsPerLine));
-            rest = rest.slice(charsPerLine);
-          }
-        } else if (cur.length + 1 + rest.length <= charsPerLine) {
-          cur += ` ${rest}`;
-          rest = "";
-        } else {
-          lines.push(cur);
-          cur = "";
-        }
-      }
-    }
-    if (cur !== "") lines.push(cur);
-  }
-  const pages: string[] = [];
-  for (let i = 0; i < lines.length; i += linesPerPage) {
-    pages.push(lines.slice(i, i + linesPerPage).join("\n"));
-  }
-  return pages.length > 0 ? pages : [""];
 }

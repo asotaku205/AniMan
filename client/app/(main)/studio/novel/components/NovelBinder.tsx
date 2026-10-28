@@ -116,7 +116,7 @@ export function NovelBinder({ s }: { s: NovelStudioState }) {
   );
 
   return (
-    <div className="sticky top-6 rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 backdrop-blur p-4 space-y-5 shadow-2xl">
+    <div className="rounded-2xl border border-amber-200/15 bg-[#1c1208]/90 backdrop-blur p-3 sm:p-4 space-y-3 sm:space-y-4 shadow-2xl max-h-[42vh] overflow-y-auto overscroll-contain xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)]">
       <div>
         <h3 className="text-amber-100/90 font-medium mb-2" style={{ fontFamily: "Shippori Mincho, serif" }}>
           Tiểu thuyết

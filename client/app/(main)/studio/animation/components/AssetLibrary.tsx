@@ -36,6 +36,7 @@ import { createPrevizObject, createPrevizScene } from "../lib/previz";
 import { BUILTIN_IMAGE_PACK } from "../lib/builtinAssets";
 import { createSceneLayer, createSceneTimeline } from "../lib/timeline";
 import {
+  inspectGlbBuffer,
   inspectGlbDataUrl,
   inspectionSummary,
 } from "../lib/modelInspect";
@@ -146,31 +147,41 @@ export function AssetLibrary({
     (a): a is Model3DAsset => a.kind === "model3d",
   );
 
-  const uploadModel = (file: File) => {
+  const uploadModel = async (file: File) => {
+    const extension = file.name.toLowerCase().split(".").pop();
+    if (extension !== "glb" && extension !== "vrm") {
+      setNote("Chỉ nhận model .glb hoặc .vrm. Hãy xuất VRM 1.0 cho nhân vật anime có rig sẵn.");
+      return;
+    }
     if (file.size > 20 * 1024 * 1024) {
       setNote("Mô hình nặng hơn 20MB — hãy dùng bản rút gọn (low-poly) để phim chạy mượt.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = String(reader.result);
-      const inspection = inspectGlbDataUrl(dataUrl) ?? undefined;
+    try {
+      const inspection = inspectGlbBuffer(await file.arrayBuffer());
+      if (extension === "vrm" && inspection.format !== "vrm") {
+        throw new Error("File .vrm không có metadata VRM hợp lệ.");
+      }
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Không đọc được file model."));
+        reader.readAsDataURL(file);
+      });
       await saveAnimAsset({
         kind: "model3d",
         id: newAssetId("model"),
-        name: file.name.replace(/\.glb$/i, ""),
+        name: file.name.replace(/\.(glb|vrm)$/i, ""),
+        format: inspection.format,
         dataUrl,
         createdAt: Date.now(),
         inspection,
       });
       await refresh();
-      setNote(
-        inspection
-          ? `Đã nạp mô hình "${file.name}" — ${inspectionSummary(inspection)}.`
-          : `Đã nạp mô hình "${file.name}" vào thư viện (không đọc được cấu trúc file).`,
-      );
-    };
-    reader.readAsDataURL(file);
+      setNote(`Đã nạp mô hình "${file.name}" — ${inspectionSummary(inspection)}.`);
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "Không nạp được model. Hãy kiểm tra lại file .glb/.vrm.");
+    }
   };
 
   const reinspectModel = async (asset: Model3DAsset) => {
@@ -585,13 +596,13 @@ export function AssetLibrary({
               </button>
             </div>
           </LibSection>
-          <LibSection title={<>MÔ HÌNH 3D CÓ SẴN (FILE .GLB)</>} defaultOpen={false}>
+          <LibSection title={<>MODEL 3D (GLB / VRM)</>} defaultOpen={false}>
             <div className="flex flex-wrap items-center gap-2 text-[12px]">
               <label className="px-3 py-2 leading-snug rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 cursor-pointer">
-                Nạp mô hình .glb vào thư viện
+                Nạp model .glb hoặc .vrm
                 <input
                   type="file"
-                  accept=".glb,model/gltf-binary"
+                  accept=".glb,.vrm,model/gltf-binary,model/vrm"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.currentTarget.files?.[0];
@@ -601,8 +612,8 @@ export function AssetLibrary({
                 />
               </label>
               <span className="text-white/35">
-                Mô hình đẹp có sẵn miễn phí ở các kho như Kenney, Quaternius
-                (giấy phép CC0) — tải file .glb về rồi nạp vào đây.
+                Nhân vật anime: dùng model .vrm đã rig. Model 3D khác: dùng .glb.
+                File được kiểm tra cấu trúc trước khi lưu.
               </span>
             </div>
             {models.length > 0 && (
@@ -662,15 +673,17 @@ export function AssetLibrary({
                         onClick={() => void reinspectModel(m)}
                         className="text-sky-300 underline underline-offset-2"
                       >
-                        Kiểm tra cấu trúc (xương · clip · tam giác)
+                        Kiểm tra model (xương · clip · tam giác)
                       </button>
                     )}
-                    <button
-                      onClick={() => setRigAsset(m)}
-                      className="mt-1 block text-violet-300 underline underline-offset-2"
-                    >
-                      Gắn xương (Phòng Rig)
-                    </button>
+                    {m.inspection && !m.inspection.hasSkeleton && (
+                      <button
+                        onClick={() => setRigAsset(m)}
+                        className="mt-1 block text-violet-300 underline underline-offset-2"
+                      >
+                        Thử gắn xương nhanh (model tĩnh)
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

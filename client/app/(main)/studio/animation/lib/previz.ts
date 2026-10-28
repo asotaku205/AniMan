@@ -118,6 +118,8 @@ export interface PrevizObject {
   poseKeys?: import("./poseTrack").PoseKey[];
   /** Mã tài sản mô hình (chỉ kind "model" dùng) — trỏ vào thư viện tài sản. */
   modelAssetId?: string;
+  /** Mức biểu cảm VRM hiện tại (0..1), lưu cùng vật thể trong cảnh. */
+  expressions?: Record<string, number>;
   /** Chuyển động gắn thêm từ file khác (chỉ kind "model" dùng) — lúc
    * nạp cảnh, mỗi nguồn được khớp sang xương nhân vật này rồi mới phát
    * (xem lib/clipRetarget). Lưu cùng dự án nên F5 vẫn còn. */

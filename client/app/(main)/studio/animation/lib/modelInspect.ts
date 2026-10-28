@@ -13,6 +13,7 @@ export interface ModelAnimationInfo {
 }
 
 export interface ModelInspection {
+  format: "glb" | "vrm";
   fileBytes: number;
   triangleCount: number;
   meshCount: number;
@@ -20,6 +21,9 @@ export interface ModelInspection {
   textureCount: number;
   hasSkeleton: boolean;
   boneCount: number;
+  humanoidBoneCount: number;
+  expressionCount: number;
+  expressionNames: string[];
   animations: ModelAnimationInfo[];
   warnings: string[];
 }
@@ -47,6 +51,7 @@ interface GltfJson {
     samplers: Array<{ input: number }>;
   }>;
   accessors?: GltfAccessor[];
+  extensions?: Record<string, unknown>;
 }
 
 const GLB_MAGIC = 0x46546c67; // "glTF"
@@ -84,6 +89,28 @@ export function inspectGlbBuffer(buf: ArrayBuffer): ModelInspection {
   const skins = json.skins ?? [];
   const boneCount = skins.reduce((sum, s) => sum + s.joints.length, 0);
   const hasSkeleton = skins.length > 0;
+  const vrm0 = json.extensions?.VRM as
+    | { humanoid?: { humanBones?: unknown[] }; blendShapeMaster?: { blendShapeGroups?: unknown[] } }
+    | undefined;
+  const vrm1 = json.extensions?.VRMC_vrm as
+    | { humanoid?: { humanBones?: Record<string, unknown> }; expressions?: { preset?: Record<string, unknown>; custom?: Record<string, unknown> } }
+    | undefined;
+  const humanoidBoneCount = Array.isArray(vrm0?.humanoid?.humanBones)
+    ? vrm0.humanoid.humanBones.length
+    : Object.keys(vrm1?.humanoid?.humanBones ?? {}).length;
+  const expressionCount = Array.isArray(vrm0?.blendShapeMaster?.blendShapeGroups)
+    ? vrm0.blendShapeMaster.blendShapeGroups.length
+    : Object.keys(vrm1?.expressions?.preset ?? {}).length +
+      Object.keys(vrm1?.expressions?.custom ?? {}).length;
+  const expressionNames = Array.isArray(vrm0?.blendShapeMaster?.blendShapeGroups)
+    ? vrm0.blendShapeMaster.blendShapeGroups
+        .map((group) => (group as { name?: string }).name?.trim() ?? "")
+        .filter(Boolean)
+    : [
+        ...Object.keys(vrm1?.expressions?.preset ?? {}),
+        ...Object.keys(vrm1?.expressions?.custom ?? {}),
+      ];
+  const format = vrm0 || vrm1 ? "vrm" : "glb";
 
   const animations: ModelAnimationInfo[] = (json.animations ?? []).map(
     (anim, i) => {
@@ -100,6 +127,9 @@ export function inspectGlbBuffer(buf: ArrayBuffer): ModelInspection {
   );
 
   const warnings: string[] = [];
+  if (format === "vrm" && humanoidBoneCount === 0) {
+    warnings.push("VRM không khai báo bộ xương humanoid đầy đủ — không thể đảm bảo retarget chuyển động.");
+  }
   if (triangleCount > GLB_TRIANGLE_BUDGET) {
     warnings.push(
       `Mô hình nặng: ${Math.round(triangleCount).toLocaleString("vi-VN")} tam giác (khuyến nghị dưới ${GLB_TRIANGLE_BUDGET.toLocaleString("vi-VN")}) — phim có thể giật, hãy giảm đa giác (decimate) trong Blender.`,
@@ -121,6 +151,7 @@ export function inspectGlbBuffer(buf: ArrayBuffer): ModelInspection {
   }
 
   return {
+    format,
     fileBytes: buf.byteLength,
     triangleCount: Math.round(triangleCount),
     meshCount,
@@ -128,6 +159,9 @@ export function inspectGlbBuffer(buf: ArrayBuffer): ModelInspection {
     textureCount: json.textures?.length ?? 0,
     hasSkeleton,
     boneCount,
+    humanoidBoneCount,
+    expressionCount,
+    expressionNames,
     animations,
     warnings,
   };
@@ -150,12 +184,21 @@ export function inspectGlbDataUrl(dataUrl: string): ModelInspection | null {
 /** Một dòng tóm tắt ngắn để hiển thị cạnh tên mô hình. */
 export function inspectionSummary(insp: ModelInspection): string {
   const parts = [
+    insp.format === "vrm" ? "VRM anime" : "GLB",
     `${insp.triangleCount.toLocaleString("vi-VN")} tam giác`,
     insp.hasSkeleton ? `${insp.boneCount} xương` : "không xương",
   ];
   if (insp.animations.length > 0) {
     parts.push(
       `${insp.animations.length} clip: ${insp.animations.map((a) => a.name).join(", ")}`,
+    );
+  }
+  if (insp.format === "vrm") {
+    parts.push(`${insp.humanoidBoneCount} xương humanoid`);
+    parts.push(
+      insp.expressionCount > 0
+        ? `${insp.expressionCount} biểu cảm${insp.expressionNames.length ? ` (${insp.expressionNames.slice(0, 4).join(", ")}${insp.expressionNames.length > 4 ? "…" : ""})` : ""}`
+        : "chưa có biểu cảm",
     );
   }
   parts.push(

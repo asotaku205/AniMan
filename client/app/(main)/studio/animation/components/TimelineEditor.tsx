@@ -323,6 +323,9 @@ export function TimelineEditor({
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     timeline.layers[0]?.id ?? null,
   );
+  const [renamingLayerId, setRenamingLayerId] = useState<string | null>(null);
+  const [renamingLayerValue, setRenamingLayerValue] = useState("");
+  const cancelLayerRenameRef = useRef(false);
   const [onion, setOnion] = useState(false);
   const [propsOpen, setPropsOpen] = useState(true);
   const [draftT, setDraftT] = useState<Transform>(IDENTITY_TRANSFORM);
@@ -802,7 +805,10 @@ export function TimelineEditor({
         imageCacheRef.current.set(layer.imageDataUrl, el);
       }
       if (img && img.complete && img.naturalWidth > 0) {
-        const scale = Math.max(STAGE_W / img.naturalWidth, STAGE_H / img.naturalHeight);
+        const fit = layer.imageFit ?? "cover";
+        const scale = fit === "contain"
+          ? Math.min(STAGE_W / img.naturalWidth, STAGE_H / img.naturalHeight)
+          : Math.max(STAGE_W / img.naturalWidth, STAGE_H / img.naturalHeight);
         const w = img.naturalWidth * scale;
         const h = img.naturalHeight * scale;
         ctx.drawImage(img, -w / 2, -h / 2, w, h);
@@ -1419,12 +1425,43 @@ export function TimelineEditor({
                 >
                   {layer.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                 </button>
-                <button
-                  onClick={() => setSelectedLayerId(layer.id)}
-                  className="flex-1 text-left text-[13px] truncate"
-                >
-                  {layer.name}
-                </button>
+                {renamingLayerId === layer.id ? (
+                  <input
+                    autoFocus
+                    value={renamingLayerValue}
+                    onChange={(e) => setRenamingLayerValue(e.currentTarget.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onBlur={() => {
+                      const name = renamingLayerValue.trim();
+                      if (!cancelLayerRenameRef.current && name) updateLayer(layer.id, { name });
+                      cancelLayerRenameRef.current = false;
+                      setRenamingLayerId(null);
+                    }}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") {
+                        cancelLayerRenameRef.current = true;
+                        setRenamingLayerValue(layer.name);
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    className="flex-1 min-w-0 bg-black/40 rounded px-1 text-[13px] outline-none ring-1 ring-pink-400"
+                    aria-label="Tên layer"
+                  />
+                ) : (
+                  <button
+                    onClick={() => setSelectedLayerId(layer.id)}
+                    onDoubleClick={() => {
+                      setRenamingLayerValue(layer.name);
+                      setRenamingLayerId(layer.id);
+                    }}
+                    title="Nhấp đúp để đổi tên"
+                    className="flex-1 text-left text-[13px] truncate"
+                  >
+                    {layer.name}
+                  </button>
+                )}
                 <input
                   type="color"
                   value={layer.color}
@@ -1461,10 +1498,25 @@ export function TimelineEditor({
                     reader.onload = () =>
                       updateLayer(selectedLayer.id, {
                         imageDataUrl: String(reader.result),
+                        imageFit: "contain",
                       });
                     reader.readAsDataURL(file);
                   }}
                 />
+                {selectedLayer.imageDataUrl && (
+                  <div className="mt-2 flex items-center gap-2 text-[11px] text-white/55">
+                    <span>Khớp ảnh</span>
+                    <select
+                      value={selectedLayer.imageFit ?? "cover"}
+                      onChange={(e) => updateLayer(selectedLayer.id, { imageFit: e.currentTarget.value as "cover" | "contain" })}
+                      className="h-7 rounded-md border border-white/10 bg-black/40 px-2 text-white/75"
+                      aria-label="Cách hiển thị ảnh"
+                    >
+                      <option value="contain">Hiện toàn ảnh</option>
+                      <option value="cover">Phủ kín khung</option>
+                    </select>
+                  </div>
+                )}
                 <button
                   onClick={() => setDrawingLayer(true)}
                   className="mt-2 px-3 py-2 leading-snug rounded-lg bg-sky-500/25 border border-sky-300/35 hover:bg-sky-500/35 text-[12px] text-white"
@@ -1741,7 +1793,8 @@ export function TimelineEditor({
               </h3>
               {slider("X", draftT.x, 0, 1, 0.005, (v) => { setDraftT({ ...draftT, x: v }); setDraftDirty(true); })}
               {slider("Y", draftT.y, 0, 1, 0.005, (v) => { setDraftT({ ...draftT, y: v }); setDraftDirty(true); })}
-              {slider("Cỡ", draftT.scale, 0.1, 3, 0.01, (v) => { setDraftT({ ...draftT, scale: v }); setDraftDirty(true); }, (v) => `${Math.round(v * 100)}%`)}
+              {slider(selectedLayer.imageDataUrl ? "Cỡ ảnh" : "Cỡ", draftT.scale, 0.1, 3, 0.01, (v) => { setDraftT({ ...draftT, scale: v }); setDraftDirty(true); }, (v) => `${Math.round(v * 100)}%`)}
+              {selectedLayer.imageDataUrl && <p className="text-[10px] text-white/40">Kéo ảnh trên sân khấu để đổi vị trí; chỉnh Cỡ ảnh rồi nhấn Đặt key để lưu kích thước tại thời điểm này.</p>}
               {slider("Xoay", draftT.rotation, -180, 180, 1, (v) => { setDraftT({ ...draftT, rotation: v }); setDraftDirty(true); }, (v) => `${Math.round(v)}°`)}
               {slider("Mờ", draftT.opacity, 0, 1, 0.01, (v) => { setDraftT({ ...draftT, opacity: v }); setDraftDirty(true); }, (v) => `${Math.round(v * 100)}%`)}
               <div className="pt-2 border-t border-white/5 space-y-2">

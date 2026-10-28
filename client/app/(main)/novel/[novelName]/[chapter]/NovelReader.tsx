@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -71,6 +71,7 @@ export function NovelReaderPage({ novel, chapterNum }: { novel: Novel; chapterNu
   const [readMode, setReadMode] = useState<ReadMode>("scroll");
   const [spreadIdx, setSpreadIdx] = useState(0);
   const [flipDir, setFlipDir] = useState<"none" | "next" | "prev">("none");
+  const bookStageRef = useRef<HTMLDivElement>(null);
 
   const th = THEMES[theme];
   const fn = FONTS[fontFamily];
@@ -88,9 +89,14 @@ export function NovelReaderPage({ novel, chapterNum }: { novel: Novel; chapterNu
   const leftPageContent = bookPages[spreadIdx * 2] ?? [];
   const rightPageContent = bookPages[spreadIdx * 2 + 1] ?? [];
 
+  const scrollToBookTop = () => {
+    bookStageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const flipPage = (dir: "next" | "prev") => {
     if (dir === "next" && spreadIdx >= totalSpreads - 1) return;
     if (dir === "prev" && spreadIdx <= 0) return;
+    scrollToBookTop();
     setFlipDir(dir);
     setTimeout(() => {
       setSpreadIdx((prev) => (dir === "next" ? prev + 1 : prev - 1));
@@ -147,7 +153,8 @@ export function NovelReaderPage({ novel, chapterNum }: { novel: Novel; chapterNu
 
     return (
       <div
-        className="min-h-screen flex flex-col"
+        ref={bookStageRef}
+        className="min-h-screen flex flex-col scroll-mt-16"
         style={{
           background: isLight
             ? "radial-gradient(ellipse at 50% 30%, #4a2e12 0%, #2a1a08 50%, #1a0e05 100%)"
@@ -379,7 +386,7 @@ export function NovelReaderPage({ novel, chapterNum }: { novel: Novel; chapterNu
 
             <div className="flex items-center gap-2">
               {Array.from({ length: Math.min(totalSpreads, 7) }).map((_, i) => (
-                <button key={i} onClick={() => setSpreadIdx(i)} className="rounded-full transition-all"
+                <button key={i} onClick={() => { scrollToBookTop(); setSpreadIdx(i); }} className="rounded-full transition-all"
                   style={{ width: i === spreadIdx ? "24px" : "8px", height: "8px",
                     background: i === spreadIdx ? (isLight ? "#c8855a" : "#e879a8") : (isLight ? "rgba(255,200,130,0.3)" : "rgba(255,255,255,0.2)") }} />
               ))}

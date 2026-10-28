@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Bot,
@@ -41,6 +41,7 @@ export function RightPanel({ s }: Props) {
   /** Layer đang đổi tên inline (dblclick vào tên) + giá trị đang soạn */
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const cancelLayerRenameRef = useRef(false);
   /** Layer đang kéo-thả để sắp xếp */
   const [dragId, setDragId] = useState<string | null>(null);
   /** Thu gọn panel thành ray 44px để lấy chỗ cho canvas (state cục bộ, không lưu). */
@@ -420,7 +421,10 @@ export function RightPanel({ s }: Props) {
                                 onChange={(e) => setEditingName(e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
                                 onBlur={() => {
-                                  s.renameLayer(layer.id, editingName);
+                                  if (!cancelLayerRenameRef.current) {
+                                    s.renameLayer(layer.id, editingName);
+                                  }
+                                  cancelLayerRenameRef.current = false;
                                   setEditingLayerId(null);
                                 }}
                                 onKeyDown={(e) => {
@@ -428,7 +432,8 @@ export function RightPanel({ s }: Props) {
                                   if (e.key === "Enter") {
                                     (e.target as HTMLInputElement).blur();
                                   } else if (e.key === "Escape") {
-                                    setEditingLayerId(null);
+                                    cancelLayerRenameRef.current = true;
+                                    (e.target as HTMLInputElement).blur();
                                   }
                                 }}
                                 className={`flex-1 min-w-0 bg-transparent border-b border-pink-500/60 text-xs px-0.5 outline-none ${
@@ -438,30 +443,36 @@ export function RightPanel({ s }: Props) {
                                 }`}
                               />
                             ) : (
-                              <span
-                                onDoubleClick={(e) => {
-                                  if (group.isAi) return;
-                                  e.stopPropagation();
-                                  setEditingName(layer.name);
-                                  setEditingLayerId(layer.id);
-                                }}
-                                title={
-                                  group.isAi
-                                    ? "Layer AI chỉ đọc — không đổi tên"
-                                    : "Double-click để đổi tên layer"
-                                }
-                                className={`flex-1 text-xs font-medium truncate ${
-                                  group.isAi
-                                    ? "cursor-default"
-                                    : "cursor-text"
-                                } ${
-                                  isActive
-                                    ? "text-white font-bold"
-                                    : "text-white/60"
-                                }`}
-                              >
-                                {layer.name}
-                              </span>
+                              <>
+                                <span
+                                  onDoubleClick={(e) => {
+                                    if (group.isAi) return;
+                                    e.stopPropagation();
+                                    setEditingName(layer.name);
+                                    setEditingLayerId(layer.id);
+                                  }}
+                                  title={group.isAi ? "Layer AI chỉ đọc" : "Double-click hoặc bấm biểu tượng bút để đổi tên"}
+                                  className={`flex-1 text-xs font-medium truncate ${
+                                    group.isAi ? "cursor-default" : "cursor-text"
+                                  } ${isActive ? "text-white font-bold" : "text-white/60"}`}
+                                >
+                                  {layer.name}
+                                </span>
+                                {!group.isAi && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingName(layer.name);
+                                      setEditingLayerId(layer.id);
+                                    }}
+                                    title="Đổi tên layer"
+                                    aria-label={`Đổi tên ${layer.name}`}
+                                    className="p-1 text-white/35 hover:text-pink-300"
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                )}
+                              </>
                             )}
 
                             {/* Lock button (layer AI vốn đã khóa — ẩn) */}
