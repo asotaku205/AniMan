@@ -14,6 +14,8 @@ import { AuthController } from "./auth.controller.js";
 import { AdminController } from "./admin.controller.js";
 import { AuditController } from "../audit/audit.controller.js";
 import { AuditModule } from "../audit/audit.module.js";
+import { AdminSettingsController } from "../settings/admin-settings.controller.js";
+import { SettingsModule } from "../settings/settings.module.js";
 import { AuthService } from "./auth.service.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
 import { LocalAuthGuard } from "./guards/local-auth.guard.js";
@@ -25,6 +27,7 @@ import { LocalStrategy } from "./strategies/local.strategy.js";
   imports: [
     UsersModule,
     AuditModule,
+    SettingsModule,
     PassportModule,
     TypeOrmModule.forFeature([RefreshSession]),
     JwtModule.registerAsync({
@@ -35,7 +38,7 @@ import { LocalStrategy } from "./strategies/local.strategy.js";
       }),
     }),
   ],
-  controllers: [AuthController, AdminController, AuditController],
+  controllers: [AuthController, AdminController, AuditController, AdminSettingsController],
   providers: [
     AuthService,
     RefreshSessionsService,

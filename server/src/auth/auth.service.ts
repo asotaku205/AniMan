@@ -13,6 +13,7 @@ import {
   IssuedRefreshToken,
   RefreshSessionsService,
 } from "./refresh-sessions.service.js";
+import { SettingsService } from "../settings/settings.service.js";
 
 export interface AccessTokenPayload {
   sub: string;
@@ -40,6 +41,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly refreshSessionsService: RefreshSessionsService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async validateLocalUser(
@@ -105,6 +107,11 @@ export class AuthService {
   async registerAndCreateSession(
     input: RegisterUserInput,
   ): Promise<SessionLoginResult> {
+    // Lát 4: đăng ký đóng thì từ chối trước khi tạo tài khoản. Thông điệp
+    // tiếng Anh theo quy ước của auth service, client dịch sang tiếng Việt.
+    if (!(await this.settingsService.isRegistrationOpen())) {
+      throw new ForbiddenException("Registration is closed");
+    }
     const user = await this.usersService.register(input);
     return this.createSessionLogin(user, false);
   }

@@ -469,7 +469,7 @@ describe("WorksService", () => {
       service.reviewSubmission({ id: admin.id, username: admin.username }, pending.id, "reject", "too short"),
     ).rejects.toMatchObject({ status: 400 });
     const rejected = await service.reviewSubmission(
-      admin.id,
+      { id: admin.id, username: admin.username },
       pending.id,
       "reject",
       "Needs better line art quality.",

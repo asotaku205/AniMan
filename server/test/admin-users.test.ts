@@ -423,10 +423,18 @@ describe("AuthService suspend checks", () => {
       create: vi.fn(),
     };
     const jwtService = { signAsync: vi.fn(async () => "access-token") };
+    const settingsService = {
+      getSettings: vi.fn(async () => ({
+        maintenance: false,
+        registrationOpen: true,
+      })),
+      isRegistrationOpen: vi.fn(async () => true),
+    };
     const auth = new AuthService(
       usersService as never,
       jwtService as never,
       refreshSessionsService as never,
+      settingsService as never,
     );
     return { auth, revoke };
   }

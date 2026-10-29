@@ -18,6 +18,10 @@ import {
   type LoginRequest,
   type RegisterRequest,
 } from "@/lib/auth-api";
+import {
+  MAINTENANCE_DETECTED_EVENT,
+  isMaintenancePayload,
+} from "@/lib/site-status";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -113,6 +117,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
 
       const response = await send(accessToken);
+      if (response.status === 503) {
+        // Bao tri bat: bao cho SiteStatusGate kiem tra lai ngay, khong
+        // doi toi luot poll 30 giay. Doc ban sao de khong anh huong
+        // body goc; loi doc thi bo qua lang.
+        void response
+          .clone()
+          .json()
+          .then((payload: unknown) => {
+            if (isMaintenancePayload(payload)) {
+              window.dispatchEvent(new Event(MAINTENANCE_DETECTED_EVENT));
+            }
+          })
+          .catch(() => undefined);
+      }
       if (response.status !== 401) {
         return response;
       }

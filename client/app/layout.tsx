@@ -2,6 +2,7 @@ import "./styles/globals.css";
 import "./styles/fonts.css";
 import "./styles/theme.css";
 import { AuthProvider } from "./auth/AuthProvider";
+import SiteStatusGate from "./SiteStatusGate";
 
 export const metadata = {
   title: "AniMan",
@@ -16,7 +17,9 @@ export default function RootLayout({
   return (
     <html lang="vi" suppressHydrationWarning>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <SiteStatusGate>{children}</SiteStatusGate>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock, Eye, EyeOff, User, Check, AtSign } from "lucide-react";
@@ -11,6 +11,8 @@ import type { SignInFormData, SignUpFormData } from "./schema";
 import { signInSchema, signUpSchema } from "./schema";
 import Field from "./components/Field";
 import { useAuth } from "../../auth/AuthProvider";
+import { AuthApiError } from "@/lib/auth-api";
+import { getSiteStatus } from "@/lib/admin-settings-api";
 
 type AuthMode = "login" | "register";
 
@@ -22,8 +24,23 @@ export default function AuthPageClient({
   const [active, setActive] = useState<AuthMode>(mode);
   const [showPw, setShowPw] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Lat 4: dang ky dong thi khoa nut gui o che do dang ky. Tai trang thai
+  // that bai thi mo (server se tu quyet dinh), form khong bi khoa oan.
+  const [registrationClosed, setRegistrationClosed] = useState(false);
   const router = useRouter();
   const { signIn, signUp, sessionError, isLoading } = useAuth();
+
+  useEffect(() => {
+    let active = true;
+    void getSiteStatus()
+      .then((status) => {
+        if (active) setRegistrationClosed(!status.registrationOpen);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const loginForm = useForm<SignInFormData>({
     resolver: zodResolver(signInSchema),
@@ -327,10 +344,17 @@ export default function AuthPageClient({
               </p>
             )}
 
+            {active === "register" && registrationClosed && (
+              <p role="alert" className="text-amber-300 text-sm">
+                Đăng ký đang tạm đóng. Vui lòng quay lại sau.
+              </p>
+            )}
+
             <button
               type="submit"
               disabled={
                 isLoading ||
+                (active === "register" && registrationClosed) ||
                 (active === "login"
                   ? loginForm.formState.isSubmitting
                   : registerForm.formState.isSubmitting)
@@ -400,6 +424,18 @@ export default function AuthPageClient({
 }
 
 function getAuthErrorMessage(error: unknown): string {
+  if (error instanceof AuthApiError) {
+    if (error.status === 503) {
+      return "Hệ thống đang bảo trì. Vui lòng quay lại sau.";
+    }
+    if (
+      error.status === 403 &&
+      error.message === "Registration is closed"
+    ) {
+      return "Đăng ký đang tạm đóng. Vui lòng quay lại sau.";
+    }
+    return error.message;
+  }
   return error instanceof Error
     ? error.message
     : "Không thể hoàn tất yêu cầu xác thực.";
