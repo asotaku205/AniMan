@@ -6,13 +6,17 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
   PayloadTooLargeException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { AuditAction } from "../audit/audit-action.enum.js";
+import {
+  AuditService,
+  type AuditActor,
+} from "../audit/audit.service.js";
 import { UserRole } from "../users/user-role.enum.js";
 import type { PublicUser } from "../users/users.service.js";
 import { WorkStatus } from "./work-status.enum.js";
@@ -245,13 +249,13 @@ function iso(value: Date | string): string {
 
 @Injectable()
 export class WorksService {
-  private readonly logger = new Logger(WorksService.name);
   private readonly uploadDir: string;
 
   constructor(
     @InjectRepository(WorkSubmission)
     private readonly submissionsRepository: Repository<WorkSubmission>,
     configService: ConfigService,
+    private readonly auditService: AuditService,
   ) {
     this.uploadDir = resolveUploadsDir(
       configService.get<string>("UPLOADS_DIR"),
@@ -440,42 +444,77 @@ export class WorksService {
     return { pending, approved, rejected, total };
   }
 
+  /**
+   * Duyệt hoặc từ chối một tác phẩm chờ duyệt (Lát 2A).
+   *
+   * Lưu quyết định và dòng audit log trong cùng một transaction (Lát 3):
+   * chỉ tác phẩm đang chờ duyệt mới duyệt được, từ chối bắt buộc có lý do
+   * tối thiểu 10 ký tự.
+   */
   async reviewSubmission(
-    reviewerId: string,
+    reviewer: AuditActor,
     id: string,
     decision: "approve" | "reject",
     reason?: string,
+    ip?: string | null,
   ): Promise<WorkSubmissionView> {
-    const submission = await this.submissionsRepository.findOne({
-      where: { id },
-      relations: { author: true },
-    });
-    if (!submission) {
-      throw new NotFoundException("Submission not found.");
-    }
-    if (submission.status !== WorkStatus.Pending) {
-      throw new ConflictException("Only pending submissions can be reviewed.");
-    }
-    if (decision === "reject") {
-      const cleanReason = reason?.trim() ?? "";
-      if (cleanReason.length < 10) {
-        throw new BadRequestException(
-          "Rejection reason must be at least 10 characters.",
-        );
-      }
-      submission.status = WorkStatus.Rejected;
-      submission.rejectReason = cleanReason;
-    } else {
-      submission.status = WorkStatus.Approved;
-      submission.rejectReason = null;
-    }
-    submission.reviewedById = reviewerId;
-    submission.reviewedAt = new Date();
-    const saved = await this.submissionsRepository.save(submission);
-    this.logger.log(
-      `Admin ${reviewerId} ${decision}d submission ${id} by ${submission.authorId}`,
+    return this.submissionsRepository.manager.transaction(
+      async (manager) => {
+        const repository = manager.getRepository(WorkSubmission);
+        const submission = await repository.findOne({
+          where: { id },
+          relations: { author: true },
+        });
+        if (!submission) {
+          throw new NotFoundException("Submission not found.");
+        }
+        if (submission.status !== WorkStatus.Pending) {
+          throw new ConflictException(
+            "Only pending submissions can be reviewed.",
+          );
+        }
+        let cleanReason: string | null = null;
+        if (decision === "reject") {
+          cleanReason = reason?.trim() ?? "";
+          if (cleanReason.length < 10) {
+            throw new BadRequestException(
+              "Rejection reason must be at least 10 characters.",
+            );
+          }
+          submission.status = WorkStatus.Rejected;
+          submission.rejectReason = cleanReason;
+        } else {
+          submission.status = WorkStatus.Approved;
+          submission.rejectReason = null;
+        }
+        submission.reviewedById = reviewer.id;
+        submission.reviewedAt = new Date();
+        const saved = await repository.save(submission);
+        const detail: Record<string, unknown> = {
+          type: submission.type,
+          visibility: submission.visibility,
+          authorUsername: submission.author?.username ?? submission.authorId,
+          previousStatus: WorkStatus.Pending,
+          newStatus: submission.status,
+        };
+        if (decision === "reject") {
+          detail.reason = cleanReason;
+        }
+        await this.auditService.record(manager, {
+          actor: reviewer,
+          action:
+            decision === "reject"
+              ? AuditAction.WorkRejected
+              : AuditAction.WorkApproved,
+          targetType: "work_submission",
+          targetId: submission.id,
+          targetLabel: submission.title,
+          detail,
+          ip,
+        });
+        return this.toView(saved);
+      },
     );
-    return this.toView(saved);
   }
 
   async resubmit(authorId: string, id: string): Promise<WorkSubmissionView> {

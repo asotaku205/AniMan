@@ -1,4 +1,6 @@
 import dataSource from "../database/data-source.js";
+import { AuditLog } from "../audit/audit-log.entity.js";
+import { AuditService } from "../audit/audit.service.js";
 import { User } from "../users/user.entity.js";
 import { UsersService } from "../users/users.service.js";
 
@@ -16,7 +18,11 @@ async function main(): Promise<void> {
 
   await dataSource.initialize();
   try {
-    const usersService = new UsersService(dataSource.getRepository(User));
+    const auditService = new AuditService(dataSource.getRepository(AuditLog));
+    const usersService = new UsersService(
+      dataSource.getRepository(User),
+      auditService,
+    );
     const admin = await usersService.promoteToAdmin(username, password);
     console.info(`Admin role granted to ${admin.username}.`);
   } finally {

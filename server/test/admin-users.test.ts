@@ -9,6 +9,9 @@ import { JwtAuthGuard } from "../src/auth/guards/jwt-auth.guard.js";
 import { RolesGuard } from "../src/auth/guards/roles.guard.js";
 import { ROLES_METADATA_KEY } from "../src/auth/decorators/roles.decorator.js";
 import { AdminController } from "../src/auth/admin.controller.js";
+import { AuditAction } from "../src/audit/audit-action.enum.js";
+import { AuditLog } from "../src/audit/audit-log.entity.js";
+import { AuditService } from "../src/audit/audit.service.js";
 import {
   ChangeAdminUserRoleDto,
   ChangeAdminUserStatusDto,
@@ -118,8 +121,23 @@ class FakeQueryBuilder {
   }
 }
 
+/** Kho luu audit gia: chi nhan ghi qua EntityManager cua giao dich. */
+class FakeAuditLogStore {
+  rows: AuditLog[] = [];
+
+  create(partial: Partial<AuditLog>): AuditLog {
+    return Object.assign(new AuditLog(), partial);
+  }
+
+  async save(row: AuditLog): Promise<AuditLog> {
+    this.rows.push(row);
+    return row;
+  }
+}
+
 class FakeUsersRepository {
   rows: User[];
+  auditRows = new FakeAuditLogStore();
   lastQueryBuilder: FakeQueryBuilder | null = null;
   readonly manager: {
     transaction: <T>(cb: (manager: unknown) => Promise<T>) => Promise<T>;
@@ -127,9 +145,13 @@ class FakeUsersRepository {
 
   constructor(rows: User[]) {
     this.rows = rows;
+    const self = this;
     this.manager = {
       transaction: async <T,>(cb: (manager: unknown) => Promise<T>) => {
-        const manager = { getRepository: () => this };
+        const manager = {
+          getRepository: (entity: unknown) =>
+            entity === AuditLog ? self.auditRows : self,
+        };
         return cb(manager);
       },
     };
@@ -163,10 +185,14 @@ class FakeUsersRepository {
 function makeService(rows: User[]): {
   service: UsersService;
   repo: FakeUsersRepository;
+  auditRows: FakeAuditLogStore;
 } {
   const repo = new FakeUsersRepository(rows);
-  const service = new UsersService(repo as never);
-  return { service, repo };
+  // Repository don doc co tinh de trong: record() phai dung EntityManager
+  // cua giao dich, neu dung nham repo nay se vo ngay.
+  const auditService = new AuditService({} as never);
+  const service = new UsersService(repo as never, auditService);
+  return { service, repo, auditRows: repo.auditRows };
 }
 
 const actor = makeUser({
@@ -175,6 +201,8 @@ const actor = makeUser({
   displayName: "Admin",
   role: UserRole.Admin,
 });
+
+const actorRef = { id: actor.id, username: actor.username };
 
 describe("UsersService.listUsers", () => {
   it("phan trang va dem dung, moi nhat truoc", async () => {
@@ -233,21 +261,21 @@ describe("UsersService.changeRole", () => {
   it("cap quyen admin cho user thuong", async () => {
     const target = makeUser({ id: "u1", username: "reader" });
     const { service } = makeService([actor, target]);
-    const result = await service.changeRole(actor.id, target.id, UserRole.Admin);
+    const result = await service.changeRole(actorRef, target.id, UserRole.Admin);
     expect(result.role).toBe(UserRole.Admin);
   });
 
   it("chan tu doi vai tro cua chinh minh", async () => {
     const { service } = makeService([actor]);
     await expect(
-      service.changeRole(actor.id, actor.id, UserRole.User),
+      service.changeRole(actorRef, actor.id, UserRole.User),
     ).rejects.toThrow("Cannot change your own role");
   });
 
   it("chan ha quyen admin cuoi cung", async () => {
     const { service } = makeService([actor]);
     await expect(
-      service.changeRole("other-admin", actor.id, UserRole.User),
+      service.changeRole({ id: "other-admin", username: "other-admin" }, actor.id, UserRole.User),
     ).rejects.toThrow("Cannot demote the last admin");
   });
 
@@ -258,14 +286,14 @@ describe("UsersService.changeRole", () => {
       role: UserRole.Admin,
     });
     const { service } = makeService([actor, second]);
-    const result = await service.changeRole(actor.id, second.id, UserRole.User);
+    const result = await service.changeRole(actorRef, second.id, UserRole.User);
     expect(result.role).toBe(UserRole.User);
   });
 
   it("404 khi user khong ton tai", async () => {
     const { service } = makeService([actor]);
     await expect(
-      service.changeRole(actor.id, "missing", UserRole.Admin),
+      service.changeRole(actorRef, "missing", UserRole.Admin),
     ).rejects.toThrow("User not found");
   });
 });
@@ -275,13 +303,13 @@ describe("UsersService.changeStatus", () => {
     const target = makeUser({ id: "u1" });
     const { service } = makeService([actor, target]);
     const locked = await service.changeStatus(
-      actor.id,
+      actorRef,
       target.id,
       UserStatus.Suspended,
     );
     expect(locked.status).toBe(UserStatus.Suspended);
     const unlocked = await service.changeStatus(
-      actor.id,
+      actorRef,
       target.id,
       UserStatus.Active,
     );
@@ -296,22 +324,77 @@ describe("UsersService.changeStatus", () => {
     });
     const { service } = makeService([actor, second]);
     await expect(
-      service.changeStatus(actor.id, second.id, UserStatus.Suspended),
+      service.changeStatus(actorRef, second.id, UserStatus.Suspended),
     ).rejects.toThrow("Cannot suspend an admin account");
   });
 
   it("chan tu khoa chinh minh", async () => {
     const { service } = makeService([actor]);
     await expect(
-      service.changeStatus(actor.id, actor.id, UserStatus.Suspended),
+      service.changeStatus(actorRef, actor.id, UserStatus.Suspended),
     ).rejects.toThrow("Cannot change your own account status");
   });
 
   it("404 khi user khong ton tai", async () => {
     const { service } = makeService([actor]);
     await expect(
-      service.changeStatus(actor.id, "missing", UserStatus.Suspended),
+      service.changeStatus(actorRef, "missing", UserStatus.Suspended),
     ).rejects.toThrow("User not found");
+  });
+});
+
+describe("UsersService audit log (Lat 3)", () => {
+  it("ghi mot dong user.role_changed dung actor, doi tuong, chi tiet va IP", async () => {
+    const target = makeUser({ id: "u1", username: "reader" });
+    const { service, auditRows } = makeService([actor, target]);
+    await service.changeRole(actorRef, target.id, UserRole.Admin, "203.0.113.7");
+    expect(auditRows.rows).toHaveLength(1);
+    const row = auditRows.rows[0]!;
+    expect(row.action).toBe(AuditAction.UserRoleChanged);
+    expect(row.actorId).toBe(actor.id);
+    expect(row.actorUsername).toBe("admin");
+    expect(row.targetType).toBe("user");
+    expect(row.targetId).toBe("u1");
+    expect(row.targetLabel).toBe("reader");
+    expect(row.detail).toEqual({ previousRole: "user", newRole: "admin" });
+    expect(row.ip).toBe("203.0.113.7");
+  });
+
+  it("khong ghi log khi vai tro khong doi va khi doi vai tro that bai", async () => {
+    const target = makeUser({ id: "u1", role: UserRole.Admin });
+    const { service, auditRows } = makeService([actor, target]);
+    await service.changeRole(actorRef, target.id, UserRole.Admin);
+    expect(auditRows.rows).toHaveLength(0);
+    const onlyAdmin = makeService([actor]);
+    await expect(
+      onlyAdmin.service.changeRole(
+        { id: "other-admin", username: "other" },
+        actor.id,
+        UserRole.User,
+      ),
+    ).rejects.toThrow("Cannot demote the last admin");
+    expect(onlyAdmin.auditRows.rows).toHaveLength(0);
+  });
+
+  it("ghi user.suspended roi user.unsuspended, khong ghi khi trang thai khong doi", async () => {
+    const target = makeUser({ id: "u1", username: "reader" });
+    const { service, auditRows } = makeService([actor, target]);
+    await service.changeStatus(actorRef, target.id, UserStatus.Suspended, null);
+    await service.changeStatus(actorRef, target.id, UserStatus.Active, null);
+    await service.changeStatus(actorRef, target.id, UserStatus.Active, null);
+    expect(auditRows.rows.map((row) => row.action)).toEqual([
+      AuditAction.UserSuspended,
+      AuditAction.UserUnsuspended,
+    ]);
+    expect(auditRows.rows[0]!.detail).toEqual({
+      previousStatus: "active",
+      newStatus: "suspended",
+    });
+    expect(auditRows.rows[1]!.detail).toEqual({
+      previousStatus: "suspended",
+      newStatus: "active",
+    });
+    expect(auditRows.rows[0]!.ip).toBeNull();
   });
 });
 
@@ -442,9 +525,10 @@ describe("AdminController (Lat 2)", () => {
   it("PATCH role truyen id actor tu request.user", async () => {
     await controller.changeUserRole(request, "target-1", { role: UserRole.Admin });
     expect(usersService.changeRole).toHaveBeenCalledWith(
-      actor.id,
+      { id: actor.id, username: actor.username },
       "target-1",
       UserRole.Admin,
+      null,
     );
   });
 
@@ -453,9 +537,10 @@ describe("AdminController (Lat 2)", () => {
       status: UserStatus.Suspended,
     });
     expect(usersService.changeStatus).toHaveBeenCalledWith(
-      actor.id,
+      { id: actor.id, username: actor.username },
       "target-1",
       UserStatus.Suspended,
+      null,
     );
   });
 

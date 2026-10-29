@@ -8,6 +8,8 @@ import { CreateAuthTables1780768800000 } from "./database/migrations/17807688000
 import { AddUserRoles1791400000000 } from "./database/migrations/1791400000000-AddUserRoles.js";
 import { AddUserStatusAndMultipleAdmins1793228985000 } from "./database/migrations/1793228985000-AddUserStatusAndMultipleAdmins.js";
 import { CreateWorkSubmissions1793232564000 } from "./database/migrations/1793232564000-CreateWorkSubmissions.js";
+import { CreateAuditLogs1793234022000 } from "./database/migrations/1793234022000-CreateAuditLogs.js";
+import { AuditLog } from "./audit/audit-log.entity.js";
 import { User } from "./users/user.entity.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { AiConsentModule } from "./ai/consent/ai-consent.module.js";
@@ -37,12 +39,13 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         username: configService.get<string>("DATABASE_USERNAME"),
         password: configService.get<string>("DATABASE_PASSWORD"),
         database: "animan",
-        entities: [User, RefreshSession, WorkSubmission],
+        entities: [User, RefreshSession, WorkSubmission, AuditLog],
         migrations: [
           CreateAuthTables1780768800000,
           AddUserRoles1791400000000,
           AddUserStatusAndMultipleAdmins1793228985000,
           CreateWorkSubmissions1793232564000,
+          CreateAuditLogs1793234022000,
         ],
         migrationsRun: false,
         synchronize: false,

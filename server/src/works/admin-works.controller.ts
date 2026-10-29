@@ -65,9 +65,11 @@ export class AdminWorksController {
     @Param("id") id: string,
   ): Promise<WorkSubmissionView> {
     return this.worksService.reviewSubmission(
-      request.user.id,
+      { id: request.user.id, username: request.user.username },
       id,
       "approve",
+      undefined,
+      request.ip ?? null,
     );
   }
 
@@ -79,10 +81,11 @@ export class AdminWorksController {
     @Body() body: RejectWorkSubmissionDto,
   ): Promise<WorkSubmissionView> {
     return this.worksService.reviewSubmission(
-      request.user.id,
+      { id: request.user.id, username: request.user.username },
       id,
       "reject",
       body.reason,
+      request.ip ?? null,
     );
   }
 }

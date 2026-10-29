@@ -3,7 +3,6 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -11,6 +10,11 @@ import { InjectRepository } from "@nestjs/typeorm";
 import * as argon2 from "argon2";
 import { randomUUID } from "node:crypto";
 import { QueryFailedError, Repository } from "typeorm";
+import { AuditAction } from "../audit/audit-action.enum.js";
+import {
+  AuditService,
+  type AuditActor,
+} from "../audit/audit.service.js";
 import { User } from "./user.entity.js";
 import { UserRole } from "./user-role.enum.js";
 import { UserStatus } from "./user-status.enum.js";
@@ -85,11 +89,10 @@ function isConstraintConflict(error: unknown, constraint: string): boolean {
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name);
-
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    private readonly auditService: AuditService,
   ) {}
 
   async register(input: RegisterUserInput): Promise<PublicUser> {
@@ -210,12 +213,14 @@ export class UsersService {
    *
    * Chặn tự đổi vai trò của chính mình, và chặn hạ quyền admin cuối cùng.
    * Đếm số admin và lưu thay đổi trong cùng một transaction để hai lần hạ
-   * quyền đồng thời không làm hệ thống mất hết admin.
+   * quyền đồng thời không làm hệ thống mất hết admin. Dòng audit log ghi
+   * trong cùng transaction (Lát 3); không đổi vai trò thì không ghi log.
    */
   async changeRole(
-    actorId: string,
+    actor: AuditActor,
     targetId: string,
     role: UserRole,
+    ip?: string | null,
   ): Promise<PublicUser> {
     return this.usersRepository.manager.transaction(async (manager) => {
       const repository = manager.getRepository(User);
@@ -223,7 +228,7 @@ export class UsersService {
       if (!target) {
         throw new NotFoundException("User not found");
       }
-      if (actorId === targetId) {
+      if (actor.id === targetId) {
         throw new ForbiddenException("Cannot change your own role");
       }
       if (target.role === role) {
@@ -235,12 +240,18 @@ export class UsersService {
           throw new ConflictException("Cannot demote the last admin");
         }
       }
+      const previousRole = target.role;
       target.role = role;
       const saved = await repository.save(target);
-      // Ghi log tạm thay audit log thật cho tới Lát 3.
-      this.logger.log(
-        `Admin ${actorId} changed role of user ${targetId} to ${role}`,
-      );
+      await this.auditService.record(manager, {
+        actor,
+        action: AuditAction.UserRoleChanged,
+        targetType: "user",
+        targetId: target.id,
+        targetLabel: target.username,
+        detail: { previousRole, newRole: role },
+        ip,
+      });
       return this.toPublicUser(saved);
     });
   }
@@ -250,36 +261,50 @@ export class UsersService {
    *
    * Chặn tự khóa chính mình và chặn khóa tài khoản quản trị viên. Mở khóa
    * tài khoản quản trị viên (trường hợp bị khóa trước khi lên admin) vẫn
-   * cho phép.
+   * cho phép. Lưu thay đổi và dòng audit log trong cùng một transaction
+   * (Lát 3); trạng thái không đổi thì không ghi log.
    */
   async changeStatus(
-    actorId: string,
+    actor: AuditActor,
     targetId: string,
     status: UserStatus,
+    ip?: string | null,
   ): Promise<PublicUser> {
-    const target = await this.usersRepository.findOneBy({ id: targetId });
-    if (!target) {
-      throw new NotFoundException("User not found");
-    }
-    if (actorId === targetId) {
-      throw new ForbiddenException("Cannot change your own account status");
-    }
-    if (
-      status === UserStatus.Suspended &&
-      target.role === UserRole.Admin
-    ) {
-      throw new ForbiddenException("Cannot suspend an admin account");
-    }
-    if (target.status === status) {
-      return this.toPublicUser(target);
-    }
-    target.status = status;
-    const saved = await this.usersRepository.save(target);
-    // Ghi log tạm thay audit log thật cho tới Lát 3.
-    this.logger.log(
-      `Admin ${actorId} changed status of user ${targetId} to ${status}`,
-    );
-    return this.toPublicUser(saved);
+    return this.usersRepository.manager.transaction(async (manager) => {
+      const repository = manager.getRepository(User);
+      const target = await repository.findOneBy({ id: targetId });
+      if (!target) {
+        throw new NotFoundException("User not found");
+      }
+      if (actor.id === targetId) {
+        throw new ForbiddenException("Cannot change your own account status");
+      }
+      if (
+        status === UserStatus.Suspended &&
+        target.role === UserRole.Admin
+      ) {
+        throw new ForbiddenException("Cannot suspend an admin account");
+      }
+      if (target.status === status) {
+        return this.toPublicUser(target);
+      }
+      const previousStatus = target.status;
+      target.status = status;
+      const saved = await repository.save(target);
+      await this.auditService.record(manager, {
+        actor,
+        action:
+          status === UserStatus.Suspended
+            ? AuditAction.UserSuspended
+            : AuditAction.UserUnsuspended,
+        targetType: "user",
+        targetId: target.id,
+        targetLabel: target.username,
+        detail: { previousStatus, newStatus: status },
+        ip,
+      });
+      return this.toPublicUser(saved);
+    });
   }
 
   findByUsernameForAuthentication(username: string): Promise<User | null> {

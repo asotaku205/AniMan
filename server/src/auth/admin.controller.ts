@@ -54,7 +54,12 @@ export class AdminController {
     @Param("id") id: string,
     @Body() body: ChangeAdminUserRoleDto,
   ): Promise<PublicUser> {
-    return this.usersService.changeRole(request.user.id, id, body.role);
+    return this.usersService.changeRole(
+      { id: request.user.id, username: request.user.username },
+      id,
+      body.role,
+      request.ip ?? null,
+    );
   }
 
   @Patch("users/:id/status")
@@ -63,6 +68,11 @@ export class AdminController {
     @Param("id") id: string,
     @Body() body: ChangeAdminUserStatusDto,
   ): Promise<PublicUser> {
-    return this.usersService.changeStatus(request.user.id, id, body.status);
+    return this.usersService.changeStatus(
+      { id: request.user.id, username: request.user.username },
+      id,
+      body.status,
+      request.ip ?? null,
+    );
   }
 }

@@ -13,6 +13,9 @@ import { RolesGuard } from "../src/auth/guards/roles.guard.js";
 import { ROLES_METADATA_KEY } from "../src/auth/decorators/roles.decorator.js";
 import { User } from "../src/users/user.entity.js";
 import { UserRole } from "../src/users/user-role.enum.js";
+import { AuditAction } from "../src/audit/audit-action.enum.js";
+import { AuditLog } from "../src/audit/audit-log.entity.js";
+import { AuditService } from "../src/audit/audit.service.js";
 import { AdminWorksController } from "../src/works/admin-works.controller.js";
 import { MulterExceptionFilter } from "../src/works/multer-exception.filter.js";
 import { OptionalJwtAuthGuard } from "../src/works/optional-jwt-auth.guard.js";
@@ -65,10 +68,41 @@ function matchesWhere(
   );
 }
 
+/** Kho luu audit gia cho FakeWorkSubmissionsRepository. */
+class FakeAuditRepository {
+  rows: AuditLog[] = [];
+
+  create(partial: Partial<AuditLog>): AuditLog {
+    return Object.assign(new AuditLog(), partial);
+  }
+
+  async save(row: AuditLog): Promise<AuditLog> {
+    this.rows.push(row);
+    return row;
+  }
+}
+
 /** Repository giả lưu trong bộ nhớ, đủ cho find/count/findOne/save. */
 class FakeWorkSubmissionsRepository {
   items: WorkSubmission[] = [];
   authors = new Map<string, User>();
+  auditRows = new FakeAuditRepository();
+
+  /** EntityManager gia: giao dich tra ve manager co getRepository. */
+  get manager(): {
+    transaction: <T>(cb: (manager: unknown) => Promise<T>) => Promise<T>;
+  } {
+    const self = this;
+    return {
+      transaction: async <T,>(cb: (manager: unknown) => Promise<T>) => {
+        const manager = {
+          getRepository: (entity: unknown) =>
+            entity === AuditLog ? self.auditRows : self,
+        };
+        return cb(manager);
+      },
+    };
+  }
 
   create(partial: Partial<WorkSubmission>): WorkSubmission {
     return Object.assign(new WorkSubmission(), partial);
@@ -248,6 +282,7 @@ describe("WorksService", () => {
   let tmpDir: string;
   let repository: FakeWorkSubmissionsRepository;
   let service: WorksService;
+  let auditRows: FakeAuditRepository;
   const author = makeUser("author-1", UserRole.User);
   const admin = makeUser("admin-1", UserRole.Admin);
 
@@ -307,9 +342,12 @@ describe("WorksService", () => {
     const config = {
       get: (key: string) => (key === "UPLOADS_DIR" ? tmpDir : undefined),
     } as unknown as ConfigService;
+    const auditService = new AuditService({} as never);
+    auditRows = repository.auditRows;
     service = new WorksService(
       repository as unknown as Repository<WorkSubmission>,
       config,
+      auditService,
     );
   });
 
@@ -428,7 +466,7 @@ describe("WorksService", () => {
   it("reviews only pending submissions and requires a reason to reject", async () => {
     const pending = await seedSubmission({});
     await expect(
-      service.reviewSubmission(admin.id, pending.id, "reject", "too short"),
+      service.reviewSubmission({ id: admin.id, username: admin.username }, pending.id, "reject", "too short"),
     ).rejects.toMatchObject({ status: 400 });
     const rejected = await service.reviewSubmission(
       admin.id,
@@ -440,20 +478,75 @@ describe("WorksService", () => {
     expect(rejected.rejectReason).toBe("Needs better line art quality.");
     expect(rejected.reviewedAt).not.toBeNull();
     await expect(
-      service.reviewSubmission(admin.id, pending.id, "approve"),
+      service.reviewSubmission({ id: admin.id, username: admin.username }, pending.id, "approve"),
     ).rejects.toMatchObject({ status: 409 });
 
     const second = await seedSubmission({});
     const approved = await service.reviewSubmission(
-      admin.id,
+      { id: admin.id, username: admin.username },
       second.id,
       "approve",
     );
     expect(approved.status).toBe(WorkStatus.Approved);
     expect(approved.rejectReason).toBeNull();
     await expect(
-      service.reviewSubmission(admin.id, "missing-id", "approve"),
+      service.reviewSubmission({ id: admin.id, username: admin.username }, "missing-id", "approve"),
     ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("ghi audit log khi duyet va tu choi, khong ghi khi duyet that bai", async () => {
+    const rejectedSeed = await seedSubmission({ title: "Bi tu choi" });
+    await expect(
+      service.reviewSubmission(
+        { id: admin.id, username: admin.username },
+        rejectedSeed.id,
+        "reject",
+        "too short",
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(auditRows.rows).toHaveLength(0);
+
+    const rejected = await service.reviewSubmission(
+      { id: admin.id, username: admin.username },
+      rejectedSeed.id,
+      "reject",
+      "Needs better line art quality.",
+      "203.0.113.7",
+    );
+    expect(rejected.status).toBe(WorkStatus.Rejected);
+    expect(auditRows.rows).toHaveLength(1);
+    const rejectRow = auditRows.rows[0]!;
+    expect(rejectRow.action).toBe(AuditAction.WorkRejected);
+    expect(rejectRow.actorId).toBe(admin.id);
+    expect(rejectRow.actorUsername).toBe(admin.username);
+    expect(rejectRow.targetType).toBe("work_submission");
+    expect(rejectRow.targetLabel).toBe("Bi tu choi");
+    expect(rejectRow.detail.reason).toBe("Needs better line art quality.");
+    expect(rejectRow.detail.previousStatus).toBe("pending");
+    expect(rejectRow.detail.newStatus).toBe("rejected");
+    expect(rejectRow.ip).toBe("203.0.113.7");
+
+    await expect(
+      service.reviewSubmission(
+        { id: admin.id, username: admin.username },
+        rejectedSeed.id,
+        "approve",
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(auditRows.rows).toHaveLength(1);
+
+    const approvedSeed = await seedSubmission({ title: "Duoc duyet" });
+    await service.reviewSubmission(
+      { id: admin.id, username: admin.username },
+      approvedSeed.id,
+      "approve",
+    );
+    expect(auditRows.rows).toHaveLength(2);
+    const approveRow = auditRows.rows[1]!;
+    expect(approveRow.action).toBe(AuditAction.WorkApproved);
+    expect(approveRow.targetLabel).toBe("Duoc duyet");
+    expect(approveRow.detail.visibility).toBe("public");
+    expect(approveRow.detail.type).toBe("manga");
   });
 
   it("resubmits only the author's own rejected submissions", async () => {

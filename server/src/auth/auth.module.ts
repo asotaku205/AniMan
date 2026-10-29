@@ -12,6 +12,8 @@ import {
 } from "./auth.config.js";
 import { AuthController } from "./auth.controller.js";
 import { AdminController } from "./admin.controller.js";
+import { AuditController } from "../audit/audit.controller.js";
+import { AuditModule } from "../audit/audit.module.js";
 import { AuthService } from "./auth.service.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
 import { LocalAuthGuard } from "./guards/local-auth.guard.js";
@@ -22,6 +24,7 @@ import { LocalStrategy } from "./strategies/local.strategy.js";
 @Module({
   imports: [
     UsersModule,
+    AuditModule,
     PassportModule,
     TypeOrmModule.forFeature([RefreshSession]),
     JwtModule.registerAsync({
@@ -32,7 +35,7 @@ import { LocalStrategy } from "./strategies/local.strategy.js";
       }),
     }),
   ],
-  controllers: [AuthController, AdminController],
+  controllers: [AuthController, AdminController, AuditController],
   providers: [
     AuthService,
     RefreshSessionsService,

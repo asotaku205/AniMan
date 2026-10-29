@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuthModule } from "../auth/auth.module.js";
+import { AuditModule } from "../audit/audit.module.js";
 import { User } from "../users/user.entity.js";
 import { AdminWorksController } from "./admin-works.controller.js";
 import { OptionalJwtAuthGuard } from "./optional-jwt-auth.guard.js";
@@ -9,7 +10,7 @@ import { WorksController } from "./works.controller.js";
 import { WorksService } from "./works.service.js";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WorkSubmission, User]), AuthModule],
+  imports: [TypeOrmModule.forFeature([WorkSubmission, User]), AuthModule, AuditModule],
   controllers: [WorksController, AdminWorksController],
   providers: [WorksService, OptionalJwtAuthGuard],
   exports: [WorksService],
