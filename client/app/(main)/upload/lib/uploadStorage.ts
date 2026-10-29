@@ -3,7 +3,11 @@
  * `uploads` (keyPath "id"). Khác với các studio (dữ liệu làm việc), đây
  * là bản ghi "đã đăng" — sau khi đăng, tác phẩm hiện trong trang
  * "Sáng tác của tôi" (/my-works). File/ảnh lưu dạng dataUrl kèm bản ghi
- * (giới hạn ở form: file tác phẩm ≤10MB, ảnh bìa ≤5MB).
+ * (giới hạn cũ ở form: file tác phẩm ≤10MB, ảnh bìa ≤5MB).
+ *
+ * Từ Lát 2A, form đăng mới gửi file lên server để duyệt; các bản ghi
+ * cũ ở đây chỉ còn để đọc lại, hiển thị với nhãn "Chỉ lưu trên máy
+ * này", không tự tải lên server.
  */
 
 export type UploadWorkType = "manga" | "novel" | "animation" | "fanart";
@@ -99,6 +103,7 @@ export const COVER_MAX_BYTES = 5 * 1024 * 1024;
 export function workFileAccept(type: UploadWorkType): string {
   switch (type) {
     case "manga":
+      return "image/*,.cbz,.zip";
     case "fanart":
       return "image/*";
     case "novel":
@@ -111,5 +116,7 @@ export function workFileAccept(type: UploadWorkType): string {
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }

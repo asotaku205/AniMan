@@ -5,6 +5,8 @@ import { User } from "../users/user.entity.js";
 import { CreateAuthTables1780768800000 } from "./migrations/1780768800000-CreateAuthTables.js";
 import { AddUserRoles1791400000000 } from "./migrations/1791400000000-AddUserRoles.js";
 import { AddUserStatusAndMultipleAdmins1793228985000 } from "./migrations/1793228985000-AddUserStatusAndMultipleAdmins.js";
+import { CreateWorkSubmissions1793232564000 } from "./migrations/1793232564000-CreateWorkSubmissions.js";
+import { WorkSubmission } from "../works/work-submission.entity.js";
 
 function requiredEnvironmentVariable(name: string): string {
   const value = process.env[name];
@@ -21,11 +23,12 @@ export default new DataSource({
   username: requiredEnvironmentVariable("DATABASE_USERNAME"),
   password: requiredEnvironmentVariable("DATABASE_PASSWORD"),
   database: "animan",
-  entities: [User, RefreshSession],
+  entities: [User, RefreshSession, WorkSubmission],
   migrations: [
     CreateAuthTables1780768800000,
     AddUserRoles1791400000000,
     AddUserStatusAndMultipleAdmins1793228985000,
+    CreateWorkSubmissions1793232564000,
   ],
   synchronize: false,
 });

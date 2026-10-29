@@ -11,13 +11,18 @@ import UploadVisibilityPicker from "./components/UploadVisibilityPicker";
 import { type VisibilityMode, type WorkType } from "./types";
 import {
   COVER_MAX_BYTES,
-  WORK_FILE_MAX_BYTES,
   formatBytes,
-  newUploadId,
-  saveUpload,
   workFileAccept,
   type UploadSourceRef,
 } from "./lib/uploadStorage";
+import {
+  WORK_FILE_MAX_BYTES,
+  checkWorkUploadLimits,
+  submitWork,
+  WorksApiError,
+  type WorkType as ApiWorkType,
+} from "@/lib/works-api";
+import { useAuth } from "@/app/auth/AuthProvider";
 import { listNovels } from "../studio/novel/lib/novelStorage";
 import { getAllProjectsFromDB } from "../studio/manga-ai/lib/mangaStorage";
 import { listAnimProjects } from "../studio/animation/lib/animStorage";
@@ -47,6 +52,7 @@ function readAsDataUrl(file: File): Promise<string> {
 
 export default function UploadPageClient() {
   const router = useRouter();
+  const { getAccessToken } = useAuth();
   const [type, setType] = useState<WorkType>("manga");
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
@@ -55,16 +61,22 @@ export default function UploadPageClient() {
   const [tagInput, setTagInput] = useState("");
   const [visibility, setVisibility] = useState<VisibilityMode>("public");
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [workFile, setWorkFile] = useState<{
     name: string;
     size: number;
-    dataUrl: string;
+    file: File;
   } | null>(null);
   const [studioOptions, setStudioOptions] = useState<StudioOption[]>([]);
   const [studioValue, setStudioValue] = useState("");
   const [titleError, setTitleError] = useState("");
   const [fileError, setFileError] = useState("");
   const [coverError, setCoverError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<{
+    loaded: number;
+    total: number;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const workFileRef = useRef<HTMLInputElement>(null);
@@ -117,15 +129,19 @@ export default function UploadPageClient() {
       return;
     }
     setCoverError("");
+    setCoverFile(file);
     setCoverPreview(await readAsDataUrl(file));
   };
 
   const onWorkFile = async (file?: File | null) => {
     if (!file) return;
-    if (file.size > WORK_FILE_MAX_BYTES) {
-      setFileError(
-        `File quá lớn (${formatBytes(file.size)}). Tối đa ${formatBytes(WORK_FILE_MAX_BYTES)}.`,
-      );
+    const limitError = checkWorkUploadLimits(
+      type as ApiWorkType,
+      file,
+      coverFile,
+    );
+    if (limitError) {
+      setFileError(limitError);
       setWorkFile(null);
       return;
     }
@@ -133,7 +149,7 @@ export default function UploadPageClient() {
     setWorkFile({
       name: file.name,
       size: file.size,
-      dataUrl: await readAsDataUrl(file),
+      file,
     });
   };
 
@@ -154,26 +170,41 @@ export default function UploadPageClient() {
       return;
     }
     setTitleError("");
+    if (!workFile) {
+      setFileError("Chưa chọn file tác phẩm.");
+      return;
+    }
+    const limitError = checkWorkUploadLimits(
+      type as ApiWorkType,
+      workFile.file,
+      coverFile,
+    );
+    if (limitError) {
+      setFileError(limitError);
+      return;
+    }
+    setSubmitError("");
     setSaving(true);
+    setUploadProgress(null);
     try {
       const source =
         studioOptions.find((o) => o.value === studioValue)?.ref ?? null;
-      const now = Date.now();
-      await saveUpload({
-        id: newUploadId(),
-        type,
-        title: title.trim(),
-        desc: desc.trim(),
-        genre: genre.trim(),
-        tags,
-        visibility,
-        coverDataUrl: coverPreview,
-        fileName: workFile?.name ?? null,
-        fileSize: workFile?.size ?? 0,
-        fileDataUrl: workFile?.dataUrl ?? null,
-        sourceRef: source,
-        createdAt: now,
-        updatedAt: now,
+      const formData = new FormData();
+      formData.set("type", type);
+      formData.set("title", title.trim());
+      formData.set("description", desc.trim());
+      formData.set("genre", genre.trim());
+      formData.set("tags", JSON.stringify(tags));
+      formData.set("visibility", visibility);
+      if (source) {
+        formData.set("sourceRef", JSON.stringify(source));
+      }
+      formData.set("file", workFile.file);
+      if (coverFile) {
+        formData.set("cover", coverFile);
+      }
+      await submitWork({ getAccessToken }, formData, (loaded, total) => {
+        setUploadProgress({ loaded, total });
       });
       if (typeof window !== "undefined") {
         window.dispatchEvent(
@@ -184,13 +215,22 @@ export default function UploadPageClient() {
       }
       await recordNotification(
         "upload",
-        `Đã đăng “${title.trim()}”`,
-        "Tác phẩm đã lưu và hiện trong Sáng tác của tôi.",
+        `Đã gửi duyệt “${title.trim()}”`,
+        "Tác phẩm đang chờ quản trị viên duyệt.",
         "/my-works",
       );
       router.push("/my-works");
+    } catch (error) {
+      setSubmitError(
+        error instanceof WorksApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Không gửi được tác phẩm. Hãy thử lại.",
+      );
     } finally {
       setSaving(false);
+      setUploadProgress(null);
     }
   };
 
@@ -214,8 +254,9 @@ export default function UploadPageClient() {
             Chia sẻ sáng tác của bạn
           </h1>
           <p className="text-white/55 text-sm mt-2">
-            Tác phẩm đăng xong sẽ lưu trên máy này và hiện trong trang Sáng
-            tác của tôi.
+            Tác phẩm gửi lên sẽ được quản trị viên duyệt trước khi hiện
+            công khai. Bạn theo dõi trạng thái duyệt trong trang Sáng tác
+            của tôi.
           </p>
         </div>
 
@@ -367,12 +408,37 @@ export default function UploadPageClient() {
                   ? "PDF, Word hoặc text cho tiểu thuyết."
                   : type === "animation"
                     ? "Video cho hoạt hình."
-                    : "Ảnh cho manga / fanart."}{" "}
-                Tối đa {formatBytes(WORK_FILE_MAX_BYTES)} — file lưu kèm
-                trên máy này.
+                    : type === "manga"
+                      ? "Ảnh hoặc file CBZ cho manga."
+                      : "Ảnh cho fanart."}{" "}
+                Tối đa {formatBytes(WORK_FILE_MAX_BYTES[type as ApiWorkType])}. File gửi lên
+                máy chủ để duyệt, không lưu trên máy này.
               </p>
               {fileError && (
                 <p className="text-xs text-red-300 mt-1">{fileError}</p>
+              )}
+              {saving && uploadProgress && uploadProgress.total > 0 && (
+                <div className="mt-2">
+                  <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full bg-pink-400 transition-all"
+                      style={{
+                        width: `${Math.min(100, Math.round((uploadProgress.loaded / uploadProgress.total) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-white/50 mt-1">
+                    Đang tải lên {formatBytes(uploadProgress.loaded)} /{" "}
+                    {formatBytes(uploadProgress.total)} (
+                    {Math.min(
+                      100,
+                      Math.round(
+                        (uploadProgress.loaded / uploadProgress.total) * 100,
+                      ),
+                    )}
+                    %)
+                  </p>
+                </div>
               )}
             </div>
 
@@ -382,6 +448,12 @@ export default function UploadPageClient() {
             />
 
             <UploadPublishInfo />
+
+            {submitError && (
+              <p role="alert" className="text-sm text-red-300">
+                {submitError}
+              </p>
+            )}
           </div>
 
           <div className="shrink-0 flex items-center justify-between gap-2 px-6 py-4 border-t border-white/10">
@@ -405,7 +477,7 @@ export default function UploadPageClient() {
                 className="inline-flex items-center gap-1.5 px-5 h-10 rounded-full btn-son text-sm disabled:opacity-50"
               >
                 <Upload className="w-4 h-4" />
-                {saving ? "Đang đăng…" : "Đăng tác phẩm"}
+                {saving ? "Đang tải lên…" : "Gửi duyệt"}
               </button>
             </div>
           </div>

@@ -29,6 +29,9 @@ export type Work = {
   rating: number; // 0..5
   liked?: boolean;
   saved?: boolean;
+  /** Tác phẩm thật từ server (Lát 2A): file gốc để xem/tải. */
+  serverFileUrl?: string;
+  serverMimeType?: string;
 };
 
 export const TYPE_META: Record<WorkType, { label: string; icon: React.ReactNode; color: string }> = {

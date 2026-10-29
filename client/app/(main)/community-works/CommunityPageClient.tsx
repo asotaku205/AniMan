@@ -7,10 +7,50 @@ import {
 import { PageHeader } from "../../components/PageHeader";
 import { ImageWithFallback } from "../../components/ImageWithFallback";
 import { Work, TYPE_META, SEED_WORKS, Feedback, SEED_FEEDBACK,SortKey,WorkType } from "./data";
+import { listPublicWorks, type WorkSubmission } from "@/lib/works-api";
+
+function relativeLabel(isoDate: string): string {
+  const diffMs = Date.now() - new Date(isoDate).getTime();
+  if (Number.isNaN(diffMs) || diffMs < 0) return "Vừa xong";
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "Vừa xong";
+  if (minutes < 60) return `${minutes} phút`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} giờ`;
+  const days = Math.floor(hours / 24);
+  return `${days} ngày`;
+}
+
+/**
+ * Tác phẩm thật đã duyệt thành thẻ cộng đồng. Lượt xem/thích/lưu/góp ý
+ * bắt đầu từ 0 vì server chưa có hệ thống tương tác thật; không bịa số.
+ */
+function mapServerWork(submission: WorkSubmission): Work {
+  return {
+    id: `server:${submission.id}`,
+    type: submission.type,
+    title: submission.title,
+    author: submission.author.displayName,
+    authorColor: "from-pink-500 to-rose-400",
+    cover: submission.coverUrl ?? "",
+    excerpt:
+      submission.description || submission.genre || submission.title,
+    tags: submission.tags,
+    views: 0,
+    likes: 0,
+    saves: 0,
+    feedbackCount: 0,
+    time: relativeLabel(submission.createdAt),
+    rating: 0,
+    serverFileUrl: submission.fileUrl,
+    serverMimeType: submission.mimeType,
+  };
+}
 
 
 export default function CommunityWorksPageClient() {
   const [works, setWorks] = useState<Work[]>(SEED_WORKS);
+  const [serverWorks, setServerWorks] = useState<Work[]>([]);
   const [feedback, setFeedback] = useState<Record<string, Feedback[]>>(SEED_FEEDBACK);
   const [filter, setFilter] = useState<WorkType | "all">("all");
   const [sort, setSort] = useState<SortKey>("hot");
@@ -18,32 +58,69 @@ export default function CommunityWorksPageClient() {
   const [active, setActive] = useState<Work | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Tác phẩm thật đã duyệt: có thì hiện trước, mới nhất trước; không có
+  // hoặc lỗi thì giữ nguyên SEED_WORKS như cũ.
+  useEffect(() => {
+    let alive = true;
+    void listPublicWorks({ page: 1, pageSize: 20 })
+      .then((list) => {
+        if (alive && list.items.length > 0) {
+          setServerWorks(list.items.map(mapServerWork));
+        }
+      })
+      .catch(() => {
+        // Giữ nguyên nội dung mẫu, không chặn trang.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const allWorks = useMemo(
+    () => [...serverWorks, ...works],
+    [serverWorks, works],
+  );
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 2400);
     return () => clearTimeout(t);
   }, [toast]);
 
-  const toggleLike = (id: string) => setWorks((prev) => prev.map((w) => w.id === id ? { ...w, liked: !w.liked, likes: w.likes + (w.liked ? -1 : 1) } : w));
-  const toggleSave = (id: string) => setWorks((prev) => prev.map((w) => w.id === id ? { ...w, saved: !w.saved, saves: w.saves + (w.saved ? -1 : 1) } : w));
+  const toggleLike = (id: string) => {
+    const toggle = (w: Work) => w.id === id ? { ...w, liked: !w.liked, likes: w.likes + (w.liked ? -1 : 1) } : w;
+    setWorks((prev) => prev.map(toggle));
+    setServerWorks((prev) => prev.map(toggle));
+    setActive((prev) => (prev && prev.id === id ? toggle(prev) : prev));
+  };
+  const toggleSave = (id: string) => {
+    const toggle = (w: Work) => w.id === id ? { ...w, saved: !w.saved, saves: w.saves + (w.saved ? -1 : 1) } : w;
+    setWorks((prev) => prev.map(toggle));
+    setServerWorks((prev) => prev.map(toggle));
+    setActive((prev) => (prev && prev.id === id ? toggle(prev) : prev));
+  };
 
   const filtered = useMemo(() => {
-    let list = works.filter((w) => filter === "all" || w.type === filter);
+    let list = allWorks.filter((w) => filter === "all" || w.type === filter);
     if (query) {
       const q = query.toLowerCase();
       list = list.filter((w) => `${w.title} ${w.author} ${w.tags.join(" ")}`.toLowerCase().includes(q));
     }
-    if (sort === "hot") list = [...list].sort((a, b) => (b.likes + b.feedbackCount * 2) - (a.likes + a.feedbackCount * 2));
-    if (sort === "new") list = [...list].reverse();
-    if (sort === "top") list = [...list].sort((a, b) => b.rating - a.rating);
-    return list;
-  }, [works, filter, sort, query]);
+    // Tác phẩm thật luôn hiện trước, mới nhất trước (thứ tự API trả về);
+    // tác phẩm mẫu phía sau mới xếp theo kiểu sắp xếp đã chọn.
+    const real = list.filter((w) => w.id.startsWith("server:"));
+    const seeded = list.filter((w) => !w.id.startsWith("server:"));
+    if (sort === "hot") seeded.sort((a, b) => (b.likes + b.feedbackCount * 2) - (a.likes + a.feedbackCount * 2));
+    if (sort === "new") seeded.reverse();
+    if (sort === "top") seeded.sort((a, b) => b.rating - a.rating);
+    return [...real, ...seeded];
+  }, [allWorks, filter, sort, query]);
 
   const stats = useMemo(() => ({
-    total: works.length,
-    feedback: works.reduce((s, w) => s + w.feedbackCount, 0),
-    views: works.reduce((s, w) => s + w.views, 0),
-  }), [works]);
+    total: allWorks.length,
+    feedback: allWorks.reduce((s, w) => s + w.feedbackCount, 0),
+    views: allWorks.reduce((s, w) => s + w.views, 0),
+  }), [allWorks]);
 
   return (
     <>
@@ -133,6 +210,7 @@ export default function CommunityWorksPageClient() {
           onAddFeedback={(fb) => {
             setFeedback((prev) => ({ ...prev, [active.id]: [...(prev[active.id] ?? []), fb] }));
             setWorks((prev) => prev.map((w) => w.id === active.id ? { ...w, feedbackCount: w.feedbackCount + 1 } : w));
+            setServerWorks((prev) => prev.map((w) => w.id === active.id ? { ...w, feedbackCount: w.feedbackCount + 1 } : w));
             setToast("Cảm ơn — góp ý của bạn đã được gửi");
           }}
           onLikeFeedback={(fid) => {
@@ -283,6 +361,29 @@ function WorkDetailModal({ work, feedback, onClose, onLike, onSave, onAddFeedbac
               <div className="relative aspect-[16/10] overflow-hidden bg-black">
                 <ImageWithFallback src={work.cover} alt={work.title} className="absolute inset-0 w-full h-full object-cover" />
               </div>
+              {work.serverFileUrl && work.serverMimeType?.startsWith("video/") && (
+                <div className="bg-black">
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <video src={work.serverFileUrl} controls preload="metadata" className="w-full max-h-[60vh]" />
+                </div>
+              )}
+              {work.serverFileUrl && work.serverMimeType?.startsWith("image/") && !work.cover && (
+                <div className="bg-black">
+                  <ImageWithFallback src={work.serverFileUrl} alt={work.title} className="w-full max-h-[60vh] object-contain" />
+                </div>
+              )}
+              {work.serverFileUrl && !work.serverMimeType?.startsWith("video/") && !work.serverMimeType?.startsWith("image/") && (
+                <div className="px-5 md:px-6 py-4">
+                  <a
+                    href={work.serverFileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 px-4 h-10 rounded-full bg-white/5 border border-white/10 text-white/85 hover:bg-white/10 text-sm"
+                  >
+                    Mở file tác phẩm
+                  </a>
+                </div>
+              )}
               <div className="p-5 md:p-6">
                 <h2 className="text-white text-2xl font-jp-serif">{work.title}</h2>
                 <div className="mt-2 flex items-center gap-3 text-xs text-white/55">

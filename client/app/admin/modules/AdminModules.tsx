@@ -182,8 +182,8 @@ export const PAGE_TITLE: Record<string, string> = {
  * Lát 1 (29/10/2026, quyết định D1): nhãn trung thực trên các màn hình
  * chưa có dữ liệu thật. Màn hình không có trong bảng này thì không gắn
  * nhãn (dashboard, users, audit, settings sẽ thành dữ liệu thật ở Lát 2-4;
- * studio gắn nhãn riêng cho tới Lát 2A). Khi một màn hình thành thật thì
- * xóa mục của nó khỏi bảng này trong cùng lát cắt đó.
+ * studio đã thành thật ở Lát 2A nên không còn trong bảng). Khi một màn
+ * hình thành thật thì xóa mục của nó khỏi bảng này trong cùng lát cắt đó.
  */
 export const ADMIN_DEMO_BADGE_TEXT: Record<string, string> = {
   analytics: "Dữ liệu demo: số liệu và biểu đồ trong màn hình này chưa lấy từ hệ thống thật.",
@@ -193,7 +193,6 @@ export const ADMIN_DEMO_BADGE_TEXT: Record<string, string> = {
   novel: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
   categories: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
   schedule: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
-  studio: "Dữ liệu demo, đang hoàn thiện: duyệt và đăng tác phẩm của user sẽ làm thật ở Lát 2A.",
   watchparty: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
   forum: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",
   reports: "Dữ liệu demo: các thay đổi ở đây chưa lưu thật.",

@@ -26,7 +26,7 @@ export default function UploadPublishInfo() {
       <ul className="space-y-1.5 text-sm text-white/70 pt-1">
         <li className="flex items-center gap-2">
           <Check className="w-3.5 h-3.5 text-[#f0c75e]" />
-          Lưu bền trên máy này — tải lại trang vẫn còn
+          Gửi lên máy chủ, quản trị viên duyệt rồi mới hiện công khai
         </li>
         <li className="flex items-center gap-2">
           <Check className="w-3.5 h-3.5 text-[#f0c75e]" />

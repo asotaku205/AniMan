@@ -43,6 +43,14 @@ import {
   listUploads,
   type UploadRecord,
 } from "../upload/lib/uploadStorage";
+import { useAuth } from "@/app/auth/AuthProvider";
+import {
+  listMyWorks,
+  resubmitWork,
+  WorksApiError,
+  type WorkSubmission,
+} from "@/lib/works-api";
+import { formatBytes } from "../upload/lib/uploadStorage";
 
 const MANGA_ACTIVE_KEY = "animan_manga_active_project_id_v1";
 const KIND_ICON: Record<WorkKind, React.ReactNode> = {
@@ -116,8 +124,76 @@ function EmptyState({ to, label }: { to: string; label: string }) {
   );
 }
 
+/**
+ * Ảnh bìa của tác phẩm đã gửi duyệt. Trình duyệt không gắn được token
+ * vào thẻ img nên bìa của tác phẩm chờ duyệt phải tải qua
+ * authenticatedFetch rồi hiện bằng object URL; tác phẩm đã duyệt thì
+ * đường dẫn trực tiếp vẫn mở được.
+ */
+function ServerWorkCover({
+  coverUrl,
+  authenticatedFetch,
+}: {
+  coverUrl: string | null;
+  authenticatedFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!coverUrl) return;
+    let alive = true;
+    let objectUrl: string | null = null;
+    void authenticatedFetch(coverUrl)
+      .then(async (response) => {
+        if (!response.ok) {
+          if (alive) setSrc(coverUrl);
+          return;
+        }
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+        if (alive) setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (alive) setSrc(coverUrl);
+      });
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [coverUrl, authenticatedFetch]);
+  if (!coverUrl) return null;
+  if (!src) {
+    return (
+      <div className="w-14 h-20 rounded-lg border border-white/10 bg-white/5 shrink-0" />
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      className="w-14 h-20 object-cover rounded-lg border border-white/10 shrink-0"
+      onError={(event) => {
+        event.currentTarget.style.display = "none";
+      }}
+    />
+  );
+}
+
+const SERVER_WORK_STATUS_LABEL: Record<WorkSubmission["status"], string> = {
+  pending: "Chờ duyệt",
+  approved: "Đã đăng",
+  rejected: "Bị từ chối",
+};
+
+const SERVER_WORK_STATUS_CLS: Record<WorkSubmission["status"], string> = {
+  pending: "bg-amber-400/15 text-amber-200",
+  approved: "bg-emerald-400/15 text-emerald-200",
+  rejected: "bg-red-400/15 text-red-200",
+};
+
 export default function MyWorksClient() {
   const router = useRouter();
+  const { user, authenticatedFetch } = useAuth();
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState<string[]>([]);
   const [novels, setNovels] = useState<WorkCard[]>([]);
@@ -126,10 +202,59 @@ export default function MyWorksClient() {
   const [worlds, setWorlds] = useState<WorkCard[]>([]);
   const [translates, setTranslates] = useState<WorkCard[]>([]);
   const [uploads, setUploads] = useState<UploadRecord[]>([]);
+  const [serverWorks, setServerWorks] = useState<WorkSubmission[]>([]);
+  const [serverWorksFailed, setServerWorksFailed] = useState(false);
+  const [resubmittingId, setResubmittingId] = useState<string | null>(null);
+  const [resubmitError, setResubmitError] = useState("");
   const [totalWords, setTotalWords] = useState(0);
   const [totalMangaPages, setTotalMangaPages] = useState(0);
   const [totalAnimSec, setTotalAnimSec] = useState(0);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Tác phẩm đã gửi lên server để duyệt (Lát 2A), tách khỏi bản ghi
+  // cũ chỉ lưu trên máy này. Gọi qua await để state chỉ đổi sau khi
+  // fetch xong, không đổi đồng bộ trong thân effect
+  // (luật react-hooks/set-state-in-effect).
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      if (!user) {
+        if (alive) setServerWorks([]);
+        return;
+      }
+      try {
+        const list = await listMyWorks(authenticatedFetch, {
+          page: 1,
+          pageSize: 20,
+        });
+        if (alive) setServerWorks(list.items);
+      } catch {
+        if (alive) setServerWorksFailed(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user, authenticatedFetch]);
+
+  const handleResubmit = async (id: string) => {
+    setResubmitError("");
+    setResubmittingId(id);
+    try {
+      const updated = await resubmitWork(authenticatedFetch, id);
+      setServerWorks((prev) =>
+        prev.map((work) => (work.id === id ? updated : work)),
+      );
+    } catch (error) {
+      setResubmitError(
+        error instanceof WorksApiError
+          ? error.message
+          : "Không gửi duyệt lại được. Hãy thử lại.",
+      );
+    } finally {
+      setResubmittingId(null);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -288,7 +413,7 @@ export default function MyWorksClient() {
     id: u.id,
     kind: "upload" as const,
     title: u.title,
-    detail: `${u.tags.length > 0 ? u.tags.join(" · ") : u.genre || "Chưa gắn thẻ"} · ${u.visibility === "public" ? "Công khai" : u.visibility === "unlisted" ? "Có link" : "Riêng tư"}`,
+    detail: `${u.tags.length > 0 ? u.tags.join(" · ") : u.genre || "Chưa gắn thẻ"} · ${u.visibility === "public" ? "Công khai" : u.visibility === "unlisted" ? "Có link" : "Riêng tư"} · Chỉ lưu trên máy này`,
     updatedAt: u.createdAt,
     href: null,
     cover: u.coverDataUrl,
@@ -470,6 +595,92 @@ export default function MyWorksClient() {
                 <EmptyState to="/studio/animation/translate-edit" label="Dịch tập đầu tiên" />
               ) : (
                 <WorkGrid cards={translates.slice(0, 8)} />
+              )}
+            </section>
+
+            {/* Tác phẩm đã gửi lên server để duyệt */}
+            <section>
+              <SectionHeader eyebrow="Duyệt đăng" title="Tác phẩm đã gửi duyệt" />
+              {serverWorksFailed && (
+                <p className="text-sm text-amber-300 mb-4">
+                  Không tải được tác phẩm đã gửi duyệt. Thử tải lại trang.
+                </p>
+              )}
+              {serverWorks.length === 0 && !serverWorksFailed ? (
+                <EmptyState to="/upload" label="Gửi tác phẩm để duyệt" />
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {serverWorks.map((work) => (
+                    <div
+                      key={work.id}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    >
+                      <div className="flex gap-3">
+                        <ServerWorkCover
+                          coverUrl={work.coverUrl}
+                          authenticatedFetch={authenticatedFetch}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-white font-medium leading-snug line-clamp-2">
+                            {work.title}
+                          </div>
+                          <div className="text-white/55 text-xs mt-1">
+                            {work.tags.length > 0
+                              ? work.tags.join(" · ")
+                              : work.genre || "Chưa gắn thẻ"}{" "}
+                            ·{" "}
+                            {work.visibility === "public"
+                              ? "Công khai"
+                              : work.visibility === "unlisted"
+                                ? "Có link"
+                                : "Riêng tư"}{" "}
+                            · {work.fileName} ({formatBytes(work.fileSize)})
+                          </div>
+                          <div className="text-white/40 text-xs mt-1">
+                            Gửi {relativeTime(new Date(work.createdAt).getTime())}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span
+                          className={`text-[11px] px-2 py-0.5 rounded-full ${SERVER_WORK_STATUS_CLS[work.status]}`}
+                        >
+                          {SERVER_WORK_STATUS_LABEL[work.status]}
+                        </span>
+                        <a
+                          href={work.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-pink-300/80 hover:text-pink-300"
+                        >
+                          Mở file
+                        </a>
+                        {work.status === "rejected" && (
+                          <button
+                            type="button"
+                            disabled={resubmittingId === work.id}
+                            onClick={() => void handleResubmit(work.id)}
+                            className="text-xs px-3 h-7 rounded-full bg-white/10 hover:bg-white/15 text-white/85 disabled:opacity-50"
+                          >
+                            {resubmittingId === work.id
+                              ? "Đang gửi…"
+                              : "Gửi duyệt lại"}
+                          </button>
+                        )}
+                      </div>
+                      {work.status === "rejected" && work.rejectReason && (
+                        <p className="text-xs text-red-300/90 mt-2">
+                          Lý do từ chối: {work.rejectReason}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {resubmitError && (
+                <p role="alert" className="text-sm text-red-300 mt-3">
+                  {resubmitError}
+                </p>
               )}
             </section>
 

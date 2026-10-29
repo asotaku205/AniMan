@@ -30,6 +30,8 @@ interface AuthContextValue {
     input: RequestInfo | URL,
     init?: RequestInit,
   ) => Promise<Response>;
+  /** Token Bearer hiện tại, dùng cho tải file bằng XMLHttpRequest. */
+  getAccessToken: () => string | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -129,6 +131,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [accessToken],
   );
 
+  const getAccessToken = useCallback(
+    () => accessToken,
+    [accessToken],
+  );
+
   const value = useMemo(
     () => ({
       user,
@@ -138,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       authenticatedFetch,
+      getAccessToken,
     }),
     [
       user,
@@ -147,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       authenticatedFetch,
+      getAccessToken,
     ],
   );
 

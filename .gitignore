@@ -6,5 +6,6 @@
 /server/.env
 /server/.env.*
 !/server/.env.example
+/server/uploads/
 /.agents/
 skills-lock.json

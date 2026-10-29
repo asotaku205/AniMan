@@ -7,9 +7,12 @@ import { RefreshSession } from "./auth/refresh-session.entity.js";
 import { CreateAuthTables1780768800000 } from "./database/migrations/1780768800000-CreateAuthTables.js";
 import { AddUserRoles1791400000000 } from "./database/migrations/1791400000000-AddUserRoles.js";
 import { AddUserStatusAndMultipleAdmins1793228985000 } from "./database/migrations/1793228985000-AddUserStatusAndMultipleAdmins.js";
+import { CreateWorkSubmissions1793232564000 } from "./database/migrations/1793232564000-CreateWorkSubmissions.js";
 import { User } from "./users/user.entity.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { AiConsentModule } from "./ai/consent/ai-consent.module.js";
+import { WorksModule } from "./works/works.module.js";
+import { WorkSubmission } from "./works/work-submission.entity.js";
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
@@ -34,11 +37,12 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         username: configService.get<string>("DATABASE_USERNAME"),
         password: configService.get<string>("DATABASE_PASSWORD"),
         database: "animan",
-        entities: [User, RefreshSession],
+        entities: [User, RefreshSession, WorkSubmission],
         migrations: [
           CreateAuthTables1780768800000,
           AddUserRoles1791400000000,
           AddUserStatusAndMultipleAdmins1793228985000,
+          CreateWorkSubmissions1793232564000,
         ],
         migrationsRun: false,
         synchronize: false,
@@ -46,6 +50,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
     AuthModule,
     AiConsentModule,
+    WorksModule,
   ],
   controllers: [AppController],
   providers: [],
