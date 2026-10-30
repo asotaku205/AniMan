@@ -75,6 +75,9 @@ export const REFERENCE_IMAGE_SCENE_PHRASES: Record<string, string> = {
  */
 export const MAX_REFERENCE_IMAGE_COLORED_SHARE = 0.2;
 
+/** Điểm ảnh được tính là có nét khi kênh tối nhất dưới ngưỡng này (0 tới 255). */
+export const REFERENCE_IMAGE_BLANK_CHANNEL_THRESHOLD = 248;
+
 /** Mã lỗi ổn định trả cho client; client chọn câu tiếng Việt theo mã này. */
 export const REFERENCE_IMAGE_ERROR_CODES = {
   /** Tính năng chưa bật hoặc thiếu Account ID/token trên server. */
@@ -87,6 +90,8 @@ export const REFERENCE_IMAGE_ERROR_CODES = {
   providerError: "reference_image_error",
   /** Ảnh Cloudflare trả về không giải mã được, vượt giới hạn, hoặc có màu quá ngưỡng. */
   invalidResponse: "reference_image_invalid",
+  /** Phác thảo trắng hoàn toàn mà không kèm mô tả: không có gì để sinh theo. */
+  blankSketch: "reference_image_blank_sketch",
   /** Quá 300 giây mà không rõ server đã sinh xong hay chưa. */
   timeout: "reference_image_timeout",
 } as const;

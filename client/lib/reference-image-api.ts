@@ -51,6 +51,40 @@ export interface ReferenceImageStatus {
   providerTimeoutMs: number;
 }
 
+/**
+ * Khung vẽ có thật sự trắng hay không: không một điểm ảnh nào nhìn thấy
+ * được trên nền trắng. Canvas hiển thị của Manga Studio có nền trong
+ * suốt (giấy trắng là nền CSS của khung), nên điểm trong suốt là trắng,
+ * điểm trắng đục cũng là trắng. Ngưỡng 248 chừa dư địa cho nhiễu nhẹ,
+ * nhưng một nét xám nhạt vẫn tính là có vẽ. Đọc pixel thất bại thì trả
+ * về false (coi như có vẽ) để không bao giờ chặn nhầm một lần sinh.
+ */
+export function canvasIsBlank(canvas: HTMLCanvasElement | null): boolean {
+  if (!canvas || canvas.width === 0 || canvas.height === 0) return true;
+  let ctx: CanvasRenderingContext2D | null;
+  try {
+    ctx = canvas.getContext("2d");
+  } catch {
+    return false;
+  }
+  if (!ctx) return false;
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  } catch {
+    return false;
+  }
+  for (let i = 0; i + 3 < data.length; i += 4) {
+    const alpha = data[i + 3] ?? 0;
+    if (alpha === 0) continue;
+    const r = data[i] ?? 255;
+    const g = data[i + 1] ?? 255;
+    const b = data[i + 2] ?? 255;
+    if (r < 248 || g < 248 || b < 248) return false;
+  }
+  return true;
+}
+
 /** Câu tiếng Việt theo mã lỗi ổn định của server (xem REFERENCE_IMAGE_ERROR_CODES). */
 export const REFERENCE_IMAGE_ERROR_MESSAGES: Record<string, string> = {
   reference_image_disabled:
@@ -65,6 +99,8 @@ export const REFERENCE_IMAGE_ERROR_MESSAGES: Record<string, string> = {
     "Ảnh Cloudflare trả về không đúng phong cách nét vẽ trắng đen. Hãy thử lại, mô tả rõ hơn nếu cần.",
   reference_image_timeout:
     "Hết thời gian chờ mà chưa rõ ảnh đã sinh xong hay chưa. Không tự thử lại; hãy bấm Sinh ảnh mẫu để tạo lần sinh mới nếu cần.",
+  reference_image_blank_sketch:
+    "Khung vẽ còn trắng và chưa nhập mô tả. Hãy vẽ vài nét hoặc nhập mô tả rồi sinh lại.",
 };
 
 export function getReferenceImageErrorMessage(

@@ -32,6 +32,7 @@ import {
 } from "@/lib/ai-drawing-api";
 import {
   cancelReferenceImageJob,
+  canvasIsBlank,
   createReferenceImageJob,
   createSketchSnapshot,
   getReferenceImageErrorMessage,
@@ -3493,23 +3494,42 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       return;
     }
     if (referenceGenerating) return;
+    const promptText = userDrawingPrompt.trim();
     const needsSketch = referenceSource !== "prompt";
     const canvas = canvasRef.current;
     let sketch: AiDrawingImagePayload | null = null;
+    // Khung còn trắng: phác thảo trắng gửi kèm chỉ làm model bám vào
+    // khoảng trắng và bỏ qua mô tả. Có mô tả thì sinh hẳn theo mô tả
+    // (nguồn chỉ prompt), chưa có mô tả thì chặn ngay tại client, khỏi
+    // tốn một lượt quota cho một job không có gì để sinh.
+    let sketchIsBlank = false;
     if (needsSketch) {
       if (!canvas) {
         showToast("Không thể chụp khung vẽ để gửi làm phác thảo.");
         return;
       }
-      sketch = createSketchSnapshot(canvas);
-      if (!sketch) {
-        showToast("Không thể tạo ảnh phác thảo để gửi tới AI.");
-        return;
+      sketchIsBlank = canvasIsBlank(canvas);
+      if (!sketchIsBlank) {
+        sketch = createSketchSnapshot(canvas);
+        if (!sketch) {
+          showToast("Không thể tạo ảnh phác thảo để gửi tới AI.");
+          return;
+        }
       }
     }
-    if (referenceSource === "prompt" && !userDrawingPrompt.trim()) {
+    if (sketchIsBlank && !promptText) {
+      showToast(
+        "Khung vẽ còn trắng và chưa có mô tả. Hãy vẽ vài nét hoặc nhập mô tả rồi sinh lại.",
+      );
+      return;
+    }
+    const effectiveSource = sketchIsBlank ? "prompt" : referenceSource;
+    if (effectiveSource === "prompt" && !promptText) {
       showToast("Nhập mô tả ý tưởng trước khi sinh ảnh mẫu từ prompt.");
       return;
+    }
+    if (sketchIsBlank) {
+      showToast("Khung vẽ còn trắng, sẽ sinh ảnh mẫu từ mô tả của bạn.");
     }
     const fixHints = (reviewResult?.findings ?? [])
       .slice(0, 5)
@@ -3525,12 +3545,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       const job = await createReferenceImageJob(
         authenticatedFetch,
         {
-          source: referenceSource,
+          source: effectiveSource,
           sceneType,
-          ...(userDrawingPrompt.trim()
-            ? { prompt: userDrawingPrompt.trim().slice(0, 800) }
+          ...(promptText ? { prompt: promptText.slice(0, 800) } : {}),
+          ...(effectiveSource !== "prompt" && fixHints.length > 0
+            ? { fixHints }
             : {}),
-          ...(fixHints.length > 0 ? { fixHints } : {}),
           ...(sketch ? { image: sketch } : {}),
         },
         abortController.signal,
@@ -3557,7 +3577,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         const item: ReferenceImageItem = {
           id: createReferenceImageId(),
           dataUrl: finalJob.imageDataUrl,
-          source: referenceSource,
+          source: effectiveSource,
           note: finalJob.note || undefined,
           createdAt: Date.now(),
         };

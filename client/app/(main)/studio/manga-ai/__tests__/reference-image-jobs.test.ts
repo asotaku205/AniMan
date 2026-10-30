@@ -7,10 +7,12 @@ import { describe, expect, it } from "vitest";
 import type { AuthenticatedFetch } from "@/lib/auth-api";
 import {
   cancelReferenceImageJob,
+  canvasIsBlank,
   createReferenceImageJob,
   getReferenceImageErrorMessage,
   pollReferenceImageJob,
   referenceSketchTargetSize,
+  REFERENCE_IMAGE_ERROR_MESSAGES,
   type ReferenceImageJob,
 } from "@/lib/reference-image-api";
 import { createReferenceImageId } from "../lib/referenceImages";
@@ -220,5 +222,58 @@ describe("thong diep loi va dong y", () => {
     const consent = await fetchReferenceImageConsent(fakeFetch);
     expect(consent.version).toBe("ai-providers-v9");
     expect(consent.notice).toBe("Van ban moi tu server");
+  });
+
+  it("ma loi phac thao trang co cau tieng Viet ro rang", () => {
+    expect(REFERENCE_IMAGE_ERROR_MESSAGES.reference_image_blank_sketch).toContain(
+      "còn trắng",
+    );
+    expect(
+      getReferenceImageErrorMessage("reference_image_blank_sketch", "Khac"),
+    ).toContain("còn trắng");
+  });
+});
+
+describe("canvasIsBlank: khung trang de sinh theo prompt thay vi gui anh trang", () => {
+  function fakeCanvas(pixels: number[]) {
+    return {
+      width: 2,
+      height: 2,
+      getContext: () => ({
+        getImageData: () => ({ data: new Uint8ClampedArray(pixels) }),
+      }),
+    } as unknown as HTMLCanvasElement;
+  }
+
+  it("trong suot hoan toan thi trang", () => {
+    expect(canvasIsBlank(fakeCanvas([0, 0, 0, 0, 0, 0, 0, 0]))).toBe(true);
+  });
+
+  it("trang duc hoan toan thi trang", () => {
+    expect(
+      canvasIsBlank(
+        fakeCanvas([255, 255, 255, 255, 255, 255, 255, 255]),
+      ),
+    ).toBe(true);
+  });
+
+  it("mot diem den thi khong trang", () => {
+    expect(
+      canvasIsBlank(
+        fakeCanvas([0, 0, 0, 255, 255, 255, 255, 255]),
+      ),
+    ).toBe(false);
+  });
+
+  it("doc pixel that bai thi coi nhu co ve, khong chan nham", () => {
+    const canvas = {
+      width: 2,
+      height: 2,
+      getContext: () => {
+        throw new Error("tainted");
+      },
+    } as unknown as HTMLCanvasElement;
+    expect(canvasIsBlank(canvas)).toBe(false);
+    expect(canvasIsBlank(null)).toBe(true);
   });
 });

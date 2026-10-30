@@ -403,6 +403,96 @@ describe("ReferenceImageJobsService", () => {
     expect(seenPrompt).not.toContain("You are a drawing reference assistant");
   });
 
+  it("phac thao trang + prompt thi doi sang chi prompt, khong gui anh trang", async () => {
+    let seenInput: { prompt: string; source: string; sketch?: unknown } | null =
+      null;
+    const capturing: CloudflareReferenceImageProvider = {
+      isEnabled: () => true,
+      generate: async (input) => {
+        seenInput = {
+          prompt: input.prompt,
+          source: input.source,
+          sketch: input.sketch,
+        };
+        return fixtureResult();
+      },
+    };
+    const service = new ReferenceImageJobsService(capturing);
+    const white = await makePng({ r: 255, g: 255, b: 255 }, 16);
+    const created = await service.createJob(
+      "u1",
+      validDto({
+        source: ReferenceImageSource.DrawingPrompt,
+        image: sketchDto(white),
+      }),
+    );
+    await waitForStatus(service, "u1", created.id, "succeeded");
+    expect(seenInput?.source).toBe(ReferenceImageSource.Prompt);
+    expect(seenInput?.sketch).toBeUndefined();
+    expect(seenInput?.prompt).toContain("Draw this scene: co gai vung kiem");
+    expect(seenInput?.prompt).not.toContain("Keep the exact composition");
+  });
+
+  it("phac thao trang + khong prompt thi tu choi ngay voi ma blank_sketch", async () => {
+    const service = new ReferenceImageJobsService(fakeProvider(fixtureResult));
+    const white = await makePng({ r: 255, g: 255, b: 255 }, 16);
+    let caught: unknown;
+    try {
+      await service.createJob(
+        "u1",
+        validDto({
+          source: ReferenceImageSource.Drawing,
+          prompt: undefined,
+          image: sketchDto(white),
+        }),
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeDefined();
+    const response = (caught as { getResponse?: () => unknown }).getResponse?.();
+    expect(response).toMatchObject({ code: "reference_image_blank_sketch" });
+  });
+
+  it("phac thao chi co mot diem den van la phac thao, khong doi sang chi prompt", async () => {
+    let seenInput: { source: string; sketch?: unknown } | null = null;
+    const capturing: CloudflareReferenceImageProvider = {
+      isEnabled: () => true,
+      generate: async (input) => {
+        seenInput = { source: input.source, sketch: input.sketch };
+        return fixtureResult();
+      },
+    };
+    const service = new ReferenceImageJobsService(capturing);
+    const dot = await sharp({
+      create: { width: 1, height: 1, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    })
+      .png()
+      .toBuffer();
+    const mostlyWhite = await sharp({
+      create: {
+        width: 16,
+        height: 16,
+        channels: 3,
+        background: { r: 255, g: 255, b: 255 },
+      },
+    })
+      .composite([{ input: dot, left: 0, top: 0 }])
+      .png()
+      .toBuffer();
+    const created = await service.createJob(
+      "u1",
+      validDto({
+        source: ReferenceImageSource.Drawing,
+        prompt: undefined,
+        image: sketchDto(mostlyWhite),
+      }),
+    );
+    await waitForStatus(service, "u1", created.id, "succeeded");
+    expect(seenInput?.source).toBe(ReferenceImageSource.Drawing);
+    expect(seenInput?.sketch).toBeDefined();
+  });
+
   it("huy job dang chay thi giu trang thai cancelled", async () => {
     const provider = fakeProvider(
       (signal) =>

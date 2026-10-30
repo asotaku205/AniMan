@@ -12,6 +12,7 @@ import {
   CLOUDFLARE_KLEIN_4B_MODEL_ID,
   MAX_REFERENCE_SKETCH_BYTES,
   MAX_REFERENCE_SKETCH_DIMENSION,
+  REFERENCE_IMAGE_BLANK_CHANNEL_THRESHOLD,
   REFERENCE_IMAGE_ERROR_CODES,
   REFERENCE_IMAGE_JOB_TTL_MS,
 } from "./reference-image.constants.js";
@@ -95,6 +96,45 @@ async function validateSketch(
 }
 
 /**
+ * Phác thảo có trắng hoàn toàn hay không: không một điểm ảnh nào nhìn
+ * thấy được trên nền trắng. Điểm trong suốt và điểm trắng đục đều là
+ * trắng; ngưỡng chừa dư địa cho nhiễu nén nhẹ, nét xám nhạt vẫn tính
+ * là có vẽ. Giải mã thất bại thì trả về false (coi như có vẽ) để
+ * không chặn nhầm; validateSketch đã kiểm tra định dạng trước đó.
+ */
+async function sketchIsBlank(bytes: Buffer): Promise<boolean> {
+  let raw: { data: Buffer; info: { channels: number; width: number; height: number } };
+  try {
+    const result = await sharp(bytes).raw().toBuffer({ resolveWithObject: true });
+    raw = { data: result.data, info: result.info };
+  } catch {
+    return false;
+  }
+  const channels = raw.info.channels;
+  const pixels = raw.info.width * raw.info.height;
+  const stride = Math.max(1, Math.floor(pixels / 65536));
+  const data = raw.data;
+  const threshold = REFERENCE_IMAGE_BLANK_CHANNEL_THRESHOLD;
+  for (let i = 0; i < pixels; i += stride) {
+    const offset = i * channels;
+    if (channels === 1) {
+      if ((data[offset] ?? 255) < threshold) return false;
+    } else if (channels === 2) {
+      const alpha = data[offset + 1] ?? 0;
+      if (alpha > 0 && (data[offset] ?? 255) < threshold) return false;
+    } else {
+      const alpha = channels === 4 ? (data[offset + 3] ?? 255) : 255;
+      if (alpha === 0) continue;
+      const r = data[offset] ?? 255;
+      const g = data[offset + 1] ?? 255;
+      const b = data[offset + 2] ?? 255;
+      if (r < threshold || g < threshold || b < threshold) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Job sinh ảnh mẫu tham khảo, chạy nền trong bộ nhớ.
  *
  * Một job = một lần gọi Cloudflare. Job không tự thử lại khi timeout vì
@@ -135,6 +175,7 @@ export class ReferenceImageJobsService {
     }
     let sketch:
       { data: Buffer; mimeType: "image/png" | "image/jpeg" } | undefined;
+    let effectiveSource = dto.source;
     if (dto.source !== ReferenceImageSource.Prompt) {
       if (!dto.image) {
         throw new BadRequestException(
@@ -143,14 +184,35 @@ export class ReferenceImageJobsService {
       }
       const bytes = await validateSketch(dto.image);
       sketch = { data: bytes, mimeType: dto.image.mimeType };
+      // Phác thảo trắng hoàn toàn gửi kèm chỉ làm model bám vào khoảng
+      // trắng và bỏ qua mô tả. Có mô tả thì đổi hẳn sang nguồn chỉ
+      // prompt: cùng model klein, không gửi ảnh trắng. Chưa có mô tả
+      // thì từ chối ngay, khỏi chờ 300 giây cho một job không có gì
+      // để sinh. Client mới đã chặn trường hợp này trước khi gọi, đây
+      // là lớp phòng thủ cho client cũ hoặc gọi API trực tiếp.
+      if (await sketchIsBlank(bytes)) {
+        if (!dto.prompt?.trim()) {
+          throw new BadRequestException({
+            statusCode: 400,
+            code: REFERENCE_IMAGE_ERROR_CODES.blankSketch,
+            message:
+              "A blank sketch without a prompt cannot generate a reference image",
+          });
+        }
+        effectiveSource = ReferenceImageSource.Prompt;
+        sketch = undefined;
+      }
     }
 
     const seed = randomInt(0, 2_147_483_647);
     const prompt = assembleReferenceImagePrompt({
       sceneType: dto.sceneType,
-      source: dto.source,
+      source: effectiveSource,
       userPrompt: dto.prompt,
-      fixHints: dto.fixHints,
+      fixHints:
+        effectiveSource === ReferenceImageSource.Prompt
+          ? undefined
+          : dto.fixHints,
     });
     const model = CLOUDFLARE_KLEIN_4B_MODEL_ID;
     const now = Date.now();
@@ -165,7 +227,7 @@ export class ReferenceImageJobsService {
       finishedAt: null,
       elapsedMs: null,
       imageDataUrl: null,
-      note: `Ảnh mẫu tham khảo sinh từ ${SOURCE_LABELS[dto.source]}, nét trắng đen.`,
+      note: `Ảnh mẫu tham khảo sinh từ ${SOURCE_LABELS[effectiveSource]}, nét trắng đen.`,
       coloredShare: null,
       errorCode: null,
       errorMessage: null,
@@ -175,7 +237,7 @@ export class ReferenceImageJobsService {
     this.jobs.set(record.id, record);
     void this.runJob(record, {
       prompt,
-      source: dto.source,
+      source: effectiveSource,
       sketch,
       seed,
     });
