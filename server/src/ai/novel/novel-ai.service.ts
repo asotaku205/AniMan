@@ -1,7 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 
 /**
- * AI cho Novel Studio (N3): tóm tắt cảnh + kiểm tra nhất quán với sổ tay.
+ * AI cho Novel Studio (N3): tóm tắt cảnh + kiểm tra nhất quán với sổ tay
+ * + tách cảnh thành trang/khung manga (cầu nối Novel -> Manga).
  *
  * Cùng triết lý như dịch thoại: kết quả là BẢN NHÁP, client hiển thị để
  * người dùng duyệt/sửa tay, không tự sửa văn bản. Cùng ngân sách Gemini
@@ -10,7 +11,53 @@ import { GoogleGenAI } from "@google/genai";
  * chặn cứng ở controller.
  */
 
-export type NovelAiTask = "summarize" | "consistency";
+export type NovelAiTask = "summarize" | "consistency" | "breakdown";
+
+/** Loại cảnh của một khung manga, khớp SceneType bên Manga Studio (trừ auto). */
+export type BreakdownSceneType =
+  | "action"
+  | "dialogue"
+  | "landscape"
+  | "closeup"
+  | "wide";
+
+export const BREAKDOWN_SCENE_TYPES: readonly BreakdownSceneType[] = [
+  "action",
+  "dialogue",
+  "landscape",
+  "closeup",
+  "wide",
+];
+
+/** Layout trang manga, khớp LAYOUTS bên Manga Studio; số khung phải khớp layout. */
+export type BreakdownLayout = "classic-5" | "action-4" | "splash-3" | "manga-6";
+
+export const BREAKDOWN_LAYOUT_PANEL_COUNT: Record<BreakdownLayout, number> = {
+  "splash-3": 3,
+  "action-4": 4,
+  "classic-5": 5,
+  "manga-6": 6,
+};
+
+/** Một khung trong kế hoạch: prompt hình ảnh để sinh ảnh mẫu + tham khảo. */
+export interface BreakdownPanel {
+  /** Mô tả hình ảnh thuần thị giác, tối đa 400 ký tự, không chữ/bong bóng. */
+  prompt: string;
+  sceneType: BreakdownSceneType;
+  /** Thoại trích nguyên văn từ cảnh, tối đa 200 ký tự mỗi câu. */
+  dialogue: string[];
+  /** Ghi chú bố cục tham khảo, tối đa 200 ký tự. */
+  note: string;
+}
+
+export interface BreakdownPage {
+  layout: BreakdownLayout;
+  panels: BreakdownPanel[];
+}
+
+export interface NovelBreakdown {
+  pages: BreakdownPage[];
+}
 
 export interface NovelAiInput {
   task: NovelAiTask;
@@ -18,11 +65,14 @@ export interface NovelAiInput {
   text: string;
   /** Sổ tay dạng văn bản tự do (chỉ dùng cho task consistency). */
   bible?: string;
+  /** Ngữ cảnh truyện: tiền đề + tóm tắt + tóm tắt cảnh (chỉ dùng cho task breakdown). */
+  context?: string;
 }
 
 export interface NovelAiResult {
   summary?: string;
   issues?: string[];
+  breakdown?: NovelBreakdown;
   model: string;
 }
 
@@ -37,6 +87,24 @@ export function buildNovelAiPrompt(input: NovelAiInput): {
   systemInstruction: string;
   userPrompt: string;
 } {
+  if (input.task === "breakdown") {
+    return {
+      systemInstruction:
+        "You break one novel scene into manga pages in Vietnamese. Reply with JSON only: " +
+        '{"pages": [{"layout": "classic-5", "panels": [{"prompt": "...", "sceneType": "wide", "dialogue": ["..."], "note": "..."}]}]}. ' +
+        "Rules: 1 to 3 pages per scene, 3 to 6 panels per page. The layout must match the panel count exactly: " +
+        "3 panels use splash-3, 4 use action-4, 5 use classic-5, 6 use manga-6. " +
+        "Each panel prompt is a purely visual description for a black-and-white manga reference image: what is seen, who, where, camera angle and mood. " +
+        "Never put text, letters, speech bubbles or sound-effect words in the prompt. " +
+        "sceneType is one of action, dialogue, landscape, closeup, wide and must fit the panel. " +
+        "dialogue holds only exact quotes taken from the scene text, at most 3 per panel, empty when the panel has no dialogue. " +
+        "note is one short composition hint. Follow the scene order, never invent characters, places or events that are not in the scene.",
+      userPrompt: JSON.stringify({
+        context: input.context ?? "",
+        sceneText: input.text,
+      }),
+    };
+  }
   if (input.task === "summarize") {
     return {
       systemInstruction:
@@ -61,9 +129,12 @@ export function buildNovelAiPrompt(input: NovelAiInput): {
 export function parseNovelAiResponse(
   parsed: unknown,
   task: NovelAiTask,
-): { summary?: string; issues?: string[] } | null {
+): { summary?: string; issues?: string[]; breakdown?: NovelBreakdown } | null {
   if (typeof parsed !== "object" || parsed === null) return null;
   const p = parsed as Record<string, unknown>;
+  if (task === "breakdown") {
+    return parseBreakdown(p);
+  }
   if (task === "summarize") {
     if (typeof p.summary !== "string" || !p.summary.trim()) return null;
     return { summary: p.summary.trim() };
@@ -73,6 +144,62 @@ export function parseNovelAiResponse(
     (x): x is string => typeof x === "string" && x.trim().length > 0,
   );
   return { issues: issues.map((x) => x.trim()) };
+}
+
+/** Layout theo đúng số khung: model gửi sai layout thì sửa theo số khung thật. */
+function layoutForPanelCount(count: number): BreakdownLayout {
+  if (count <= 3) return "splash-3";
+  if (count === 4) return "action-4";
+  if (count >= 6) return "manga-6";
+  return "classic-5";
+}
+
+function cleanText(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim().slice(0, max);
+  return text.length > 0 ? text : null;
+}
+
+/**
+ * Kiểm tra kế hoạch tách cảnh: 1-3 trang, mỗi trang 3-6 khung, prompt
+ * và loại cảnh hợp lệ, thoại là mảng câu trích. Trang rỗng hoặc khung
+ * thiếu prompt thì cả đáp án bị loại, để model thử lại ở model khác.
+ */
+function parseBreakdown(
+  p: Record<string, unknown>,
+): { breakdown: NovelBreakdown } | null {
+  if (!Array.isArray(p.pages)) return null;
+  const pages: BreakdownPage[] = [];
+  for (const rawPage of p.pages.slice(0, 3)) {
+    if (typeof rawPage !== "object" || rawPage === null) return null;
+    const rawPanels = (rawPage as Record<string, unknown>).panels;
+    if (!Array.isArray(rawPanels)) return null;
+    const panels: BreakdownPanel[] = [];
+    for (const rawPanel of rawPanels.slice(0, 6)) {
+      if (typeof rawPanel !== "object" || rawPanel === null) return null;
+      const rp = rawPanel as Record<string, unknown>;
+      const prompt = cleanText(rp.prompt, 400);
+      if (!prompt) return null;
+      const sceneType = BREAKDOWN_SCENE_TYPES.includes(
+        rp.sceneType as BreakdownSceneType,
+      )
+        ? (rp.sceneType as BreakdownSceneType)
+        : null;
+      if (!sceneType) return null;
+      const dialogue = Array.isArray(rp.dialogue)
+        ? rp.dialogue
+            .map((d) => cleanText(d, 200))
+            .filter((d): d is string => d !== null)
+            .slice(0, 3)
+        : [];
+      const note = cleanText(rp.note, 200) ?? "";
+      panels.push({ prompt, sceneType, dialogue, note });
+    }
+    if (panels.length < 3) return null;
+    pages.push({ layout: layoutForPanelCount(panels.length), panels });
+  }
+  if (pages.length === 0) return null;
+  return { breakdown: { pages } };
 }
 
 export class NovelAiService {
@@ -105,7 +232,8 @@ export class NovelAiService {
           config: {
             systemInstruction,
             responseMimeType: "application/json",
-            maxOutputTokens: 2048,
+            // Tách cảnh trả về nhiều trang/khung nên cần trần cao hơn.
+            maxOutputTokens: input.task === "breakdown" ? 4096 : 2048,
           },
         });
         const text = response.text ?? "";

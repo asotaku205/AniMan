@@ -862,7 +862,7 @@ export default function OutlineView({ s, onOpenScene, authenticatedFetch }: { s:
           </section>
         </div>
       )}
-      {tab === "bridges" && <BridgeView s={s} />}
+      {tab === "bridges" && <BridgeView s={s} authenticatedFetch={authenticatedFetch} />}
     </div>
   );
 }

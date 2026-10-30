@@ -9,6 +9,7 @@ import {
   type ReferenceImageSource,
   type ReferenceOverlayPosition,
 } from "../lib/referenceImages";
+import type { PanelPlan } from "../lib/panelPlans";
 
 interface Props {
   /** Lịch sử ảnh mẫu của khung đang mở, tối đa 3 ảnh, mới nhất trước. */
@@ -60,6 +61,13 @@ interface Props {
   onCorrectionChange: (value: string) => void;
   /** Kích thước ảnh mẫu sẽ ra, theo đúng tỉ lệ khung đang vẽ. */
   outputSize: { width: number; height: number } | null;
+  /**
+   * Kế hoạch khung từ cầu nối Novel -> Manga: prompt + loại cảnh điền
+   * sẵn khi mở khung, Sơn sửa thoải mái. Null khi khung không có kế
+   * hoạch (vẽ tay từ đầu hoặc project cũ).
+   */
+  panelPlan?: PanelPlan | null;
+  onApplyPanelPlan?: () => void;
 }
 
 /**
@@ -100,6 +108,8 @@ export function ReferenceImagePanel({
   correction,
   onCorrectionChange,
   outputSize,
+  panelPlan,
+  onApplyPanelPlan,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -199,6 +209,32 @@ export function ReferenceImagePanel({
           <p className="text-amber-200/90 text-[10px] font-semibold tracking-wide bg-amber-500/10 border border-amber-400/30 rounded-lg px-2 py-1.5">
             ẢNH MẪU THAM KHẢO, KHÔNG PHẢI BẢN CHÍNH
           </p>
+
+          {/* Kế hoạch khung từ cầu nối Novel -> Manga: prompt điền sẵn
+              khi mở khung, bấm để dùng lại nếu Sơn đã sửa ô prompt. */}
+          {panelPlan && (
+            <div className="space-y-1.5 rounded-xl bg-white/5 border border-white/10 px-2 py-2">
+              <span className="text-white/60 text-[10px] font-semibold">
+                Kế hoạch từ Novel: {panelPlan.sourceSceneTitle}
+              </span>
+              <p className="text-white/80 text-[11px] leading-relaxed">
+                {panelPlan.prompt}
+              </p>
+              {panelPlan.note && (
+                <p className="text-white/40 text-[10px] leading-relaxed">
+                  Ghi chú bố cục: {panelPlan.note}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={onApplyPanelPlan}
+                disabled={!onApplyPanelPlan || ideaPrompt === panelPlan.prompt}
+                className="w-full py-1.5 px-3 rounded-xl bg-white/5 border border-white/10 text-white/70 text-xs transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Dùng prompt kế hoạch
+              </button>
+            </div>
+          )}
 
           {/* Ô prompt "Ý tưởng muốn vẽ": nằm trong khung ảnh mẫu vì
               sinh ảnh dùng prompt này; phân tích nét vẽ đọc cùng state. */}

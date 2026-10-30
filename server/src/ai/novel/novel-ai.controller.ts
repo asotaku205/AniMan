@@ -21,16 +21,18 @@ interface AuthenticatedRequest extends Request {
 
 const MAX_SCENE_TEXT_LENGTH = 8000;
 const MAX_BIBLE_LENGTH = 4000;
+const MAX_CONTEXT_LENGTH = 2000;
 
 function asString(value: unknown, max: number): string {
   return typeof value === "string" ? value.slice(0, max) : "";
 }
 
 /**
- * POST /ai/novel — tóm tắt cảnh / kiểm tra nhất quán với sổ tay (N3).
- * Dùng CHUNG rate limiter với AI drawing + dịch (5/phút, 30/ngày) vì
- * cùng một ngân sách Gemini free tier. Kết quả là bản nháp, client hiển
- * thị để người dùng duyệt, không tự sửa văn bản.
+ * POST /ai/novel  -  tóm tắt cảnh / kiểm tra nhất quán với sổ tay /
+ * tách cảnh thành trang/khung manga (N3 + cầu nối). Dùng CHUNG rate
+ * limiter với AI drawing + dịch (5/phút, 30/ngày) vì cùng một ngân
+ * sách Gemini free tier. Kết quả là bản nháp, client hiển thị để người
+ * dùng duyệt, không tự sửa văn bản.
  */
 @Controller("ai/novel")
 @UseGuards(JwtAuthGuard)
@@ -49,17 +51,23 @@ export class NovelAiController {
       throw new BadRequestException("Body must be an object");
     }
     const b = body as Record<string, unknown>;
-    const task = b.task === "summarize" || b.task === "consistency" ? b.task : null;
+    const task =
+      b.task === "summarize" || b.task === "consistency" || b.task === "breakdown"
+        ? b.task
+        : null;
     if (!task) {
-      throw new BadRequestException("task must be summarize or consistency");
+      throw new BadRequestException(
+        "task must be summarize, consistency or breakdown",
+      );
     }
     const text = asString(b.text, MAX_SCENE_TEXT_LENGTH);
     if (!text.trim()) {
       throw new BadRequestException("text must be non-empty");
     }
     const bible = asString(b.bible, MAX_BIBLE_LENGTH);
+    const context = asString(b.context, MAX_CONTEXT_LENGTH);
 
     this.rateLimiter.assertCanRequest(request.user.id);
-    return this.novelAi.run({ task, text, bible });
+    return this.novelAi.run({ task, text, bible, context });
   }
 }

@@ -172,6 +172,8 @@ export function RightPanel({ s }: Props) {
           referenceCorrection={s.referenceCorrection}
           onReferenceCorrectionChange={s.setReferenceCorrection}
           referenceOutputSize={s.referenceOutputSize}
+          referencePanelPlan={s.referencePanelPlan}
+          onApplyReferencePanelPlan={s.applyReferencePanelPlan}
           generateReferenceImage={s.generateReferenceImage}
           cancelReferenceImageGeneration={s.cancelReferenceImageGeneration}
           referenceGenerating={s.referenceGenerating}

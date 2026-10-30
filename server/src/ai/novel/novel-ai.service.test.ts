@@ -42,4 +42,65 @@ describe("parseNovelAiResponse", () => {
     expect(parseNovelAiResponse({ issues: "không phải mảng" }, "consistency")).toBeNull();
     expect(parseNovelAiResponse({ issues: [] }, "consistency")).toEqual({ issues: [] });
   });
+
+  it("tách cảnh: prompt chứa ngữ cảnh + cảnh, yêu cầu JSON pages/panels", () => {
+    const { systemInstruction, userPrompt } = buildNovelAiPrompt({
+      task: "breakdown",
+      text: "Aoi bước vào ga lúc hoàng hôn.",
+      context: "Truyện về Aoi rời quê.",
+    });
+    expect(systemInstruction).toContain("splash-3");
+    expect(systemInstruction).toContain("Never put text");
+    expect(userPrompt).toContain("Aoi bước vào ga lúc hoàng hôn.");
+    expect(userPrompt).toContain("Truyện về Aoi rời quê.");
+  });
+
+  it("chấp nhận breakdown hợp lệ, sửa layout theo đúng số khung", () => {
+    const result = parseNovelAiResponse(
+      {
+        pages: [
+          {
+            layout: "classic-5",
+            panels: [
+              { prompt: "Ga lúc hoàng hôn.", sceneType: "wide", dialogue: [], note: "Mở đầu rộng." },
+              { prompt: "Aoi nhìn bảng giờ.", sceneType: "closeup", dialogue: ["Chuyến cuối..."], note: "" },
+              { prompt: "Tay Aoi nắm vé.", sceneType: "closeup", dialogue: [], note: "" },
+            ],
+          },
+        ],
+      },
+      "breakdown",
+    );
+    expect(result?.breakdown?.pages[0].layout).toBe("splash-3");
+    expect(result?.breakdown?.pages[0].panels).toHaveLength(3);
+    expect(result?.breakdown?.pages[0].panels[1].dialogue).toEqual(["Chuyến cuối..."]);
+  });
+
+  it("từ chối breakdown thiếu prompt, sai loại cảnh, ít hơn 3 khung", () => {
+    expect(
+      parseNovelAiResponse(
+        { pages: [{ layout: "classic-5", panels: [{ prompt: "  ", sceneType: "wide", dialogue: [], note: "" }] }] },
+        "breakdown",
+      ),
+    ).toBeNull();
+    expect(
+      parseNovelAiResponse(
+        {
+          pages: [
+            {
+              layout: "classic-5",
+              panels: [
+                { prompt: "Ga.", sceneType: "nope", dialogue: [], note: "" },
+                { prompt: "Aoi.", sceneType: "wide", dialogue: [], note: "" },
+                { prompt: "Vé.", sceneType: "wide", dialogue: [], note: "" },
+              ],
+            },
+          ],
+        },
+        "breakdown",
+      ),
+    ).toBeNull();
+    expect(parseNovelAiResponse({ pages: [] }, "breakdown")).toBeNull();
+    expect(parseNovelAiResponse({}, "breakdown")).toBeNull();
+  });
 });

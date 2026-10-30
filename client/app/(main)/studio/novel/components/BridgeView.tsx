@@ -7,6 +7,8 @@ import {
   createBridge,
 } from "../lib/novel";
 import type { NovelStudioState } from "../hooks/useNovelStudio";
+import type { AuthenticatedFetch } from "../../../../../lib/auth-api";
+import { breakdownScene } from "../../../../../lib/novel-ai";
 import {
   suggestScenesFromText,
   type SceneDraft,
@@ -15,17 +17,20 @@ import { listAnimProjects } from "../../animation/lib/animStorage";
 import type { AnimProject } from "../../animation/lib/animProject";
 import { listSeries } from "../../animation/lib/libraryStorage";
 import type { Series } from "../../animation/lib/library";
+import { LAYOUTS } from "../../manga-ai/data";
+import type { PanelPlan } from "../../manga-ai/lib/panelPlans";
 import {
   pagesForAnimProject,
-  pagesForPanels,
-  panelDraftsForText,
+  planPagesFromBreakdown,
+  changePlanPageLayout,
   type MangaPageDraft,
+  type MangaPlanPage,
 } from "../lib/novelBridge";
 import { recordNotification } from "../../../notification/lib/notifications";
 import {
   createAnimProjectFromDrafts,
   createMangaProjectFromAnim,
-  createMangaProjectFromPages,
+  createMangaProjectFromPlan,
   createTranslateEpisodeFromAnim,
 } from "../lib/bridgeActions";
 
@@ -68,13 +73,19 @@ function ArmedDelete({ onDelete }: { onDelete: () => void }) {
   );
 }
 
-export default function BridgeView({ s }: { s: NovelStudioState }) {
+export default function BridgeView({
+  s,
+  authenticatedFetch,
+}: {
+  s: NovelStudioState;
+  authenticatedFetch: AuthenticatedFetch;
+}) {
   const novel = s.selectedNovel;
   const [scope, setScope] = useState<Scope>("scene");
   const [genre, setGenre] = useState("");
   const [animGenre, setAnimGenre] = useState("");
   const [drafts, setDrafts] = useState<SceneDraft[] | null>(null);
-  const [pages, setPages] = useState<MangaPageDraft[] | null>(null);
+  const [planPages, setPlanPages] = useState<MangaPlanPage[] | null>(null);
   const [animProjects, setAnimProjects] = useState<AnimProject[]>([]);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
   const [animId, setAnimId] = useState("");
@@ -163,14 +174,15 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
       });
     });
 
-  const createManga = () =>
+  const createMangaFromPlan = () =>
     run("Đang tạo dự án Manga…", async () => {
-      if (!pages || pages.length === 0) return;
-      const created = await createMangaProjectFromPages(
+      if (!planPages || planPages.length === 0) return;
+      const panelCount = planPages.reduce((n, pg) => n + pg.plans.length, 0);
+      const created = await createMangaProjectFromPlan(
         novel.title,
         novelDesc,
         genre,
-        pages,
+        planPages,
       );
       await s.addBridge(
         createBridge(
@@ -184,14 +196,97 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
       await recordNotification(
         "bridge",
         `Đã tạo dự án Manga “${novel.title}”`,
-        `${created.pageCount} trang từ ${scopeLabel}.`,
+        `${created.pageCount} trang, ${panelCount} khung từ ${scopeLabel}. Mở khung trong Manga Studio là thấy prompt đã điền sẵn.`,
         "/studio/manga-ai",
       );
       setResult({
-        label: `Dự án Manga “${novel.title}” (${created.pageCount} trang) — mở Manga Studio là thấy dự án mới đã được chọn sẵn`,
+        label: `Dự án Manga “${novel.title}” (${created.pageCount} trang, ${panelCount} khung)  -  mở Manga Studio là thấy dự án mới đã được chọn sẵn`,
         route: "/studio/manga-ai",
       });
     });
+
+  /**
+   * AI phân tích từng cảnh trong phạm vi thành trang/khung manga.
+   * Mỗi cảnh tốn 1 lượt AI (giới hạn chung 5/phút, 30/ngày). Kết quả
+   * là bản nháp, Sơn duyệt/sửa ở dưới trước khi tạo dự án Manga.
+   */
+  const analyzePlan = () =>
+    run("Đang phân tích bằng AI…", async () => {
+      const scenes =
+        scope === "scene"
+          ? s.selectedScene
+            ? [s.selectedScene]
+            : []
+          : scope === "chapter"
+            ? s.scenes
+            : s.novelScenes;
+      const withText = scenes.filter((sc) => sceneText(sc).trim().length > 0);
+      if (withText.length === 0) {
+        setError("Phạm vi đang chọn không có nội dung để phân tích.");
+        return;
+      }
+      const context = [novel.premise, novel.summary]
+        .filter(Boolean)
+        .join("\n\n")
+        .slice(0, 2000);
+      const all: MangaPlanPage[] = [];
+      for (let i = 0; i < withText.length; i += 1) {
+        const sc = withText[i];
+        setBusy(`Đang phân tích cảnh ${i + 1}/${withText.length}: ${sc.title}…`);
+        const sceneContext = [context, sc.synopsis]
+          .filter(Boolean)
+          .join("\n\n")
+          .slice(0, 2000);
+        const breakdown = await breakdownScene(
+          authenticatedFetch,
+          sceneText(sc),
+          sceneContext || undefined,
+        );
+        all.push(...planPagesFromBreakdown(breakdown, sc.title));
+      }
+      setPlanPages(all);
+    });
+
+  const updatePlanPanel = (
+    pageIdx: number,
+    panelIdx: number,
+    patch: Partial<PanelPlan>,
+  ) => {
+    setPlanPages((prev) =>
+      prev
+        ? prev.map((pg, i) =>
+            i === pageIdx
+              ? {
+                  ...pg,
+                  plans: pg.plans.map((pl, j) =>
+                    j === panelIdx ? { ...pl, ...patch } : pl,
+                  ),
+                }
+              : pg,
+          )
+        : prev,
+    );
+  };
+
+  const deletePlanPanel = (pageIdx: number, panelIdx: number) => {
+    setPlanPages((prev) => {
+      if (!prev) return prev;
+      const next = prev
+        .map((pg, i) =>
+          i === pageIdx
+            ? { ...pg, plans: pg.plans.filter((_, j) => j !== panelIdx) }
+            : pg,
+        )
+        .filter((pg) => pg.plans.length > 0);
+      return next.length > 0 ? next : null;
+    });
+  };
+
+  const updatePlanLayout = (pageIdx: number, layoutId: string) => {
+    setPlanPages((prev) =>
+      prev ? changePlanPageLayout(prev, pageIdx, layoutId) : prev,
+    );
+  };
 
   const createAnimManga = () =>
     run("Đang tạo dự án Manga…", async () => {
@@ -255,35 +350,6 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
       });
     });
 
-  const updatePanel = (
-    pageIdx: number,
-    panelIdx: number,
-    patch: Partial<{ narration: string; dialogues: string[] }>,
-  ) => {
-    setPages((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const pg = { ...next[pageIdx], panels: [...next[pageIdx].panels] };
-      pg.panels[panelIdx] = { ...pg.panels[panelIdx], ...patch };
-      next[pageIdx] = pg;
-      return next;
-    });
-  };
-
-  const deletePanel = (pageIdx: number, panelIdx: number) => {
-    setPages((prev) => {
-      if (!prev) return prev;
-      const next = prev
-        .map((pg, i) =>
-          i === pageIdx
-            ? { panels: pg.panels.filter((_, j) => j !== panelIdx) }
-            : pg,
-        )
-        .filter((pg) => pg.panels.length > 0);
-      return next;
-    });
-  };
-
   return (
     <div className="space-y-6">
       <p className="text-sm text-amber-100/70">
@@ -321,7 +387,7 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
               onChange={(e) => {
                 setScope(e.target.value as Scope);
                 setDrafts(null);
-                setPages(null);
+                setPlanPages(null);
               }}
             >
               <option value="scene" disabled={!s.selectedScene}>
@@ -417,12 +483,15 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
       {/* 2. Novel → Manga */}
       <section className={sectionCls}>
         <h3 className="text-sm font-semibold text-amber-100">
-          2. Tiểu thuyết → Manga (trực tiếp)
+          2. Tiểu thuyết sang Manga (AI phân tích)
         </h3>
         <p className="mt-1 text-xs text-amber-100/70">
-          Mỗi đoạn văn thành một panel, phần kể thành caption, thoại thành
-          khối chữ — tranh trống để Sơn vẽ. Tối đa 5 panel/trang (layout
-          Classic 5).
+          Model tự phân tích từng cảnh trong phạm vi rồi tách thành trang
+          manga, mỗi khung có sẵn prompt để sinh ảnh mẫu. Sơn duyệt và
+          sửa kế hoạch ở dưới, tạo dự án xong mở từng khung trong Manga
+          Studio là thấy prompt đã điền sẵn, sửa rồi sinh ảnh mẫu như
+          thường. Tranh vẫn trống để Sơn vẽ, thoại trích thành khối chữ.
+          Mỗi cảnh tốn 1 lượt AI.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-sm text-amber-100/80">
@@ -433,7 +502,7 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
               onChange={(e) => {
                 setScope(e.target.value as Scope);
                 setDrafts(null);
-                setPages(null);
+                setPlanPages(null);
               }}
             >
               <option value="scene" disabled={!s.selectedScene}>
@@ -458,75 +527,108 @@ export default function BridgeView({ s }: { s: NovelStudioState }) {
             type="button"
             className={btnCls}
             disabled={scopeEmpty || !!busy}
-            onClick={() => setPages(pagesForPanels(panelDraftsForText(scopeText)))}
+            onClick={() => void analyzePlan()}
           >
-            Xem trước phân trang
+            Phân tích bằng AI
           </button>
         </div>
-        {pages && (
+        {scopeEmpty && (
+          <p className="mt-2 text-xs text-amber-100/70">
+            Phạm vi này chưa có nội dung.
+          </p>
+        )}
+        {planPages && (
           <div className="mt-3 space-y-3">
-            {pages.map((pg, pi) => (
+            {planPages.map((pg, pi) => (
               <div
                 key={pi}
                 className="rounded-lg border border-amber-100/15 p-3"
               >
-                <p className="text-xs font-semibold text-amber-100/80">
-                  Trang {pi + 1} ({pg.panels.length} panel)
-                </p>
-                {pg.panels.map((panel, pj) => (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold text-amber-100/80">
+                    Trang {pi + 1} ({pg.plans.length} khung)  -  từ cảnh “
+                    {pg.sourceSceneTitle}”
+                  </p>
+                  <label className="text-xs text-amber-100/70">
+                    Layout{" "}
+                    <select
+                      className={inputCls}
+                      value={pg.layoutId}
+                      onChange={(e) => updatePlanLayout(pi, e.target.value)}
+                    >
+                      {LAYOUTS.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.label} ({l.panels.length} khung)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {pg.plans.map((plan, pj) => (
                   <div key={pj} className="mt-2 space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-amber-100/70">
-                        Panel {pj + 1}
+                        Khung {pj + 1}
                       </span>
+                      <select
+                        className={inputCls}
+                        value={plan.sceneType}
+                        onChange={(e) =>
+                          updatePlanPanel(pi, pj, {
+                            sceneType: e.target.value as PanelPlan["sceneType"],
+                          })
+                        }
+                      >
+                        <option value="action">Hành động</option>
+                        <option value="dialogue">Thoại</option>
+                        <option value="landscape">Phong cảnh</option>
+                        <option value="closeup">Cận cảnh</option>
+                        <option value="wide">Toàn cảnh</option>
+                      </select>
                       <button
                         type="button"
                         className="text-xs text-red-300 hover:underline"
-                        onClick={() => deletePanel(pi, pj)}
+                        onClick={() => deletePlanPanel(pi, pj)}
                       >
-                        Xoá panel
+                        Xoá khung
                       </button>
                     </div>
-                    <input
+                    <textarea
                       className={`${inputCls} w-full`}
-                      value={panel.narration}
-                      placeholder="Phần kể (caption)"
+                      rows={2}
+                      value={plan.prompt}
+                      placeholder="Prompt sinh ảnh mẫu cho khung này"
                       onChange={(e) =>
-                        updatePanel(pi, pj, { narration: e.target.value })
+                        updatePlanPanel(pi, pj, { prompt: e.target.value })
                       }
                     />
-                    {panel.dialogues.map((dl, di) => (
-                      <input
-                        key={di}
-                        className={`${inputCls} w-full`}
-                        value={dl}
-                        placeholder="Thoại"
-                        onChange={(e) =>
-                          updatePanel(pi, pj, {
-                            dialogues: panel.dialogues.map((x, j) =>
-                              j === di ? e.target.value : x,
-                            ),
-                          })
-                        }
-                      />
-                    ))}
+                    {plan.dialogue.length > 0 && (
+                      <p className="text-xs text-amber-100/60">
+                        Thoại tham khảo: {plan.dialogue.join(" / ")}
+                      </p>
+                    )}
+                    {plan.note && (
+                      <p className="text-xs text-amber-100/60">
+                        Ghi chú bố cục: {plan.note}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
             ))}
-            {pages.length === 0 && (
+            {planPages.length === 0 && (
               <p className="text-sm text-amber-100/70">
-                Không còn panel nào.
+                Không còn khung nào.
               </p>
             )}
             <button
               type="button"
               className={btnCls}
-              disabled={pages.length === 0 || !!busy}
-              onClick={() => void createManga()}
+              disabled={planPages.length === 0 || !!busy}
+              onClick={() => void createMangaFromPlan()}
             >
-              Tạo dự án Manga ({pages.reduce((n, pg) => n + pg.panels.length, 0)}{" "}
-              panel)
+              Tạo dự án Manga (
+              {planPages.reduce((n, pg) => n + pg.plans.length, 0)} khung)
             </button>
           </div>
         )}

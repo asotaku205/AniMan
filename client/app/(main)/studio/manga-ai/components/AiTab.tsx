@@ -45,6 +45,7 @@ import type {
   ReferenceImageSource,
   ReferenceOverlayPosition,
 } from "../lib/referenceImages";
+import type { PanelPlan } from "../lib/panelPlans";
 import { ReferenceImagePanel } from "./ReferenceImagePanel";
 
 type Props = {
@@ -100,6 +101,9 @@ type Props = {
   onReferenceCorrectionChange: (value: string) => void;
   /** Kích thước ảnh mẫu sẽ ra, theo đúng tỉ lệ khung đang vẽ */
   referenceOutputSize: { width: number; height: number } | null;
+  /** Kế hoạch khung từ cầu nối Novel -> Manga, của khung đang mở */
+  referencePanelPlan: PanelPlan | null;
+  onApplyReferencePanelPlan: () => void;
   /** Sinh ảnh mẫu tham khảo (Cloudflare, job bất đồng bộ) */
   generateReferenceImage: () => void;
   cancelReferenceImageGeneration: () => void;
@@ -291,6 +295,8 @@ export function AiTab({
   referenceCorrection,
   onReferenceCorrectionChange,
   referenceOutputSize,
+  referencePanelPlan,
+  onApplyReferencePanelPlan,
   generateReferenceImage,
   cancelReferenceImageGeneration,
   referenceGenerating,
@@ -426,6 +432,8 @@ export function AiTab({
           correction={referenceCorrection}
           onCorrectionChange={onReferenceCorrectionChange}
           outputSize={referenceOutputSize}
+          panelPlan={referencePanelPlan}
+          onApplyPanelPlan={onApplyReferencePanelPlan}
           onGenerate={generateReferenceImage}
           onCancelGenerate={cancelReferenceImageGeneration}
           generating={referenceGenerating}

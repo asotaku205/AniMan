@@ -33,11 +33,13 @@ import type {
 } from "./novelBridge";
 import {
   mangaPageTexts,
+  mangaPlanPageTexts,
   cuesForAnimProject,
-  pagesForPanels,
   pagesForAnimProject,
-  panelDraftsForText,
+  type MangaPlanPage,
 } from "./novelBridge";
+import { savePanelPlans } from "../../manga-ai/lib/panelPlans";
+import type { PanelPlan } from "../../manga-ai/lib/panelPlans";
 
 const MANGA_ACTIVE_KEY = "animan_manga_active_project_id_v1";
 
@@ -100,22 +102,58 @@ export async function createMangaProjectFromPages(
   return { id: project.id, pageCount: pages.length };
 }
 
-/** Novel → Manga trực tiếp: văn bản thành trang nháp rồi tạo dự án. */
-export async function createMangaProjectFromText(
+/** Novel -> Manga theo kế hoạch AI phân tích: trang đúng layout đã duyệt,
+ * thoại thành khối chữ, kế hoạch khung lưu riêng để Manga Studio điền
+ * sẵn prompt + loại cảnh khi Sơn mở từng khung. Tranh trống để Sơn vẽ. */
+export async function createMangaProjectFromPlan(
   title: string,
   description: string,
   genre: string,
-  text: string,
+  planPages: MangaPlanPage[],
 ): Promise<{ id: string; pageCount: number; panelCount: number }> {
-  const panels = panelDraftsForText(text);
-  const pages = pagesForPanels(panels);
-  const created = await createMangaProjectFromPages(
-    title,
-    description,
-    genre,
-    pages,
-  );
-  return { ...created, panelCount: panels.length };
+  const now = Date.now();
+  const project = {
+    id: `proj-${now}`,
+    title: title.trim() || "Tác phẩm Manga mới",
+    genre: genre.trim() || "Action",
+    description: description.trim(),
+    createdAt: now,
+    updatedAt: now,
+    status: "draft" as const,
+    pages: planPages.map((pg, i) => ({
+      pageNumber: i + 1,
+      layoutId: pg.layoutId,
+      panels: {} as Record<string, string>,
+    })),
+  };
+  await saveProjectToDB(project);
+  let panelCount = 0;
+  for (let i = 0; i < planPages.length; i += 1) {
+    const planPage = planPages[i];
+    panelCount += planPage.plans.length;
+    await savePageDrawingToDB(
+      project.id,
+      i + 1,
+      {},
+      planPage.layoutId,
+      {},
+      mangaPlanPageTexts(planPage, i + 1),
+    );
+    const plans: Record<string, PanelPlan> = {};
+    planPage.plans.forEach((plan, pi) => {
+      plans[`p${pi + 1}`] = plan;
+    });
+    await savePanelPlans(project.id, i + 1, plans);
+  }
+  // Mở Manga Studio sẽ thấy ngay dự án mới (hub đọc key này lúc nạp).
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem(MANGA_ACTIVE_KEY, project.id);
+    }
+  } catch {
+    /* không chặn tạo dự án nếu storage bị chặn */
+  }
+  return { id: project.id, pageCount: planPages.length, panelCount };
 }
 
 /** Animation → Manga: cảnh thành panel (1 cảnh = 1 panel). Ghi chú cảnh

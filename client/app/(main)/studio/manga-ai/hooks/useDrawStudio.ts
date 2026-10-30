@@ -128,6 +128,10 @@ import {
   type ReferenceImageSource,
   type ReferenceOverlayPosition,
 } from "../lib/referenceImages";
+import {
+  loadPanelPlans,
+  type PanelPlan,
+} from "../lib/panelPlans";
 import { regionToPixelRect } from "../lib/strokeCleanup";
 import {
   createTextItem,
@@ -598,6 +602,25 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
 
   // AI / scene
   const [sceneType, setSceneType] = useState<SceneType>("auto");
+
+  /**
+   * Kế hoạch khung từ cầu nối Novel -> Manga, theo đúng trang đang mở:
+   * kho riêng, không vào lớp vẽ hay bản xuất. Nạp cùng lúc với dữ liệu
+   * trang (async, không setState đồng bộ trong effect).
+   */
+  const [panelPlans, setPanelPlans] = useState<Record<string, PanelPlan>>({});
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    async function loadPlans() {
+      const plans = await loadPanelPlans(projectId!, page).catch(() => ({}));
+      if (!cancelled) setPanelPlans(plans);
+    }
+    loadPlans();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, page]);
   const [activeGuides, setActiveGuides] = useState<GuideId[]>([]);
   const [selectedComp, setSelectedComp] = useState<string | null>(null);
   const [poseCategory, setPoseCategory] = useState<PoseCategory>("stand");
@@ -3799,6 +3822,15 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       setReferenceOverlayImageId(null);
       // Ghi chú sửa nói về ảnh của khung cũ, đổi khung thì xóa.
       setReferenceCorrection("");
+      // Mở khung có kế hoạch từ cầu nối Novel mà ô prompt còn trống
+      // thì điền sẵn prompt + loại cảnh của kế hoạch. Ô đã có chữ
+      // (Sơn tự gõ hoặc khung trước để lại) thì không động vào; Sơn
+      // bấm nút trong panel để dùng prompt kế hoạch khi cần.
+      const plan = panelPlans[panelId];
+      if (plan && userDrawingPrompt.trim().length === 0) {
+        setUserDrawingPrompt(plan.prompt);
+        setSceneType(plan.sceneType);
+      }
       setShowPanelSuggestions(false);
       setShowSuggestBtn(true);
       setShowAnalysis(false);
@@ -3813,7 +3845,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       clearSelection();
       endFloat();
     },
-    [clearSelection, endFloat],
+    [clearSelection, endFloat, panelPlans, userDrawingPrompt],
   );
 
   const exitPanel = useCallback(() => {
@@ -3878,6 +3910,19 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
         panelBackingSize.h,
       )
     : null;
+
+  /** Kế hoạch của khung đang mở, null khi khung không từ cầu nối Novel. */
+  const referencePanelPlan = useMemo(
+    () => (activePanel ? (panelPlans[activePanel] ?? null) : null),
+    [activePanel, panelPlans],
+  );
+
+  /** Điền prompt + loại cảnh từ kế hoạch khung, ghi đè prompt đang có. */
+  const applyReferencePanelPlan = useCallback(() => {
+    if (!referencePanelPlan) return;
+    setUserDrawingPrompt(referencePanelPlan.prompt);
+    setSceneType(referencePanelPlan.sceneType);
+  }, [referencePanelPlan]);
 
   const panelDef = activePanel
     ? (layout.panels.find((p) => p.id === activePanel) ?? null)
@@ -4223,6 +4268,9 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setReferenceCorrection,
     /** Kích thước ảnh mẫu sẽ ra, theo đúng tỉ lệ khung đang vẽ */
     referenceOutputSize,
+    /** Kế hoạch khung từ cầu nối Novel -> Manga, của khung đang mở */
+    referencePanelPlan,
+    applyReferencePanelPlan,
     /** Lớp ảnh mẫu đè lên khung vẽ để đồ theo: chỉ xem, không vào lớp vẽ hay bản xuất */
     referenceOverlayOn,
     setReferenceOverlayOn,
