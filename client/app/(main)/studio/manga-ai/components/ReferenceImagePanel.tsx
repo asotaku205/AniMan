@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Maximize2, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Maximize2, Sparkles, Trash2, X } from "lucide-react";
 import {
   MAX_REFERENCE_IMAGES,
   REFERENCE_IMAGE_SOURCE_LABELS,
@@ -12,6 +12,17 @@ import {
 interface Props {
   /** Lịch sử ảnh mẫu của khung đang mở, tối đa 3 ảnh, mới nhất trước. */
   images: ReferenceImageItem[];
+  /**
+   * Ô prompt "Ý tưởng muốn vẽ" (dời từ khung phân tích sang đây theo
+   * mockup đã duyệt 30/10/2026): cùng một state với phân tích nét vẽ,
+   * chỉ khác vị trí hiển thị; sinh ảnh nguồn "prompt" bắt buộc có prompt.
+   */
+  ideaPrompt: string;
+  onIdeaPromptChange?: (v: string) => void;
+  /** Gợi ý mẫu nhanh theo loại cảnh đang chọn. */
+  ideaPresets: string[];
+  /** Tên loại cảnh đã cắt phần trong ngoặc, dùng cho nhãn gợi ý. */
+  ideaSceneLabel: string;
   source: ReferenceImageSource;
   onSourceChange: (source: ReferenceImageSource) => void;
   onDeleteImage: (id: string) => void;
@@ -41,6 +52,10 @@ interface Props {
  */
 export function ReferenceImagePanel({
   images,
+  ideaPrompt,
+  onIdeaPromptChange,
+  ideaPresets,
+  ideaSceneLabel,
   source,
   onSourceChange,
   onDeleteImage,
@@ -120,6 +135,52 @@ export function ReferenceImagePanel({
           <p className="text-amber-200/90 text-[10px] font-semibold tracking-wide bg-amber-500/10 border border-amber-400/30 rounded-lg px-2 py-1.5">
             ẢNH MẪU THAM KHẢO, KHÔNG PHẢI BẢN CHÍNH
           </p>
+
+          {/* Ô prompt "Ý tưởng muốn vẽ": nằm trong khung ảnh mẫu vì
+              sinh ảnh dùng prompt này; phân tích nét vẽ đọc cùng state. */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-white/80 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles size={12} className="text-pink-400" />
+                Ý Tưởng Muốn Vẽ
+              </label>
+              {ideaPrompt && onIdeaPromptChange && (
+                <button
+                  type="button"
+                  onClick={() => onIdeaPromptChange("")}
+                  className="text-white/40 hover:text-white text-[10px] transition-colors"
+                >
+                  Xóa chữ
+                </button>
+              )}
+            </div>
+            <textarea
+              value={ideaPrompt}
+              onChange={(event) => onIdeaPromptChange?.(event.target.value)}
+              disabled={!onIdeaPromptChange}
+              placeholder={`Mô tả ý tưởng muốn vẽ (vd: ${ideaPresets[0] ?? ""}...). Mô tả này làm ngữ cảnh cho sinh ảnh mẫu, phân tích nét vẽ và gợi ý mạch truyện.`}
+              rows={2}
+              className="w-full bg-[#0a0512] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-white/25 resize-none focus:outline-none focus:border-pink-500/60 focus:ring-1 focus:ring-pink-500/30 transition-all disabled:opacity-50"
+            />
+            <div>
+              <span className="text-[9px] text-white/40 block mb-1">
+                Gợi ý ý tưởng nhanh cho {ideaSceneLabel}:
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {ideaPresets.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => onIdeaPromptChange?.(preset)}
+                    disabled={!onIdeaPromptChange}
+                    className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-pink-500/20 hover:text-pink-200 border border-white/5 text-[9px] text-white/60 transition-colors text-left disabled:opacity-50"
+                  >
+                    + {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
           <div className="space-y-1.5">
             <span className="text-white/60 text-[10px] font-semibold">

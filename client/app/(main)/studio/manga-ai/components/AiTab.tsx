@@ -337,49 +337,10 @@ export function AiTab({
           </div>
         </div>
 
-        {/* 2. Mục Prompt Ý Tưởng Muốn Vẽ + Phân Tích Nét Vẽ */}
+        {/* 2. Phân tích nét vẽ và chỉ lỗi lệch (riêng, tách khỏi ảnh mẫu).
+            Ô prompt đã dời vào khung Ảnh mẫu tham khảo bên dưới, cùng
+            một state nên nút phân tích vẫn đọc được nội dung đã gõ. */}
         <div className="space-y-2.5 bg-white/[0.03] border border-white/10 rounded-2xl p-3 shadow-sm">
-          <div className="flex items-center justify-between">
-            <label className="text-white/80 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles size={12} className="text-pink-400" />
-              Ý Tưởng Muốn Vẽ
-            </label>
-            {userDrawingPrompt && (
-              <button
-                onClick={() => setUserDrawingPrompt?.("")}
-                className="text-white/40 hover:text-white text-[10px] transition-colors"
-              >
-                Xóa chữ
-              </button>
-            )}
-          </div>
-
-          <textarea
-            value={userDrawingPrompt ?? ""}
-            onChange={(e) => setUserDrawingPrompt?.(e.target.value)}
-            placeholder={`Mô tả ý tưởng muốn vẽ (vd: ${currentScene.presets[0]}...). Mô tả này làm ngữ cảnh cho phân tích nét vẽ và gợi ý mạch truyện.`}
-            rows={2}
-            className="w-full bg-[#0a0512] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-white/25 resize-none focus:outline-none focus:border-pink-500/60 focus:ring-1 focus:ring-pink-500/30 transition-all"
-          />
-
-          {/* Gợi ý mẫu nhanh theo loại cảnh */}
-          <div>
-            <span className="text-[9px] text-white/40 block mb-1">
-              Gợi ý ý tưởng nhanh cho {currentScene.title.split("(")[0]}:
-            </span>
-            <div className="flex flex-wrap gap-1">
-              {currentScene.presets.map((preset) => (
-                <button
-                  key={preset}
-                  onClick={() => setUserDrawingPrompt?.(preset)}
-                  className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-pink-500/20 hover:text-pink-200 border border-white/5 text-[9px] text-white/60 transition-colors text-left"
-                >
-                  + {preset}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Lượt AI còn lại — chỉ hiện khi lấy được từ server */}
           {aiQuota && (
             <p className="text-[9px] text-white/40">
@@ -421,6 +382,10 @@ export function AiTab({
         {/* 2b. Ảnh mẫu tham khảo (sinh ảnh bằng job Cloudflare) */}
         <ReferenceImagePanel
           images={referenceImages}
+          ideaPrompt={userDrawingPrompt ?? ""}
+          onIdeaPromptChange={setUserDrawingPrompt}
+          ideaPresets={currentScene.presets}
+          ideaSceneLabel={currentScene.title.split("(")[0]}
           source={referenceSource}
           onSourceChange={onReferenceSourceChange}
           onDeleteImage={onDeleteReferenceImage}
