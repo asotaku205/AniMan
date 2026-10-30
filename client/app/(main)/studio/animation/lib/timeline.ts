@@ -118,6 +118,28 @@ export function sortKeys<T extends { timeSec: number }>(keys: readonly T[]): T[]
 }
 
 /**
+ * Dời một key sang thời điểm mới, giữ thứ tự thời gian (không sửa mảng
+ * gốc). Dùng chung cho dải timeline 2D và 3D khi kéo key bằng chuột.
+ */
+export function retimeKey<T extends { id: string; timeSec: number }>(
+  keys: readonly T[],
+  keyId: string,
+  timeSec: number,
+): T[] {
+  return sortKeys(
+    keys.map((k) => (k.id === keyId ? { ...k, timeSec } : k)),
+  );
+}
+
+/** Xóa một key theo id (không sửa mảng gốc). */
+export function removeKey<T extends { id: string }>(
+  keys: readonly T[],
+  keyId: string,
+): T[] {
+  return keys.filter((k) => k.id !== keyId);
+}
+
+/**
  * Nội suy transform tại thời điểm t: trước key đầu → giữ key đầu, sau key
  * cuối → giữ key cuối, giữa hai key → easing của key trước.
  */

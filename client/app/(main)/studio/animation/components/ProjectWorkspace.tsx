@@ -505,6 +505,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                   <TimelineEditor
                     key={sc.id}
                     scene={sc}
+                    fps={project.fps}
                     onChange={(timeline) =>
                       void apply(updateScene(project, sc.id, { timeline }))
                     }

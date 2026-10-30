@@ -15,6 +15,8 @@ import {
   Redo2,
   Trash2,
   Undo2,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import type { AnimScene } from "../lib/animProject";
 import {
@@ -27,7 +29,9 @@ import {
   IDENTITY_CAMERA,
   IDENTITY_TRANSFORM,
   LAYER_MOTION_OPTIONS,
+  removeKey,
   removeTransformKey,
+  retimeKey,
   sampleCamera,
   sampleLayerTransform,
   sampleTransform,
@@ -130,26 +134,130 @@ function TimelineStrip({
   audioClips,
   duration,
   timeSec,
+  fps,
   selectedLayerId,
   onSelectLayer,
   onSeek,
+  onMoveKey,
+  onDeleteKey,
+  onMoveDialogue,
+  onMoveAudio,
+  onAddKey,
 }: {
   timeline: SceneTimeline;
   dialogue: DialogueLine[];
   audioClips: SceneAudioClip[];
   duration: number;
   timeSec: number;
+  /** Khung hình/giây để khớp thời gian khi kéo key/clip. */
+  fps: number;
   selectedLayerId: string | null;
   onSelectLayer: (id: string) => void;
   onSeek: (t: number) => void;
+  /** Dời key (track "camera" hoặc id layer) sang thời điểm mới. */
+  onMoveKey: (trackId: string, keyId: string, timeSec: number) => void;
+  onDeleteKey: (trackId: string, keyId: string) => void;
+  onMoveDialogue: (id: string, startSec: number) => void;
+  onMoveAudio: (id: string, startSec: number) => void;
+  /** Lưu key cho track đang chọn tại playhead. */
+  onAddKey: (trackId: string) => void;
 }) {
   const pct = (t: number) => `${Math.max(0, Math.min(100, (t / duration) * 100))}%`;
-  const seekFromEvent = (e: React.PointerEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    if (rect.width === 0) return;
-    const ratio = (e.clientX - rect.left) / rect.width;
-    onSeek(Math.max(0, Math.min(duration, ratio * duration)));
+  // Bê từ timeline 3D (PrevizEditor): chọn key, kéo key/clip, xóa key, zoom.
+  const [zoom, setZoom] = useState(1);
+  const [selectedKey, setSelectedKey] = useState<{
+    trackId: string;
+    keyId: string;
+  } | null>(null);
+  const [activeTrackId, setActiveTrackId] = useState(
+    selectedLayerId ?? "camera",
+  );
+  const laneRef = useRef<HTMLDivElement | null>(null);
+  const scrubbingRef = useRef(false);
+  const dragKeyRef = useRef<{
+    trackId: string;
+    keyId: string;
+    lastTimeSec: number | null;
+  } | null>(null);
+  const dragClipRef = useRef<{
+    kind: "dialogue" | "audio";
+    clipId: string;
+    grabOffsetSec: number;
+    lastTimeSec: number | null;
+  } | null>(null);
+
+  useEffect(() => {
+    setActiveTrackId(selectedLayerId ?? "camera");
+  }, [selectedLayerId]);
+
+  const snap = (raw: number) =>
+    Math.max(0, Math.min(duration, Math.round(raw * fps) / fps));
+  const timeFromEvent = (e: React.PointerEvent<HTMLElement>) => {
+    const rect = laneRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return null;
+    return ((e.clientX - rect.left) / rect.width) * duration;
   };
+  const seekFromEvent = (e: React.PointerEvent<HTMLDivElement>) => {
+    const raw = timeFromEvent(e);
+    if (raw === null) return;
+    onSeek(Math.max(0, Math.min(duration, raw)));
+  };
+  const beginKeyDrag = (
+    e: React.PointerEvent<HTMLSpanElement>,
+    trackId: string,
+    keyId: string,
+  ) => {
+    e.stopPropagation();
+    dragKeyRef.current = { trackId, keyId, lastTimeSec: null };
+    setSelectedKey({ trackId, keyId });
+    setActiveTrackId(trackId);
+    if (trackId !== "camera") onSelectLayer(trackId);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const dragSelectedKey = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const active = dragKeyRef.current;
+    const raw = timeFromEvent(e);
+    if (!active || raw === null) return;
+    e.stopPropagation();
+    const t = snap(raw);
+    if (active.lastTimeSec === t) return;
+    active.lastTimeSec = t;
+    onMoveKey(active.trackId, active.keyId, t);
+  };
+  const finishKeyDrag = () => {
+    dragKeyRef.current = null;
+  };
+  const beginClipDrag = (
+    e: React.PointerEvent<HTMLSpanElement>,
+    kind: "dialogue" | "audio",
+    clipId: string,
+    startSec: number,
+  ) => {
+    e.stopPropagation();
+    const pointerTime = timeFromEvent(e) ?? startSec;
+    dragClipRef.current = {
+      kind,
+      clipId,
+      grabOffsetSec: pointerTime - startSec,
+      lastTimeSec: null,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const dragClip = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const active = dragClipRef.current;
+    const raw = timeFromEvent(e);
+    if (!active || raw === null) return;
+    e.stopPropagation();
+    const startSec = snap(raw - active.grabOffsetSec);
+    if (active.lastTimeSec === startSec) return;
+    active.lastTimeSec = startSec;
+    if (active.kind === "dialogue") onMoveDialogue(active.clipId, startSec);
+    else onMoveAudio(active.clipId, startSec);
+  };
+  const finishClipDrag = () => {
+    dragClipRef.current = null;
+  };
+
   const ticks: number[] = [];
   for (let t = 0; t <= duration + 0.001; t += duration > 12 ? 2 : 1) ticks.push(t);
   const rows: { id: string; label: string; color: string; onClick?: () => void }[] = [
@@ -165,26 +273,72 @@ function TimelineStrip({
       ? [{ id: "audio", label: "Âm thanh", color: "#34d399" }]
       : []),
   ];
+  const canAddKey =
+    activeTrackId === "camera" ||
+    timeline.layers.some((l) => l.id === activeTrackId);
   return (
     <div className="shrink-0 border-t border-white/10 pt-2">
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
         <span className="text-[11px] font-semibold tracking-wide text-white/50">
-          TIMELINE — BẤM ĐỂ TUA · BẤM TÊN LAYER ĐỂ CHỌN
+          TIMELINE — BẤM ĐỂ TUA · KÉO KEY/CLIP ĐỂ DỜI THỜI GIAN
         </span>
-        <span className="text-[11px] text-white/40 tabular-nums">
-          {timeSec.toFixed(2)}s / {duration.toFixed(1)}s
-        </span>
+        <div className="flex items-center gap-1">
+          <span className="mx-1 text-[11px] text-white/40 tabular-nums">
+            {timeSec.toFixed(2)}s / {duration.toFixed(1)}s
+          </span>
+          <button
+            disabled={!canAddKey}
+            onClick={() => onAddKey(activeTrackId)}
+            title="Lưu key cho track đang chọn tại playhead"
+            aria-label="Thêm keyframe"
+            className="flex items-center gap-1 px-2 h-7 rounded bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 text-[11px] disabled:opacity-30"
+          >
+            <Plus className="w-3 h-3" /> Add key
+          </button>
+          <button
+            disabled={!selectedKey}
+            onClick={() => {
+              if (!selectedKey) return;
+              onDeleteKey(selectedKey.trackId, selectedKey.keyId);
+              setSelectedKey(null);
+            }}
+            title="Xóa keyframe đang chọn"
+            aria-label="Xóa keyframe"
+            className="px-2 h-7 rounded text-[11px] text-white/55 hover:text-rose-300 hover:bg-white/5 disabled:opacity-30"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => setZoom((v) => Math.max(1, v / 1.25))}
+            title="Thu nhỏ timeline"
+            aria-label="Thu nhỏ timeline"
+            className="grid place-items-center w-7 h-7 rounded hover:bg-white/10 text-white/65"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => setZoom((v) => Math.min(8, v * 1.25))}
+            title="Phóng to timeline"
+            aria-label="Phóng to timeline"
+            className="grid place-items-center w-7 h-7 rounded hover:bg-white/10 text-white/65"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
-      <div className="max-h-[188px] overflow-y-auto overflow-x-clip">
+      <div className="max-h-[188px] overflow-auto">
         <div className="grid grid-cols-[116px_minmax(0,1fr)]">
-          <div>
+          <div className="sticky left-0 z-20 bg-[#0a0614]">
             <div className="h-4 sticky top-0 bg-[#0a0614] z-10" />
             {rows.map((r) => (
               <button
                 key={r.id}
-                onClick={r.onClick}
+                onClick={() => {
+                  setActiveTrackId(r.id);
+                  r.onClick?.();
+                }}
                 className={`h-6 w-full flex items-center gap-1.5 px-1.5 text-xs truncate text-left rounded ${
-                  r.id === selectedLayerId
+                  r.id === activeTrackId
                     ? "bg-pink-500/15 text-white"
                     : "text-white/55 hover:text-white"
                 }`}
@@ -197,7 +351,26 @@ function TimelineStrip({
               </button>
             ))}
           </div>
-          <div className="relative" onPointerDown={seekFromEvent}>
+          <div
+            ref={laneRef}
+            className="relative"
+            style={{ width: `${zoom * 100}%`, touchAction: "none" }}
+            onPointerDown={(e) => {
+              if ((e.target as HTMLElement).dataset.timelineKey === "true") return;
+              scrubbingRef.current = true;
+              e.currentTarget.setPointerCapture(e.pointerId);
+              seekFromEvent(e);
+            }}
+            onPointerMove={(e) => {
+              if (scrubbingRef.current) seekFromEvent(e);
+            }}
+            onPointerUp={() => {
+              scrubbingRef.current = false;
+            }}
+            onPointerCancel={() => {
+              scrubbingRef.current = false;
+            }}
+          >
             <div className="h-4 relative border-b border-white/10 cursor-pointer sticky top-0 bg-[#0a0614] z-10">
               {ticks.map((t) => (
                 <span
@@ -227,8 +400,13 @@ function TimelineStrip({
                     <span
                       key={k.id}
                       title={`Key camera tại ${k.timeSec.toFixed(2)}s`}
-                      className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-sky-400"
-                      style={{ left: `calc(${pct(k.timeSec)} - 4px)` }}
+                      data-timeline-key="true"
+                      onPointerDown={(e) => beginKeyDrag(e, "camera", k.id)}
+                      onPointerMove={dragSelectedKey}
+                      onPointerUp={finishKeyDrag}
+                      onClick={() => onSeek(k.timeSec)}
+                      className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 cursor-ew-resize touch-none ${selectedKey?.trackId === "camera" && selectedKey.keyId === k.id ? "bg-white ring-2 ring-sky-400" : "bg-sky-400"}`}
+                      style={{ left: `calc(${pct(k.timeSec)} - 5px)` }}
                     />
                   ))}
                 {r.id !== "camera" &&
@@ -244,8 +422,13 @@ function TimelineStrip({
                           <span
                             key={k.id}
                             title={`Key tại ${k.timeSec.toFixed(2)}s`}
-                            className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-amber-400"
-                            style={{ left: `calc(${pct(k.timeSec)} - 4px)` }}
+                            data-timeline-key="true"
+                            onPointerDown={(e) => beginKeyDrag(e, r.id, k.id)}
+                            onPointerMove={dragSelectedKey}
+                            onPointerUp={finishKeyDrag}
+                            onClick={() => onSeek(k.timeSec)}
+                            className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 cursor-ew-resize touch-none ${selectedKey?.trackId === r.id && selectedKey.keyId === k.id ? "bg-white ring-2 ring-amber-400" : "bg-amber-400"}`}
+                            style={{ left: `calc(${pct(k.timeSec)} - 5px)` }}
                           />
                         ))}
                       </>
@@ -256,7 +439,14 @@ function TimelineStrip({
                     <span
                       key={line.id}
                       title={`${line.speaker}: ${line.text}`}
-                      className="absolute top-[2px] bottom-[2px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px]"
+                      data-timeline-key="true"
+                      onPointerDown={(e) =>
+                        beginClipDrag(e, "dialogue", line.id, line.startSec)
+                      }
+                      onPointerMove={dragClip}
+                      onPointerUp={finishClipDrag}
+                      onClick={() => onSeek(line.startSec)}
+                      className="absolute top-[2px] bottom-[2px] rounded bg-pink-500/40 border border-pink-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px] cursor-grab touch-none"
                       style={{
                         left: pct(line.startSec),
                         width: `${Math.max(2, (line.durationSec / duration) * 100)}%`,
@@ -270,7 +460,14 @@ function TimelineStrip({
                     <span
                       key={clip.id}
                       title={clip.name}
-                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px]"
+                      data-timeline-key="true"
+                      onPointerDown={(e) =>
+                        beginClipDrag(e, "audio", clip.id, clip.startSec)
+                      }
+                      onPointerMove={dragClip}
+                      onPointerUp={finishClipDrag}
+                      onClick={() => onSeek(clip.startSec)}
+                      className="absolute top-[2px] bottom-[2px] rounded bg-emerald-500/40 border border-emerald-400/40 text-[9px] text-white/85 px-1 truncate leading-[17px] cursor-grab touch-none"
                       style={{
                         left: pct(clip.startSec),
                         width: `${Math.max(2, (clip.durationSec / duration) * 100)}%`,
@@ -292,8 +489,10 @@ function TimelineStrip({
   );
 }
 
+
 export function TimelineEditor({
   scene,
+  fps = 30,
   onChange,
   onDialogueChange,
   onWeatherChange,
@@ -303,6 +502,8 @@ export function TimelineEditor({
   onSceneFxChange,
 }: {
   scene: AnimScene;
+  /** Khung hình/giây để khớp thời gian khi kéo key/clip trên dải. */
+  fps?: number;
   onChange: (timeline: SceneTimeline) => void;
   onDialogueChange?: (lines: DialogueLine[]) => void;
   onWeatherChange?: (weather: SceneWeather | null) => void;
@@ -1022,6 +1223,68 @@ export function TimelineEditor({
     });
     update({ ...timeline, cameraKeys: keys });
     setDraftCamDirty(false);
+  };
+
+  // ── Thao tác từ dải timeline (bê từ timeline 3D) ────────────────────────
+  // Kéo key/clip trên dải chỉ đổi thời gian, giữ nguyên mọi giá trị khác;
+  // lịch sử hoàn tác gộp chung trong 800ms như kéo thanh trượt.
+  const moveStripKey = useCallback(
+    (trackId: string, keyId: string, t: number) => {
+      if (trackId === "camera") {
+        update({ ...timeline, cameraKeys: retimeKey(timeline.cameraKeys, keyId, t) });
+        return;
+      }
+      const layer = timeline.layers.find((l) => l.id === trackId);
+      if (!layer) return;
+      updateLayer(trackId, { keys: retimeKey(layer.keys, keyId, t) });
+    },
+    [timeline, update, updateLayer],
+  );
+  const deleteStripKey = useCallback(
+    (trackId: string, keyId: string) => {
+      if (trackId === "camera") {
+        update({ ...timeline, cameraKeys: removeKey(timeline.cameraKeys, keyId) });
+        return;
+      }
+      const layer = timeline.layers.find((l) => l.id === trackId);
+      if (!layer) return;
+      updateLayer(trackId, { keys: removeKey(layer.keys, keyId) });
+    },
+    [timeline, update, updateLayer],
+  );
+  const moveStripDialogue = useCallback(
+    (id: string, startSec: number) => {
+      onDialogueChange?.(
+        (scene.dialogue ?? []).map((l) =>
+          l.id === id ? { ...l, startSec } : l,
+        ),
+      );
+    },
+    [onDialogueChange, scene.dialogue],
+  );
+  const moveStripAudio = useCallback(
+    (id: string, startSec: number) => {
+      onAudioChange?.(
+        (scene.audioClips ?? []).map((c) =>
+          c.id === id ? { ...c, startSec } : c,
+        ),
+      );
+    },
+    [onAudioChange, scene.audioClips],
+  );
+  // Hàm thường (không useCallback): placeCameraKey/placeLayerKey đọc
+  // draft và playhead hiện tại, memo lại sẽ giữ nháp cũ.
+  const addStripKey = (trackId: string) => {
+    if (trackId === "camera") {
+      placeCameraKey();
+      return;
+    }
+    // Dải chỉ đổi lựa chọn, chưa đổi nháp transform: bấm lần nữa để đặt.
+    if (selectedLayerId !== trackId) {
+      setSelectedLayerId(trackId);
+      return;
+    }
+    placeLayerKey();
   };
 
   const slider = (
@@ -2700,12 +2963,18 @@ export function TimelineEditor({
         audioClips={scene.audioClips ?? []}
         duration={duration}
         timeSec={timeSec}
+        fps={fps}
         selectedLayerId={selectedLayerId}
         onSelectLayer={setSelectedLayerId}
         onSeek={(t) => {
           setPlaying(false);
           setTimeSec(t);
         }}
+        onMoveKey={moveStripKey}
+        onDeleteKey={deleteStripKey}
+        onMoveDialogue={moveStripDialogue}
+        onMoveAudio={moveStripAudio}
+        onAddKey={addStripKey}
       />
     </div>
   );

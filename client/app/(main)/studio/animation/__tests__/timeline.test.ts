@@ -4,6 +4,8 @@ import {
   easingCurvePoints,
   EASING_FNS,
   IDENTITY_TRANSFORM,
+  removeKey,
+  retimeKey,
   sampleCamera,
   sampleTransform,
   upsertCameraKey,
@@ -125,6 +127,26 @@ import {
   dialogueLineAt,
   estimateLineDurationSec,
 } from "../lib/dialogue";
+
+describe("retimeKey/removeKey — kéo và xóa key trên dải timeline", () => {
+  it("dời key rồi sắp lại theo thời gian, không sửa mảng gốc", () => {
+    const keys = [key(1, 0.2), key(3, 0.8), key(5, 0.4)];
+    const moved = retimeKey(keys, "k-5", 2);
+    expect(moved.map((k) => k.timeSec)).toEqual([1, 2, 3]);
+    expect(moved.find((k) => k.id === "k-5")?.transform.x).toBe(0.4);
+    expect(keys.map((k) => k.timeSec)).toEqual([1, 3, 5]);
+    expect(retimeKey(keys, "k-khong-co", 2).map((k) => k.timeSec)).toEqual([
+      1, 3, 5,
+    ]);
+  });
+
+  it("xóa đúng key theo id, id lạ thì giữ nguyên", () => {
+    const keys = [key(1, 0.2), key(3, 0.8)];
+    expect(removeKey(keys, "k-1").map((k) => k.id)).toEqual(["k-3"]);
+    expect(removeKey(keys, "k-khong-co")).toHaveLength(2);
+    expect(keys).toHaveLength(2);
+  });
+});
 
 describe("dialogue — ước lượng & dựng track thoại", () => {
   it("thời lượng đọc tỉ lệ độ dài câu, có sàn/trần", () => {
