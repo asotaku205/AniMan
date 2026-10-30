@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { HttpException } from "@nestjs/common";
 import {
   buildNovelAiPrompt,
+  NovelAiService,
   parseNovelAiResponse,
 } from "./novel-ai.service.js";
 
@@ -74,6 +76,23 @@ describe("parseNovelAiResponse", () => {
     expect(result?.breakdown?.pages[0].layout).toBe("splash-3");
     expect(result?.breakdown?.pages[0].panels).toHaveLength(3);
     expect(result?.breakdown?.pages[0].panels[1].dialogue).toEqual(["Chuyến cuối..."]);
+  });
+
+  it("run() ném HttpException kèm nguyên nhân khi mọi model đều lỗi", async () => {
+    const service = new NovelAiService("dummy-key");
+    const client = (
+      service as unknown as {
+        client: { models: { generateContent: unknown } };
+      }
+    ).client;
+    client.models.generateContent = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("API key not valid. Please pass a valid API key."),
+      );
+    const run = service.run({ task: "summarize", text: "Aoi rời ga." });
+    await expect(run).rejects.toBeInstanceOf(HttpException);
+    await expect(run).rejects.toThrow("API key not valid");
   });
 
   it("từ chối breakdown thiếu prompt, sai loại cảnh, ít hơn 3 khung", () => {

@@ -1,3 +1,4 @@
+import { HttpException, HttpStatus } from "@nestjs/common";
 import { GoogleGenAI } from "@google/genai";
 
 /**
@@ -252,8 +253,18 @@ export class NovelAiService {
         lastError = error;
       }
     }
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("Novel AI failed on all candidate models");
+    // Mọi model đều lỗi: ném HttpException kèm nguyên nhân thật để client
+    // hiện đúng lý do (key sai, model không có, hết quota...) thay vì
+    // 500 chung chung của Nest, và ghi log ra terminal của server để
+    // chẩn đoán. Thông báo lỗi của Google không chứa API key.
+    const detail =
+      lastError instanceof Error ? lastError.message : "Unknown error";
+    console.error(
+      `[NovelAi] task=${input.task} failed on all models: ${detail.slice(0, 300)}`,
+    );
+    throw new HttpException(
+      `Gemini request failed: ${detail.slice(0, 200)}`,
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
 }
