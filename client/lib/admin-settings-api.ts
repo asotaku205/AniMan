@@ -114,13 +114,13 @@ async function callJson<T>(
 export function getAdminStats(
   authenticatedFetch: AuthenticatedFetch,
 ): Promise<AdminStats> {
-  return callJson(authenticatedFetch, "/admin/stats", { cache: "no-store" });
+  return callJson(authenticatedFetch, "/api/admin/stats", { cache: "no-store" });
 }
 
 export function getAdminSettings(
   authenticatedFetch: AuthenticatedFetch,
 ): Promise<SiteSettings> {
-  return callJson(authenticatedFetch, "/admin/settings", {
+  return callJson(authenticatedFetch, "/api/admin/settings", {
     cache: "no-store",
   });
 }
@@ -129,7 +129,7 @@ export function updateAdminSettings(
   authenticatedFetch: AuthenticatedFetch,
   changes: SiteSettingsPatch,
 ): Promise<SiteSettings> {
-  return callJson(authenticatedFetch, "/admin/settings", {
+  return callJson(authenticatedFetch, "/api/admin/settings", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(changes),

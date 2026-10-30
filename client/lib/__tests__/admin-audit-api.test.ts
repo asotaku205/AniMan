@@ -60,7 +60,7 @@ describe("listAuditLogs", () => {
     const url = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
     expect(url).toBe(
-      "/admin/audit-logs?page=2&pageSize=20&actor=son&action=work.rejected&search=la+thu",
+      "/api/admin/audit-logs?page=2&pageSize=20&actor=son&action=work.rejected&search=la+thu",
     );
   });
 
@@ -69,7 +69,7 @@ describe("listAuditLogs", () => {
     await listAuditLogs(fetchMock, { search: "   ", actor: "  " });
     const url = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
-    expect(url).toBe("/admin/audit-logs");
+    expect(url).toBe("/api/admin/audit-logs");
   });
 
   it("dich loi 403 va nem AuditLogsApiError co status", async () => {

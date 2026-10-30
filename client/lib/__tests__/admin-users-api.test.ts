@@ -53,7 +53,7 @@ describe("listAdminUsers", () => {
       status: "suspended",
     });
     expect(fetchFn).toHaveBeenCalledWith(
-      "/admin/users?page=2&pageSize=20&q=sakura&role=admin&status=suspended",
+      "/api/admin/users?page=2&pageSize=20&q=sakura&role=admin&status=suspended",
       expect.objectContaining({ method: "GET" }),
     );
     expect(result.items).toHaveLength(1);
@@ -72,7 +72,7 @@ describe("listAdminUsers", () => {
     );
     await listAdminUsers(fetchFn as unknown as AuthenticatedFetch, {});
     expect(fetchFn).toHaveBeenCalledWith(
-      "/admin/users",
+      "/api/admin/users",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -114,7 +114,7 @@ describe("changeAdminUserRole / changeAdminUserStatus", () => {
       "admin",
     );
     expect(fetchFn).toHaveBeenCalledWith(
-      "/admin/users/user-1/role",
+      "/api/admin/users/user-1/role",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({ role: "admin" }),
@@ -146,7 +146,7 @@ describe("changeAdminUserRole / changeAdminUserStatus", () => {
       "suspended",
     );
     expect(fetchFn).toHaveBeenCalledWith(
-      "/admin/users/user-1/status",
+      "/api/admin/users/user-1/status",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({ status: "suspended" }),

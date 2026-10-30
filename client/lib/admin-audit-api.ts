@@ -150,7 +150,7 @@ export async function listAuditLogs(
   const search = params.search?.trim();
   if (search) query.set("search", search);
   const suffix = query.toString();
-  const url = suffix ? `/admin/audit-logs?${suffix}` : "/admin/audit-logs";
+  const url = suffix ? `/api/admin/audit-logs?${suffix}` : "/api/admin/audit-logs";
 
   const response = await callAuditLogs(authenticatedFetch, url, {
     method: "GET",

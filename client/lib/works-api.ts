@@ -375,7 +375,7 @@ export async function listReviewQueue(
   signal?: AbortSignal,
 ): Promise<AdminWorkQueue> {
   const suffix = buildListQuery(params);
-  const url = suffix ? `/admin/works?${suffix}` : "/admin/works";
+  const url = suffix ? `/api/admin/works?${suffix}` : "/api/admin/works";
   const response = await callWorks(authenticatedFetch, url, {
     method: "GET",
     signal,
@@ -401,7 +401,7 @@ export async function reviewWork(
 ): Promise<WorkSubmission> {
   const response = await callWorks(
     authenticatedFetch,
-    `/admin/works/${encodeURIComponent(workId)}/${action}`,
+    `/api/admin/works/${encodeURIComponent(workId)}/${action}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

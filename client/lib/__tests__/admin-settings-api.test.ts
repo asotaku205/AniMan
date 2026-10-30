@@ -63,7 +63,7 @@ describe("admin settings API calls", () => {
       newUsersLast7Days: 3,
     });
     expect(authenticatedFetch).toHaveBeenCalledWith(
-      "/admin/stats",
+      "/api/admin/stats",
       expect.objectContaining({ cache: "no-store" }),
     );
   });

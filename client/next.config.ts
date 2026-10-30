@@ -23,9 +23,14 @@ const nextConfig: NextConfig = {
         source: "/works/:path*",
         destination: `${apiOrigin}/works/:path*`,
       },
+      // API admin PHẢI đi qua /api (không dùng thẳng /admin): rewrites
+      // dạng mảng chạy SAU khi kiểm tra filesystem, mà /admin/users hay
+      // /admin/settings đều có trang trùng đường dẫn nên fetch sẽ nhận
+      // HTML của trang thay vì JSON từ server API. /api không có trang
+      // nào trùng nên rewrite luôn trúng.
       {
-        source: "/admin/:path*",
-        destination: `${apiOrigin}/admin/:path*`,
+        source: "/api/:path*",
+        destination: `${apiOrigin}/:path*`,
       },
       {
         source: "/site/status",

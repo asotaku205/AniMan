@@ -187,7 +187,7 @@ export async function listAdminUsers(
   if (params.role) query.set("role", params.role);
   if (params.status) query.set("status", params.status);
   const suffix = query.toString();
-  const url = suffix ? `/admin/users?${suffix}` : "/admin/users";
+  const url = suffix ? `/api/admin/users?${suffix}` : "/api/admin/users";
 
   const response = await callAdminUsers(authenticatedFetch, url, {
     method: "GET",
@@ -214,7 +214,7 @@ async function changeAdminUser(
 ): Promise<AdminUser> {
   const response = await callAdminUsers(
     authenticatedFetch,
-    `/admin/users/${encodeURIComponent(userId)}/${path}`,
+    `/api/admin/users/${encodeURIComponent(userId)}/${path}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

@@ -173,7 +173,7 @@ describe("listReviewQueue", () => {
       }),
     ) as unknown as AuthenticatedFetch;
     const queue = await listReviewQueue(fetchFn, { status: "pending" });
-    expect(fetchFn).toHaveBeenCalledWith("/admin/works?status=pending", {
+    expect(fetchFn).toHaveBeenCalledWith("/api/admin/works?status=pending", {
       method: "GET",
       signal: undefined,
     });
@@ -193,7 +193,7 @@ describe("reviewWork", () => {
     );
     const asFetch = fetchFn as unknown as AuthenticatedFetch;
     await reviewWork(asFetch, "work-1", "approve");
-    expect(fetchFn).toHaveBeenCalledWith("/admin/works/work-1/approve", {
+    expect(fetchFn).toHaveBeenCalledWith("/api/admin/works/work-1/approve", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -206,7 +206,7 @@ describe("reviewWork", () => {
       ),
     );
     await reviewWork(asFetch, "work-1", "reject", "Chưa đạt yêu cầu.");
-    expect(fetchFn).toHaveBeenCalledWith("/admin/works/work-1/reject", {
+    expect(fetchFn).toHaveBeenCalledWith("/api/admin/works/work-1/reject", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason: "Chưa đạt yêu cầu." }),
