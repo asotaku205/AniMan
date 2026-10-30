@@ -9,7 +9,10 @@ import {
   Bot,
   Brush,
   Check,
+  Maximize2,
   Minimize2,
+  Minus,
+  Plus,
   X,
 } from "lucide-react";
 import { GuideOverlay } from "./SvgComponent";
@@ -367,17 +370,22 @@ export function CanvasArea({
                   inset: 0,
                   zIndex: 100,
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
+                  gap: "8px",
                   background: "#0b0612",
                   padding: "12px",
                 }
               : {
                   height: "calc(100% - 8px)",
-                  aspectRatio: String(panelAspect),
                   maxWidth: "100%",
                   position: "relative",
                   flexShrink: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "8px",
                 }
         }
       >
@@ -443,17 +451,35 @@ export function CanvasArea({
           </div>
         )}
 
-        {/* ── PANEL EDIT VIEW */}
+        {/* PANEL EDIT VIEW: khung vẽ (khung trắng) + thanh điều khiển
+            nằm DƯỚI khung, trên nền tối, để không còn nút nào đè lên
+            vùng vẽ được. Khung trắng cao calc(100% - 44px), chừa 36px
+            cho thanh + 8px khoảng cách. */}
         {activePanel && (
+          <>
+          <div
+            className="relative shrink-0"
+            style={
+              panelFullscreen
+                ? {
+                    height: "calc(100% - 44px)",
+                    aspectRatio: String(panelAspect),
+                    maxWidth: "calc(100vw - 24px)",
+                  }
+                : {
+                    height: "calc(100% - 44px)",
+                    aspectRatio: String(panelAspect),
+                    maxWidth: "100%",
+                  }
+            }
+          >
           <div
             className="bg-white overflow-hidden"
             style={
               panelFullscreen
                 ? {
-                    position: "relative",
-                    height: "calc(100vh - 24px)",
-                    aspectRatio: String(panelAspect),
-                    maxWidth: "calc(100vw - 24px)",
+                    position: "absolute",
+                    inset: 0,
                     borderRadius: "12px",
                     boxShadow: "0 25px 60px rgba(0,0,0,0.9)",
                   }
@@ -479,22 +505,6 @@ export function CanvasArea({
                 }}
               />
             )}
-            {referenceOverlayOn && referenceOverlayImage?.dataUrl && (
-              <div className="absolute left-2 top-2 z-40 flex items-center gap-1.5 pointer-events-none">
-                <span className="rounded-lg bg-black/70 px-2 py-1 text-[10px] text-amber-200 backdrop-blur-md">
-                  Ảnh mẫu đang đè lên khung, độ mờ{" "}
-                  {referenceOverlayOpacity ?? 40}%
-                </span>
-                <button
-                  type="button"
-                  onClick={onToggleReferenceOverlay}
-                  className="pointer-events-auto rounded-lg bg-black/70 px-2 py-1 text-[10px] text-white/80 backdrop-blur-md transition-colors hover:bg-black/85 hover:text-white"
-                >
-                  Ẩn ảnh mẫu
-                </button>
-              </div>
-            )}
-
             {/* Canvas hiển thị — CHỈ ĐỌC, không nhận sự kiện (RC-2) */}
             <canvas
               ref={canvasRef}
@@ -875,46 +885,6 @@ export function CanvasArea({
                 })}
               </div>
             )}
-
-            {/* Chip điều khiển khung nhìn (3A — pan/zoom, BR-T06) */}
-            <div className="absolute right-2 top-2 z-40 flex items-center gap-0.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-1.5 py-1 text-[10px] text-white/80">
-              <button
-                onClick={() => zoomBy(1 / 1.25)}
-                disabled={zoom <= 1}
-                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Thu nhỏ (nhỏ nhất = khung vừa khít, 100%)"
-              >
-                −
-              </button>
-              <span
-                className="w-10 text-center font-mono"
-                title="100% = khung vừa khít (cỡ tương đối, không phải px thật)"
-              >
-                {Math.round(zoom * 100)}%
-              </span>
-              <button
-                onClick={() => zoomBy(1.25)}
-                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10"
-                title="Phóng to (800%)"
-              >
-                +
-              </button>
-              <button
-                onClick={resetView}
-                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10"
-                title="Về khung vừa khít"
-              >
-                ⤢
-              </button>
-              {panelBackingSize && (
-                <span
-                  className="ml-1 pl-1.5 border-l border-white/15 font-mono text-white/50"
-                  title="Cỡ pixel thật của panel khi xuất PNG"
-                >
-                  {panelBackingSize.w}×{panelBackingSize.h}px
-                </span>
-              )}
-            </div>
 
             {/* Inline floating text input dialog */}
             {showTextInput && textInputPos && (
@@ -1323,6 +1293,67 @@ export function CanvasArea({
               </button>
             )}
           </div>
+          </div>
+
+          {/* Thanh điều khiển dưới khung vẽ (3A, pan/zoom, BR-T06):
+              chip zoom và nút ảnh mẫu nằm ngoài khung trắng, trên nền
+              tối, nên không che và không chặn vùng vẽ nào nữa. */}
+          <div className="flex h-9 shrink-0 items-center justify-center gap-3">
+            <div className="flex items-center gap-0.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 px-1.5 py-1 text-[10px] text-white/80">
+              <button
+                onClick={() => zoomBy(1 / 1.25)}
+                disabled={zoom <= 1}
+                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                title="Thu nhỏ (nhỏ nhất = khung vừa khít, 100%)"
+              >
+                <Minus size={12} />
+              </button>
+              <span
+                className="w-10 text-center font-mono"
+                title="100% = khung vừa khít (cỡ tương đối, không phải px thật)"
+              >
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                onClick={() => zoomBy(1.25)}
+                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10 flex items-center justify-center"
+                title="Phóng to (800%)"
+              >
+                <Plus size={12} />
+              </button>
+              <button
+                onClick={resetView}
+                className="px-1.5 py-0.5 rounded-lg hover:bg-white/10 flex items-center justify-center"
+                title="Về khung vừa khít"
+              >
+                <Maximize2 size={12} />
+              </button>
+              {panelBackingSize && (
+                <span
+                  className="ml-1 pl-1.5 border-l border-white/15 font-mono text-white/50"
+                  title="Cỡ pixel thật của panel khi xuất PNG"
+                >
+                  {panelBackingSize.w}x{panelBackingSize.h}px
+                </span>
+              )}
+            </div>
+            {referenceOverlayOn && referenceOverlayImage?.dataUrl && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-amber-200">
+                  Ảnh mẫu đang đè lên khung, độ mờ{" "}
+                  {referenceOverlayOpacity ?? 40}%
+                </span>
+                <button
+                  type="button"
+                  onClick={onToggleReferenceOverlay}
+                  className="rounded-lg bg-black/70 px-2 py-1 text-[10px] text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-black/85 hover:text-white"
+                >
+                  Ẩn ảnh mẫu
+                </button>
+              </div>
+            )}
+          </div>
+          </>
         )}
       </div>
     </div>
