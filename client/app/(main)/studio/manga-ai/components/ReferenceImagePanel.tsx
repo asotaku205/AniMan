@@ -7,6 +7,7 @@ import {
   REFERENCE_IMAGE_SOURCE_LABELS,
   type ReferenceImageItem,
   type ReferenceImageSource,
+  type ReferenceOverlayPosition,
 } from "../lib/referenceImages";
 
 interface Props {
@@ -26,6 +27,16 @@ interface Props {
   source: ReferenceImageSource;
   onSourceChange: (source: ReferenceImageSource) => void;
   onDeleteImage: (id: string) => void;
+  /** Lớp ảnh mẫu đè lên khung vẽ để đồ theo: chỉ xem, không vào lớp vẽ hay bản xuất */
+  overlayOn: boolean;
+  onOverlayToggle: () => void;
+  overlayOpacity: number;
+  onOverlayOpacityChange: (value: number) => void;
+  overlayPosition: ReferenceOverlayPosition;
+  onOverlayPositionChange: (position: ReferenceOverlayPosition) => void;
+  /** Id ảnh đang đè lên khung; null thì đè ảnh mới nhất của khung */
+  overlayImageId: string | null;
+  onOverlayImageSelect: (id: string) => void;
   /** Bấm nút sinh: tạo job Cloudflare rồi hỏi lại trạng thái cho tới khi xong. */
   onGenerate: () => void;
   /** Hủy job đang chạy (khi người dùng bấm Hủy trong lúc chờ). */
@@ -45,10 +56,11 @@ interface Props {
 /**
  * Panel "Ảnh mẫu tham khảo" (mockup đã duyệt 28/10/2026).
  *
- * Panel là một mục trong cột phải, đứng cạnh khung vẽ, KHÔNG BAO GIỜ phủ
- * lên khung vẽ. Sinh ảnh chạy bằng job bất đồng bộ qua Cloudflare Workers
- * AI (model FLUX.2 klein 4B cho cả 2 nguồn); ảnh mẫu chỉ để nhìn theo
- * và vẽ lại, không phải bản chính của truyện.
+ * Panel là một mục trong cột phải, đứng cạnh khung vẽ. Sinh ảnh chạy bằng job bất đồng bộ qua Cloudflare Workers AI
+ * (model FLUX.2 klein 4B cho cả 2 nguồn); ảnh mẫu chỉ để nhìn theo
+ * và vẽ lại, không phải bản chính của truyện. Lớp đè lên khung vẽ là
+ * một thẻ img riêng trong CanvasArea, panel này chỉ giữ công tắc,
+ * độ mờ và ảnh đang chọn cho lớp đó.
  */
 export function ReferenceImagePanel({
   images,
@@ -59,6 +71,14 @@ export function ReferenceImagePanel({
   source,
   onSourceChange,
   onDeleteImage,
+  overlayOn,
+  onOverlayToggle,
+  overlayOpacity,
+  onOverlayOpacityChange,
+  overlayPosition,
+  onOverlayPositionChange,
+  overlayImageId,
+  onOverlayImageSelect,
   onGenerate,
   onCancelGenerate,
   generating,
@@ -78,6 +98,11 @@ export function ReferenceImagePanel({
 
   const selected =
     images.find((image) => image.id === selectedId) ?? images[0] ?? null;
+  /** Ảnh đang đè lên khung: ảnh đã chọn, nếu chưa chọn thì ảnh mới nhất có ảnh thật. */
+  const overlayImage =
+    images.find((image) => image.id === overlayImageId && image.dataUrl) ??
+    images.find((image) => image.dataUrl) ??
+    null;
   const comparePartner = useMemo(() => {
     if (!compareOn || images.length < 2) return null;
     return (
@@ -94,6 +119,9 @@ export function ReferenceImagePanel({
       return;
     }
     setSelectedId(image.id);
+    // Chọn ảnh để xem lớn cũng là chọn ảnh đè lên khung, theo mockup
+    // đã duyệt: lớp đè lên bật theo ảnh vừa chọn.
+    onOverlayImageSelect(image.id);
   }
 
   function renderImage(image: ReferenceImageItem, label: string) {
@@ -320,6 +348,70 @@ export function ReferenceImagePanel({
                   </p>
                 )}
 
+                {/* Điều khiển lớp ảnh mẫu đè lên khung vẽ để đồ theo
+                    (mockup đã duyệt 30/10/2026): chỉ xem, không vào
+                    lớp vẽ, undo hay bản xuất. */}
+                <div className="space-y-2 rounded-xl border border-amber-400/30 bg-amber-500/5 px-2 py-2">
+                  <label className="flex items-center gap-2 text-[11px] text-white/80 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={overlayOn}
+                      onChange={onOverlayToggle}
+                      className="shrink-0 accent-amber-500"
+                    />
+                    Đè ảnh mẫu lên khung vẽ
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-white/60 shrink-0">
+                      Độ mờ
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={overlayOpacity}
+                      onChange={(event) =>
+                        onOverlayOpacityChange(Number(event.target.value))
+                      }
+                      aria-label="Độ mờ của ảnh mẫu đè lên khung vẽ"
+                      className="flex-1 accent-amber-500"
+                    />
+                    <span className="text-[10px] text-amber-200 w-8 text-right shrink-0">
+                      {overlayOpacity}%
+                    </span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onOverlayPositionChange("above")}
+                      aria-pressed={overlayPosition === "above"}
+                      className={`flex-1 px-2 py-1 rounded-lg border text-[10px] transition-colors ${
+                        overlayPosition === "above"
+                          ? "bg-amber-500/25 border-amber-400/50 text-amber-100 font-semibold"
+                          : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
+                      }`}
+                    >
+                      Trên nét vẽ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOverlayPositionChange("below")}
+                      aria-pressed={overlayPosition === "below"}
+                      className={`flex-1 px-2 py-1 rounded-lg border text-[10px] transition-colors ${
+                        overlayPosition === "below"
+                          ? "bg-amber-500/25 border-amber-400/50 text-amber-100 font-semibold"
+                          : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
+                      }`}
+                    >
+                      Dưới nét vẽ
+                    </button>
+                  </div>
+                  <p className="text-white/40 text-[10px] leading-relaxed">
+                    Ảnh đè lên chỉ để đồ theo, không vào lớp vẽ hay bản
+                    xuất. Đổi khung thì lớp đè tự tắt.
+                  </p>
+                </div>
+
                 <div className="flex gap-1.5">
                   {images.map((image) => (
                     <div
@@ -349,6 +441,11 @@ export function ReferenceImagePanel({
                       >
                         <Trash2 size={11} />
                       </button>
+                      {overlayOn && overlayImage?.id === image.id && (
+                        <span className="absolute bottom-1 left-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[8px] text-amber-200 pointer-events-none">
+                          Đang đè lên
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

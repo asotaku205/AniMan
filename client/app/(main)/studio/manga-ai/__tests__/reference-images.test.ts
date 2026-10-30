@@ -7,10 +7,13 @@
 import { indexedDB as fakeIdb } from "fake-indexeddb";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  clampReferenceOverlayOpacity,
+  DEFAULT_REFERENCE_OVERLAY_OPACITY,
   MAX_REFERENCE_IMAGES,
   addReferenceImageToHistory,
   referenceImageIsOutsideLayers,
   removeReferenceImageFromHistory,
+  resolveReferenceOverlayImage,
   type ReferenceImageItem,
 } from "../lib/referenceImages";
 import { REFERENCE_IMAGE_LINE_STYLE } from "../lib/referenceImagePrompt";
@@ -181,5 +184,29 @@ describe("Ảnh mẫu không vào lớp vẽ và không vào xuất bản", () =
     expect(REFERENCE_IMAGE_LINE_STYLE).not.toContain(
       "You are a drawing reference assistant",
     );
+  });
+});
+
+describe("Lớp ảnh mẫu đè lên khung vẽ để đồ theo", () => {
+  it("chưa chọn thì đè ảnh mới nhất, đã chọn thì đè đúng ảnh đó", () => {
+    const images = [item("a1"), item("a2")];
+    expect(resolveReferenceOverlayImage(images, null)?.id).toBe("a1");
+    expect(resolveReferenceOverlayImage(images, "a2")?.id).toBe("a2");
+  });
+
+  it("id đã xóa thì quay về ảnh mới nhất, không ảnh thật thì null", () => {
+    const images = [item("a1"), item("a2")];
+    expect(resolveReferenceOverlayImage(images, "a9")?.id).toBe("a1");
+    expect(resolveReferenceOverlayImage([], null)).toBeNull();
+    const placeholder = { ...item("a1"), dataUrl: "" };
+    expect(resolveReferenceOverlayImage([placeholder], "a1")).toBeNull();
+  });
+
+  it("độ mờ mặc định 40 và luôn kẹp trong 0 tới 100", () => {
+    expect(DEFAULT_REFERENCE_OVERLAY_OPACITY).toBe(40);
+    expect(clampReferenceOverlayOpacity(40)).toBe(40);
+    expect(clampReferenceOverlayOpacity(-5)).toBe(0);
+    expect(clampReferenceOverlayOpacity(150)).toBe(100);
+    expect(clampReferenceOverlayOpacity(Number.NaN)).toBe(40);
   });
 });

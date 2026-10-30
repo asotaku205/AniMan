@@ -119,9 +119,13 @@ import {
   loadReferenceImages,
 } from "../lib/referenceImageStorage";
 import {
+  clampReferenceOverlayOpacity,
   createReferenceImageId,
+  DEFAULT_REFERENCE_OVERLAY_OPACITY,
+  resolveReferenceOverlayImage,
   type ReferenceImageItem,
   type ReferenceImageSource,
+  type ReferenceOverlayPosition,
 } from "../lib/referenceImages";
 import { regionToPixelRect } from "../lib/strokeCleanup";
 import {
@@ -617,6 +621,37 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     () => (activePanel ? (referenceImagesByPanel[activePanel] ?? []) : []),
     [activePanel, referenceImagesByPanel],
   );
+  // Lớp ảnh mẫu đè lên khung vẽ để đồ theo (mockup đã duyệt 30/10/2026):
+  // chỉ là lớp xem trong bộ nhớ, mặc định tắt, độ mờ mặc định 40%,
+  // vị trí mặc định trên nét vẽ. Không lưu vào IndexedDB, không vào
+  // lớp vẽ, không vào undo, không vào bản xuất. Đổi khung thì tự tắt,
+  // tránh đồ nhầm ảnh của khung khác lên khung mới.
+  const [referenceOverlayOn, setReferenceOverlayOn] = useState(false);
+  const [referenceOverlayOpacity, setReferenceOverlayOpacityState] =
+    useState(DEFAULT_REFERENCE_OVERLAY_OPACITY);
+  const [referenceOverlayPosition, setReferenceOverlayPosition] =
+    useState<ReferenceOverlayPosition>("above");
+  const [referenceOverlayImageId, setReferenceOverlayImageId] = useState<
+    string | null
+  >(null);
+  const referenceOverlayImage = useMemo(
+    () => resolveReferenceOverlayImage(referenceImages, referenceOverlayImageId),
+    [referenceImages, referenceOverlayImageId],
+  );
+  const referenceOverlayImageIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    referenceOverlayImageIdRef.current = referenceOverlayImageId;
+  }, [referenceOverlayImageId]);
+  const setReferenceOverlayOpacity = useCallback((value: number) => {
+    setReferenceOverlayOpacityState(clampReferenceOverlayOpacity(value));
+  }, []);
+  const toggleReferenceOverlay = useCallback(() => {
+    setReferenceOverlayOn((value) => !value);
+  }, []);
+  const selectReferenceOverlayImage = useCallback((id: string) => {
+    setReferenceOverlayImageId(id);
+    setReferenceOverlayOn(true);
+  }, []);
   useEffect(() => {
     if (!activePanel || referenceImagesLoadedRef.current.has(activePanel)) {
       return;
@@ -643,6 +678,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     if (!pid) return;
     const next = await deleteStoredReferenceImage(pid, id);
     setReferenceImagesByPanel((prev) => ({ ...prev, [pid]: next }));
+    if (referenceOverlayImageIdRef.current === id) {
+      setReferenceOverlayImageId(null);
+      setReferenceOverlayOn(false);
+    }
   }, []);
 
   // ── Sinh ảnh mẫu tham khảo (Cloudflare, job bất đồng bộ) ────────────────
@@ -3736,6 +3775,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
           : { ...prev, [panelId]: createDefaultPanelStack(panelId) },
       );
       setActivePanel(panelId);
+      // Lớp ảnh mẫu đè lên khung tự tắt khi đổi khung, tránh đồ nhầm
+      // ảnh của khung khác lên khung mới (mockup đã duyệt 30/10/2026).
+      setReferenceOverlayOn(false);
+      setReferenceOverlayImageId(null);
       setShowPanelSuggestions(false);
       setShowSuggestBtn(true);
       setShowAnalysis(false);
@@ -3759,6 +3802,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       reviewAbortRef.current = null;
     }
     setActivePanel(null);
+    setReferenceOverlayOn(false);
+    setReferenceOverlayImageId(null);
     setShowPanelSuggestions(false);
     setShowSuggestBtn(true);
     setPanelFullscreen(false);
@@ -4140,6 +4185,17 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     deleteReferenceImage,
     referenceSource,
     setReferenceSource,
+    /** Lớp ảnh mẫu đè lên khung vẽ để đồ theo: chỉ xem, không vào lớp vẽ hay bản xuất */
+    referenceOverlayOn,
+    setReferenceOverlayOn,
+    toggleReferenceOverlay,
+    referenceOverlayOpacity,
+    setReferenceOverlayOpacity,
+    referenceOverlayPosition,
+    setReferenceOverlayPosition,
+    referenceOverlayImageId,
+    selectReferenceOverlayImage,
+    referenceOverlayImage,
     /** Sinh ảnh mẫu tham khảo (Cloudflare, job bất đồng bộ) */
     generateReferenceImage,
     cancelReferenceImageGeneration,

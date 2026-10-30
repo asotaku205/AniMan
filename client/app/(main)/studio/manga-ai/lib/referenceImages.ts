@@ -21,6 +21,36 @@ export const REFERENCE_IMAGE_SOURCE_LABELS: Record<
   "drawing-prompt": "Bức vẽ + prompt",
 };
 
+/** Vị trí của lớp ảnh mẫu đè lên khung vẽ: trên nét vẽ hay dưới nét vẽ. */
+export type ReferenceOverlayPosition = "above" | "below";
+
+/** Độ mờ mặc định của lớp ảnh mẫu đè lên khung vẽ (40%), theo mockup đã duyệt 30/10/2026. */
+export const DEFAULT_REFERENCE_OVERLAY_OPACITY = 40;
+
+/** Độ mờ của lớp đè lên luôn nằm trong 0 tới 100, làm tròn số nguyên. */
+export function clampReferenceOverlayOpacity(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_REFERENCE_OVERLAY_OPACITY;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+/**
+ * Ảnh mẫu đang đè lên khung vẽ: ảnh có id đã chọn, nếu không có hoặc
+ * đã bị xóa thì lấy ảnh mới nhất còn ảnh thật (bỏ bản ghi không có
+ * dataUrl). Trả về null khi khung chưa có ảnh mẫu nào có ảnh thật.
+ */
+export function resolveReferenceOverlayImage(
+  images: ReferenceImageItem[],
+  overlayImageId: string | null,
+): ReferenceImageItem | null {
+  const withImage = images.filter((image) => image.dataUrl);
+  if (withImage.length === 0) return null;
+  if (overlayImageId) {
+    const chosen = withImage.find((image) => image.id === overlayImageId);
+    if (chosen) return chosen;
+  }
+  return withImage[0] ?? null;
+}
+
 /**
  * Một ảnh mẫu trong lịch sử của một khung. `dataUrl` là ảnh đã sinh (PNG/JPEG),
  * lưu riêng khỏi mọi lớp vẽ. `source` ghi lại nguồn người dùng đã chọn khi

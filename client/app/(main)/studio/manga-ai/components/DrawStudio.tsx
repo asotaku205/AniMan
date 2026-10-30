@@ -186,6 +186,11 @@ export function DrawStudio({
           onRemoveShape={s.removeBubbleShape}
           enterPanel={s.enterPanel}
           setPanelFullscreen={s.setPanelFullscreen}
+          referenceOverlayImage={s.referenceOverlayImage}
+          referenceOverlayOn={s.referenceOverlayOn}
+          referenceOverlayOpacity={s.referenceOverlayOpacity}
+          referenceOverlayPosition={s.referenceOverlayPosition}
+          onToggleReferenceOverlay={s.toggleReferenceOverlay}
         />
       </div>
 

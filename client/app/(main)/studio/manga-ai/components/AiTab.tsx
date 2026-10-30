@@ -43,6 +43,7 @@ import {
 import type {
   ReferenceImageItem,
   ReferenceImageSource,
+  ReferenceOverlayPosition,
 } from "../lib/referenceImages";
 import { ReferenceImagePanel } from "./ReferenceImagePanel";
 
@@ -85,6 +86,15 @@ type Props = {
   onDeleteReferenceImage: (id: string) => void;
   referenceSource: ReferenceImageSource;
   onReferenceSourceChange: (source: ReferenceImageSource) => void;
+  /** Lớp ảnh mẫu đè lên khung vẽ để đồ theo: chỉ xem, không vào lớp vẽ hay bản xuất */
+  referenceOverlayOn: boolean;
+  onReferenceOverlayToggle: () => void;
+  referenceOverlayOpacity: number;
+  onReferenceOverlayOpacityChange: (value: number) => void;
+  referenceOverlayPosition: ReferenceOverlayPosition;
+  onReferenceOverlayPositionChange: (position: ReferenceOverlayPosition) => void;
+  referenceOverlayImageId: string | null;
+  onReferenceOverlayImageSelect: (id: string) => void;
   /** Sinh ảnh mẫu tham khảo (Cloudflare, job bất đồng bộ) */
   generateReferenceImage: () => void;
   cancelReferenceImageGeneration: () => void;
@@ -265,6 +275,14 @@ export function AiTab({
   onDeleteReferenceImage,
   referenceSource,
   onReferenceSourceChange,
+  referenceOverlayOn,
+  onReferenceOverlayToggle,
+  referenceOverlayOpacity,
+  onReferenceOverlayOpacityChange,
+  referenceOverlayPosition,
+  onReferenceOverlayPositionChange,
+  referenceOverlayImageId,
+  onReferenceOverlayImageSelect,
   generateReferenceImage,
   cancelReferenceImageGeneration,
   referenceGenerating,
@@ -389,6 +407,14 @@ export function AiTab({
           source={referenceSource}
           onSourceChange={onReferenceSourceChange}
           onDeleteImage={onDeleteReferenceImage}
+          overlayOn={referenceOverlayOn}
+          onOverlayToggle={onReferenceOverlayToggle}
+          overlayOpacity={referenceOverlayOpacity}
+          onOverlayOpacityChange={onReferenceOverlayOpacityChange}
+          overlayPosition={referenceOverlayPosition}
+          onOverlayPositionChange={onReferenceOverlayPositionChange}
+          overlayImageId={referenceOverlayImageId}
+          onOverlayImageSelect={onReferenceOverlayImageSelect}
           onGenerate={generateReferenceImage}
           onCancelGenerate={cancelReferenceImageGeneration}
           generating={referenceGenerating}

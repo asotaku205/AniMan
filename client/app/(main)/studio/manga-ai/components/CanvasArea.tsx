@@ -26,6 +26,10 @@ import type {
   AiDrawingReviewResponse,
   NormalizedRegion,
 } from "@/lib/ai-drawing-api";
+import type {
+  ReferenceImageItem,
+  ReferenceOverlayPosition,
+} from "../lib/referenceImages";
 import { cleanupCandidates } from "../lib/strokeCleanup";
 import { describeFix } from "../lib/compositionFix";
 import {
@@ -111,6 +115,12 @@ type Props = {
   // Panel interactions
   enterPanel: (id: string) => void;
   setPanelFullscreen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** Lớp ảnh mẫu đè lên khung vẽ để đồ theo: chỉ xem, không vào lớp vẽ hay bản xuất */
+  referenceOverlayImage?: ReferenceImageItem | null;
+  referenceOverlayOn?: boolean;
+  referenceOverlayOpacity?: number;
+  referenceOverlayPosition?: ReferenceOverlayPosition;
+  onToggleReferenceOverlay?: () => void;
 };
 
 export function CanvasArea({
@@ -162,6 +172,11 @@ export function CanvasArea({
   onRemoveShape,
   enterPanel,
   setPanelFullscreen,
+  referenceOverlayImage,
+  referenceOverlayOn,
+  referenceOverlayOpacity,
+  referenceOverlayPosition,
+  onToggleReferenceOverlay,
 }: Props) {
   // ── Khối chữ dạng đối tượng: tay nắm trong suốt phủ đúng vị trí khối chữ;
   // hình chữ thật do composite canvas vẽ ở dưới. Kéo để dời, nhấp đúp để sửa.
@@ -445,6 +460,41 @@ export function CanvasArea({
                 : { position: "absolute", inset: 0, borderRadius: "0.75rem" }
             }
           >
+            {/* Lớp ảnh mẫu đè lên khung vẽ để đồ theo (mockup đã duyệt
+                30/10/2026): thẻ img DOM, không nhận chuột nên vẽ xuyên
+                qua được, không nằm trong canvas nên không bao giờ vào
+                lớp vẽ, undo hay bản xuất. Trên nét vẽ: z 35, phủ cả
+                nét người dùng. Dưới nét vẽ: z 20, nét người dùng trên
+                canvas trong suốt hiện đè lên ảnh mẫu. */}
+            {referenceOverlayOn && referenceOverlayImage?.dataUrl && (
+              <img
+                src={referenceOverlayImage.dataUrl}
+                alt=""
+                aria-hidden
+                draggable={false}
+                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                style={{
+                  zIndex: referenceOverlayPosition === "below" ? 20 : 35,
+                  opacity: (referenceOverlayOpacity ?? 40) / 100,
+                }}
+              />
+            )}
+            {referenceOverlayOn && referenceOverlayImage?.dataUrl && (
+              <div className="absolute left-2 top-2 z-40 flex items-center gap-1.5 pointer-events-none">
+                <span className="rounded-lg bg-black/70 px-2 py-1 text-[10px] text-amber-200 backdrop-blur-md">
+                  Ảnh mẫu đang đè lên khung, độ mờ{" "}
+                  {referenceOverlayOpacity ?? 40}%
+                </span>
+                <button
+                  type="button"
+                  onClick={onToggleReferenceOverlay}
+                  className="pointer-events-auto rounded-lg bg-black/70 px-2 py-1 text-[10px] text-white/80 backdrop-blur-md transition-colors hover:bg-black/85 hover:text-white"
+                >
+                  Ẩn ảnh mẫu
+                </button>
+              </div>
+            )}
+
             {/* Canvas hiển thị — CHỈ ĐỌC, không nhận sự kiện (RC-2) */}
             <canvas
               ref={canvasRef}
