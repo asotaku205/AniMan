@@ -352,12 +352,6 @@ export default function BridgeView({
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-amber-100/70">
-        Cầu nối chuyển một lần từ nguồn sang dự án đích — sau đó mỗi bên tự
-        phát triển, sửa bên này không tự đổi bên kia. Tranh manga vẫn do Sơn
-        vẽ, thoại dịch vẫn do Sơn dịch; cầu nối chỉ dựng khung sẵn.
-      </p>
-
       {error && <p className="text-sm text-red-300">{error}</p>}
       {busy && <p className="text-sm text-amber-100/70">{busy}</p>}
       {result && (
@@ -374,10 +368,6 @@ export default function BridgeView({
         <h3 className="text-sm font-semibold text-amber-100">
           1. Tiểu thuyết → Animation
         </h3>
-        <p className="mt-1 text-xs text-amber-100/70">
-          Tách văn bản thành cảnh nháp (đoạn văn = cảnh, thoại trong ngoặc
-          kép thành track thoại), Sơn duyệt rồi tạo dự án 2D.
-        </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-sm text-amber-100/80">
             Phạm vi{" "}
@@ -485,14 +475,6 @@ export default function BridgeView({
         <h3 className="text-sm font-semibold text-amber-100">
           2. Tiểu thuyết sang Manga (AI phân tích)
         </h3>
-        <p className="mt-1 text-xs text-amber-100/70">
-          Model tự phân tích từng cảnh trong phạm vi rồi tách thành trang
-          manga, mỗi khung có sẵn prompt để sinh ảnh mẫu. Sơn duyệt và
-          sửa kế hoạch ở dưới, tạo dự án xong mở từng khung trong Manga
-          Studio là thấy prompt đã điền sẵn, sửa rồi sinh ảnh mẫu như
-          thường. Tranh vẫn trống để Sơn vẽ, thoại trích thành khối chữ.
-          Mỗi cảnh tốn 1 lượt AI.
-        </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-sm text-amber-100/80">
             Phạm vi{" "}
@@ -639,11 +621,6 @@ export default function BridgeView({
         <h3 className="text-sm font-semibold text-amber-100">
           3. Animation → Manga
         </h3>
-        <p className="mt-1 text-xs text-amber-100/70">
-          Mỗi cảnh Animation thành một panel (ghi chú cảnh làm phần kể, track
-          thoại làm khối chữ). Chiều ngược lại — Manga → Animation — đã có
-          sẵn từ trước.
-        </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <select
             className={inputCls}
@@ -706,10 +683,6 @@ export default function BridgeView({
         <h3 className="text-sm font-semibold text-amber-100">
           4. Animation → Dịch/lồng tiếng
         </h3>
-        <p className="mt-1 text-xs text-amber-100/70">
-          Toàn bộ thoại thành tập mới với script card 2 ngôn ngữ (bản dịch
-          khởi đầu = lời gốc, Sơn sửa lại khi dịch thật).
-        </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <select
             className={inputCls}
