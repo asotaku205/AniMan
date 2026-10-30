@@ -14,6 +14,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
+import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import {
@@ -872,7 +873,13 @@ export function DioramaCanvas({
       if (p.glbAssetId) {
         const cached = glbCacheRef.current.get(p.glbAssetId);
         if (cached) {
-          const clone = cached.group.clone(true);
+          // BẮT BUỘC dùng SkeletonUtils.clone (như Animation Studio):
+          // clone(true) thường giữ nguyên skeleton của bản gốc (xương
+          // không nằm trong scene nên không cập nhật ma trận), model
+          // rigged vì thế biến mất/không đúng tư thế trên sa bàn trong
+          // khi ở studio vẫn hiện đủ. Clone skeleton gắn lại xương cho
+          // đúng bản sao, kèm bounding sphere đúng vị trí đặt.
+          const clone = cloneSkeleton(cached.group);
           clone.position.set(p.x, heightAt(terrain, p.x, p.z), p.z);
           clone.rotation.set(p.rotationX ?? 0, p.rotationY, p.rotationZ ?? 0);
           clone.scale.set(
