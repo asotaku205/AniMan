@@ -47,6 +47,27 @@ export class NovelAiController {
     @Req() request: AuthenticatedRequest,
     @Body() body: unknown,
   ): Promise<NovelAiResult> {
+    // Log chẩn đoán: terminal của server mặc định không ghi request nào,
+    // nên khi request chết trước khi tới service thì không còn dấu vết.
+    // Dòng này chứng minh request đã tới controller; dòng lỗi dưới đây
+    // ghi lại mọi lỗi ném ra trước/khi gọi service.
+    console.log(
+      `[NovelAi] request task=${typeof body === "object" && body !== null ? String((body as Record<string, unknown>).task ?? "") : "?"} user=${request.user?.id ?? "?"} textLen=${typeof body === "object" && body !== null ? String((body as Record<string, unknown>).text ?? "").length : 0}`,
+    );
+    try {
+      return await this.runInner(request, body);
+    } catch (error) {
+      console.error(
+        `[NovelAi] controller error: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`.slice(0, 300),
+      );
+      throw error;
+    }
+  }
+
+  private async runInner(
+    request: AuthenticatedRequest,
+    body: unknown,
+  ): Promise<NovelAiResult> {
     if (typeof body !== "object" || body === null) {
       throw new BadRequestException("Body must be an object");
     }
