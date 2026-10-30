@@ -13,7 +13,7 @@ import {
   removeReferenceImageFromHistory,
   type ReferenceImageItem,
 } from "../lib/referenceImages";
-import { REFERENCE_IMAGE_SYSTEM_PROMPT } from "../lib/referenceImagePrompt";
+import { REFERENCE_IMAGE_LINE_STYLE } from "../lib/referenceImagePrompt";
 
 beforeAll(() => {
   vi.stubGlobal("window", globalThis);
@@ -169,14 +169,17 @@ describe("Ảnh mẫu không vào lớp vẽ và không vào xuất bản", () =
     const path = await import("node:path");
     const apiPath = path.resolve(import.meta.dirname, "../../../../../lib/ai-drawing-api.ts");
     const source = fs.readFileSync(apiPath, "utf8");
-    expect(source).not.toMatch(/REFERENCE_IMAGE_SYSTEM_PROMPT/);
+    expect(source).not.toMatch(/REFERENCE_IMAGE_LINE_STYLE/);
   });
 
-  it("system prompt giữ đúng nội dung đã duyệt: trắng đen, không màu", () => {
-    expect(REFERENCE_IMAGE_SYSTEM_PROMPT).toContain(
-      "black-and-white manga line drawing only",
+  it("phong cách nét vẽ giữ đúng nội dung đã duyệt: trắng đen, không màu, nét mực", () => {
+    expect(REFERENCE_IMAGE_LINE_STYLE).toContain(
+      "Black-and-white manga line drawing",
     );
-    expect(REFERENCE_IMAGE_SYSTEM_PROMPT).toContain("No color");
-    expect(REFERENCE_IMAGE_SYSTEM_PROMPT).toContain("Do not claim");
+    expect(REFERENCE_IMAGE_LINE_STYLE).toContain("No color");
+    expect(REFERENCE_IMAGE_LINE_STYLE).toContain("black ink outlines");
+    expect(REFERENCE_IMAGE_LINE_STYLE).not.toContain(
+      "You are a drawing reference assistant",
+    );
   });
 });

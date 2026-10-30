@@ -605,7 +605,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   // Ảnh mẫu tham khảo (mockup đã duyệt 28/10/2026): lịch sử tối đa 3 ảnh
   // mỗi khung, lưu riêng trong IndexedDB, không vào lớp vẽ hay xuất bản.
   // Sinh ảnh chạy bằng job bất đồng bộ qua Cloudflare Workers AI; ảnh về
-  // đã được server ép xám và chỉ lưu vào kho riêng này, không vào canvas.
+  // đã được server kiểm tra là nét vẽ trắng đen và chỉ lưu vào kho riêng này, không vào canvas.
   const [referenceImagesByPanel, setReferenceImagesByPanel] = useState<
     Record<string, ReferenceImageItem[]>
   >({});

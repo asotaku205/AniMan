@@ -47,7 +47,7 @@ interface Props {
  *
  * Panel là một mục trong cột phải, đứng cạnh khung vẽ, KHÔNG BAO GIỜ phủ
  * lên khung vẽ. Sinh ảnh chạy bằng job bất đồng bộ qua Cloudflare Workers
- * AI (model FLUX.2 klein 4B / FLUX.1 schnell); ảnh mẫu chỉ để nhìn theo
+ * AI (model FLUX.2 klein 4B cho cả 3 nguồn); ảnh mẫu chỉ để nhìn theo
  * và vẽ lại, không phải bản chính của truyện.
  */
 export function ReferenceImagePanel({

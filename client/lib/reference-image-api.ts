@@ -47,8 +47,7 @@ export interface CreateReferenceImageJobInput {
 
 export interface ReferenceImageStatus {
   enabled: boolean;
-  kleinModel: string;
-  schnellModel: string;
+  model: string;
   providerTimeoutMs: number;
 }
 
@@ -63,7 +62,7 @@ export const REFERENCE_IMAGE_ERROR_MESSAGES: Record<string, string> = {
   reference_image_error:
     "Không sinh được ảnh mẫu lúc này. Hãy thử lại sau.",
   reference_image_invalid:
-    "Ảnh Cloudflare trả về không dùng được. Hãy thử lại.",
+    "Ảnh Cloudflare trả về không đúng phong cách nét vẽ trắng đen. Hãy thử lại, mô tả rõ hơn nếu cần.",
   reference_image_timeout:
     "Hết thời gian chờ mà chưa rõ ảnh đã sinh xong hay chưa. Không tự thử lại; hãy bấm Sinh ảnh mẫu để tạo lần sinh mới nếu cần.",
 };

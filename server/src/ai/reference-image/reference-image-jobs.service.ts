@@ -10,7 +10,6 @@ import { randomInt, randomUUID } from "node:crypto";
 import sharp, { type Metadata } from "sharp";
 import {
   CLOUDFLARE_KLEIN_4B_MODEL_ID,
-  CLOUDFLARE_SCHNELL_MODEL_ID,
   MAX_REFERENCE_SKETCH_BYTES,
   MAX_REFERENCE_SKETCH_DIMENSION,
   REFERENCE_IMAGE_ERROR_CODES,
@@ -43,7 +42,7 @@ export interface ReferenceImageJobView {
   startedAt: number | null;
   finishedAt: number | null;
   elapsedMs: number | null;
-  /** Data URL PNG đã ép xám; chỉ có khi job thành công. */
+  /** Data URL PNG nét vẽ như model trả về; chỉ có khi job thành công. */
   imageDataUrl: string | null;
   /** Câu mô tả dựng từ yêu cầu (không phải văn bản do model trả về). */
   note: string;
@@ -149,13 +148,11 @@ export class ReferenceImageJobsService {
     const seed = randomInt(0, 2_147_483_647);
     const prompt = assembleReferenceImagePrompt({
       sceneType: dto.sceneType,
+      source: dto.source,
       userPrompt: dto.prompt,
       fixHints: dto.fixHints,
     });
-    const model =
-      dto.source === ReferenceImageSource.Prompt
-        ? CLOUDFLARE_SCHNELL_MODEL_ID
-        : CLOUDFLARE_KLEIN_4B_MODEL_ID;
+    const model = CLOUDFLARE_KLEIN_4B_MODEL_ID;
     const now = Date.now();
     const record: ReferenceImageJobRecord = {
       id: randomUUID(),

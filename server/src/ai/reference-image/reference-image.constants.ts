@@ -6,12 +6,20 @@
  * đồng bộ bằng job (xem reference-image-jobs.service.ts) vì thời gian
  * gọi model dao động mạnh (đo thật 48 giây tới 171 giây) và không thể
  * hứa xong trong timeout 90 giây của đường Gemini.
+ *
+ * CẢ BA NGUỒN DÙNG CHUNG MỘT MODEL (sửa 30/10/2026 theo lệnh của Sơn):
+ * trước đây nguồn "Chỉ prompt" dùng FLUX.1 schnell còn 2 nguồn có bức
+ * vẽ dùng FLUX.2 klein 4B, nên ảnh từ prompt sai prompt và sai phong
+ * cách, trong khi ảnh từ bức vẽ thì đúng. Nay cả 3 nguồn đều dùng
+ * klein 4B: có bức vẽ thì gửi kèm ảnh qua multipart, chỉ prompt thì
+ * gửi multipart không kèm ảnh (klein dùng multipart cả khi chỉ có
+ * prompt, input_image_0 là tùy chọn). Cùng một model, cùng một
+ * cách ghép prompt nét vẽ, nên phong cách giữa 3 nguồn mới nhất quán.
  */
 
+/** Model duy nhất cho cả 3 nguồn sinh ảnh mẫu. */
 export const CLOUDFLARE_KLEIN_4B_MODEL_ID =
   "@cf/black-forest-labs/flux-2-klein-4b";
-export const CLOUDFLARE_SCHNELL_MODEL_ID =
-  "@cf/black-forest-labs/flux-1-schnell";
 
 /** Timeout gọi Cloudflare: dài hơn mọi lần gọi đo được (tối đa 171 giây). */
 export const REFERENCE_IMAGE_PROVIDER_TIMEOUT_MS = 300_000;
@@ -30,29 +38,42 @@ export const MAX_REFERENCE_SKETCH_DIMENSION = 512;
 export const REFERENCE_IMAGE_OUTPUT_SIZE = 1024;
 
 /**
- * System prompt nguyên văn từ mockup đã duyệt 28/10/2026. Bản này là
- * nguồn sự thật phía server; bản trong client
- * (referenceImagePrompt.ts) chỉ là bản sao để hiển thị/tham khảo, không
- * bao giờ được gửi đi từ client. Model ảnh chỉ trả về ảnh, không trả
- * câu văn: câu mô tả trong `note` của job được dựng từ yêu cầu, không
- * phải văn bản do model trả về.
+ * Phong cách nét vẽ, là một phần của prompt ảnh gửi tới model.
+ *
+ * Phong cách PHẢI do model vẽ ra ngay từ đầu: nét mực đen trên nền
+ * trắng, không màu, không tô bóng như ảnh thật. Server KHÔNG được ép
+ * xám một ảnh có màu/tô bóng rồi gọi đó là phong cách nét vẽ (xem
+ * processCloudflareImage). Bản này là nguồn sự thật phía server; bản
+ * trong client (referenceImagePrompt.ts) chỉ là bản sao để hiển
+ * thị/tham khảo, không bao giờ được gửi đi từ client. Hai bản phải
+ * giữ nguyên văn giống nhau.
  */
-export const REFERENCE_IMAGE_SYSTEM_PROMPT = `You are a drawing reference assistant for a manga learner, not a finished-artwork generator.
+export const REFERENCE_IMAGE_LINE_STYLE =
+  "Black-and-white manga line drawing, clean confident black ink outlines on a plain white background, simple clear outlines that are easy to copy by hand, screentone dots only where shading is needed. No color, no color gradients, no painterly shading, no photorealism, no 3D-render look, no text, no letters, no numbers, no speech bubbles, no sound-effect words, no watermark, no signature, no panel border.";
 
-OUTPUT RULES (must follow every time):
-- Output one single-panel black-and-white manga line drawing only.
-- Clean, confident black ink lines on a plain white background. Grayscale screentone dots only where shading is needed. No color, no color gradients, no painterly shading, no photorealism, no 3D-render look.
-- No text, no letters, no numbers, no speech bubbles, no sound-effect words, no watermark, no signature, no panel border around the drawing.
-- Keep the exact composition, camera angle, character pose, and framing of the user's sketch or prompt. Fix only anatomy and proportions that are clearly wrong (head size, limb length, joint placement, symmetry).
-- Do not invent new characters, props, backgrounds, panels, or story elements. Do not change the story. If the sketch is incomplete, complete only the lines needed to make the existing pose readable, and leave the rest simple.
-- Keep the drawing simple enough to copy by hand: clear outlines first, details second, no dense hatching that hides the construction.
+/**
+ * Cụm từ mô tả loại cảnh bằng tiếng Anh, đặt ngay sau phong cách nét vẽ.
+ * Loại "auto" KHÔNG có cụm từ: bỏ hẳn dòng loại cảnh, để model chỉ theo
+ * mô tả của người dùng và phác thảo, thay vì gửi chữ "auto" vô nghĩa
+ * mà system prompt cũ không định nghĩa.
+ */
+export const REFERENCE_IMAGE_SCENE_PHRASES: Record<string, string> = {
+  action: "Dynamic action scene.",
+  dialogue: "Dialogue scene with the characters facing each other.",
+  landscape:
+    "Landscape scene with foreground, middle ground, and background layers.",
+  closeup: "Close-up scene.",
+  wide: "Wide establishing shot.",
+};
 
-USER INPUT:
-- Sketch image (when provided) and/or a short text description of the scene.
-- Scene type: action, dialogue, landscape, close-up, or wide shot.
-
-RESPONSE:
-- Return the reference image only, plus one short sentence in Vietnamese saying what was fixed (for example: head size, arm length, or composition). Do not claim the image is the user's work.`;
+/**
+ * Tỉ lệ điểm màu tối đa chấp nhận trong ảnh model trả về (0 tới 1).
+ * Ảnh nét vẽ trắng đen thật có tỉ lệ gần 0 (3 ảnh đo thật ngày
+ * 28/10/2026 đều bằng 0). Vượt ngưỡng này nghĩa là model đã bỏ qua
+ * phong cách nét vẽ và trả về ảnh có màu: job thất bại thay vì ép xám
+ * rồi trả về, vì ép xám không biến ảnh có màu thành nét vẽ.
+ */
+export const MAX_REFERENCE_IMAGE_COLORED_SHARE = 0.2;
 
 /** Mã lỗi ổn định trả cho client; client chọn câu tiếng Việt theo mã này. */
 export const REFERENCE_IMAGE_ERROR_CODES = {
@@ -64,7 +85,7 @@ export const REFERENCE_IMAGE_ERROR_CODES = {
   overloaded: "reference_image_overloaded",
   /** Gọi Cloudflare thất bại vì lý do khác. */
   providerError: "reference_image_error",
-  /** Ảnh Cloudflare trả về không giải mã được hoặc vượt giới hạn. */
+  /** Ảnh Cloudflare trả về không giải mã được, vượt giới hạn, hoặc có màu quá ngưỡng. */
   invalidResponse: "reference_image_invalid",
   /** Quá 300 giây mà không rõ server đã sinh xong hay chưa. */
   timeout: "reference_image_timeout",

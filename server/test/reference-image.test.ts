@@ -14,7 +14,6 @@ import {
   ReferenceImageSceneType,
   ReferenceImageSource,
 } from "../src/ai/reference-image/reference-image.dto.js";
-import { REFERENCE_IMAGE_SYSTEM_PROMPT } from "../src/ai/reference-image/reference-image.constants.js";
 import { assembleReferenceImagePrompt } from "../src/ai/reference-image/reference-image-prompt.js";
 import {
   createCloudflareReferenceImageProvider,
@@ -52,9 +51,8 @@ function sketchDto(buffer: Buffer, width = 16, height = 16) {
 
 async function fixtureResult(): Promise<ReferenceImageGenerateResult> {
   const png = await makePng({ r: 255, g: 255, b: 255 }, 16);
-  const gray = await sharp(png).grayscale().png().toBuffer();
   return {
-    imageBuffer: gray,
+    imageBuffer: png,
     mimeType: "image/png",
     width: 16,
     height: 16,
@@ -66,27 +64,50 @@ async function fixtureResult(): Promise<ReferenceImageGenerateResult> {
 }
 
 describe("assembleReferenceImagePrompt", () => {
-  it("bat dau bang system prompt nguyen van, kem loai canh va mo ta", () => {
+  it("chi prompt: phong cach net ve dung dau, mo ta dung som, khong co huong dan chatbot", () => {
     const prompt = assembleReferenceImagePrompt({
-      sceneType: "action",
-      userPrompt: "co gai vung kiem",
+      sceneType: "landscape",
+      source: ReferenceImageSource.Prompt,
+      userPrompt: "thanh pho ve dem",
     });
-    expect(prompt.startsWith(REFERENCE_IMAGE_SYSTEM_PROMPT)).toBe(true);
-    expect(prompt).toContain("Scene type: action.");
-    expect(prompt).toContain("User description: co gai vung kiem");
+    expect(prompt.startsWith("Black-and-white manga line drawing")).toBe(true);
+    expect(prompt).toContain("Landscape scene");
+    expect(prompt).toContain("Draw this scene: thanh pho ve dem");
+    expect(prompt).not.toContain("You are a drawing reference assistant");
+    expect(prompt).not.toContain("Return the reference image only");
+    expect(prompt).not.toContain("Scene type:");
+    expect(prompt).not.toContain("Fix these specific problems");
   });
 
-  it("them danh sach loi can sua khi co fixHints", () => {
+  it("chi prompt loai auto thi bo han dong loai canh", () => {
     const prompt = assembleReferenceImagePrompt({
-      sceneType: "dialogue",
+      sceneType: "auto",
+      source: ReferenceImageSource.Prompt,
+      userPrompt: "thanh pho ve dem",
+    });
+    expect(prompt).not.toContain("auto");
+    expect(prompt).toContain("Draw this scene: thanh pho ve dem");
+  });
+
+  it("co phac thao: giu bo cuc, them mo ta va danh sach loi can sua", () => {
+    const prompt = assembleReferenceImagePrompt({
+      sceneType: "action",
+      source: ReferenceImageSource.DrawingPrompt,
+      userPrompt: "co gai vung kiem",
       fixHints: ["dau qua to -> thu nho dau", "tay ngan -> keo dai tay"],
     });
+    expect(prompt).toContain("Black-and-white manga line drawing");
+    expect(prompt).toContain("Keep the exact composition");
+    expect(prompt).toContain("User description: co gai vung kiem");
     expect(prompt).toContain("- dau qua to -> thu nho dau");
     expect(prompt).toContain("- tay ngan -> keo dai tay");
   });
 
-  it("khong them muc sua khi khong co fixHints", () => {
-    const prompt = assembleReferenceImagePrompt({ sceneType: "wide" });
+  it("co phac thao khong co fixHints thi khong them muc sua", () => {
+    const prompt = assembleReferenceImagePrompt({
+      sceneType: "wide",
+      source: ReferenceImageSource.Drawing,
+    });
     expect(prompt).not.toContain("Fix these specific problems");
   });
 });
@@ -153,7 +174,7 @@ describe("createCloudflareReferenceImageProvider", () => {
     expect(result.seed).toBe(42);
   });
 
-  it("schnell chi gui JSON prompt, khong width/height/seed", async () => {
+  it("chi prompt dung klein multipart khong kem anh: prompt + width/height + seed, khong guidance, khong input_image_0", async () => {
     const png = await makePng({ r: 255, g: 255, b: 255 });
     const calls = stubFetch(async () => okImageResponse(png.toString("base64")));
     const provider = createCloudflareReferenceImageProvider({
@@ -161,13 +182,22 @@ describe("createCloudflareReferenceImageProvider", () => {
       accountId: "test-account",
       token: "test-token",
     });
-    await provider.generate(
+    const result = await provider.generate(
       { prompt: "test prompt", source: ReferenceImageSource.Prompt, seed: 7 },
       new AbortController().signal,
     );
-    expect(calls[0].url).toContain("flux-1-schnell");
-    const body = JSON.parse(calls[0].init.body as string) as Record<string, unknown>;
-    expect(Object.keys(body)).toEqual(["prompt"]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain("flux-2-klein-4b");
+    expect(calls[0].url).not.toContain("schnell");
+    const form = calls[0].init.body as FormData;
+    expect(form.get("prompt")).toBe("test prompt");
+    expect(form.get("width")).toBe("1024");
+    expect(form.get("height")).toBe("1024");
+    expect(form.get("seed")).toBe("7");
+    expect(form.get("guidance")).toBeNull();
+    expect(form.get("input_image_0")).toBeNull();
+    expect(result.model).toContain("klein-4b");
+    expect(result.seed).toBe(7);
   });
 
   it("tat thi khong goi fetch", async () => {
@@ -245,19 +275,22 @@ describe("createCloudflareReferenceImageProvider", () => {
 });
 
 describe("processCloudflareImage", () => {
-  it("anh do tra ve ti le mau cao va anh dau ra da ep xam", async () => {
-    const red = await makePng({ r: 255, g: 0, b: 0 }, 32);
-    const processed = await processCloudflareImage(red);
-    expect(processed.coloredShare).toBeGreaterThan(0.5);
+  it("anh trang den tra ve dung anh goc ma lai PNG, khong ep xam", async () => {
+    const white = await makePng({ r: 255, g: 255, b: 255 }, 32);
+    const processed = await processCloudflareImage(white);
+    expect(processed.coloredShare).toBe(0);
+    expect(processed.width).toBe(32);
+    expect(processed.height).toBe(32);
     const stats = await sharp(processed.imageBuffer).stats();
     const means = stats.channels.map((channel) => channel.mean);
     expect(Math.max(...means) - Math.min(...means)).toBeLessThan(1);
   });
 
-  it("anh trang co ti le mau bang 0", async () => {
-    const white = await makePng({ r: 255, g: 255, b: 255 }, 16);
-    const processed = await processCloudflareImage(white);
-    expect(processed.coloredShare).toBe(0);
+  it("anh do (co mau) bi loai thay vi ep xam thanh xam", async () => {
+    const red = await makePng({ r: 255, g: 0, b: 0 }, 32);
+    await expect(processCloudflareImage(red)).rejects.toBeInstanceOf(
+      ReferenceImageInvalidError,
+    );
   });
 
   it("buffer rong hoac khong phai anh thi loi", async () => {
@@ -351,6 +384,23 @@ describe("ReferenceImageJobsService", () => {
     const done = await waitForStatus(service, "u1", created.id, "succeeded");
     expect(done.imageDataUrl?.startsWith("data:image/png;base64,")).toBe(true);
     expect(() => service.getJob("u2", created.id)).toThrow();
+  });
+
+  it("job chi prompt dung model klein va prompt net ve co mo ta som", async () => {
+    let seenPrompt = "";
+    const capturing: CloudflareReferenceImageProvider = {
+      isEnabled: () => true,
+      generate: async (input) => {
+        seenPrompt = input.prompt;
+        return fixtureResult();
+      },
+    };
+    const service = new ReferenceImageJobsService(capturing);
+    const created = await service.createJob("u1", validDto());
+    expect(created.model).toContain("klein-4b");
+    await waitForStatus(service, "u1", created.id, "succeeded");
+    expect(seenPrompt).toContain("Draw this scene: co gai vung kiem");
+    expect(seenPrompt).not.toContain("You are a drawing reference assistant");
   });
 
   it("huy job dang chay thi giu trang thai cancelled", async () => {

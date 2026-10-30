@@ -15,7 +15,6 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard.js";
 import { AiDrawingRateLimiter } from "../ai-drawing-rate-limiter.service.js";
 import {
   CLOUDFLARE_KLEIN_4B_MODEL_ID,
-  CLOUDFLARE_SCHNELL_MODEL_ID,
   REFERENCE_IMAGE_PROVIDER_TIMEOUT_MS,
 } from "./reference-image.constants.js";
 import { CreateReferenceImageJobDto } from "./reference-image.dto.js";
@@ -44,14 +43,12 @@ export class ReferenceImageController {
   @Get("status")
   getStatus(): {
     enabled: boolean;
-    kleinModel: string;
-    schnellModel: string;
+    model: string;
     providerTimeoutMs: number;
   } {
     return {
       enabled: this.jobsService.isEnabled(),
-      kleinModel: CLOUDFLARE_KLEIN_4B_MODEL_ID,
-      schnellModel: CLOUDFLARE_SCHNELL_MODEL_ID,
+      model: CLOUDFLARE_KLEIN_4B_MODEL_ID,
       providerTimeoutMs: REFERENCE_IMAGE_PROVIDER_TIMEOUT_MS,
     };
   }

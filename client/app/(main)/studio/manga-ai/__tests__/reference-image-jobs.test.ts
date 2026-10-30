@@ -15,7 +15,7 @@ import {
 } from "@/lib/reference-image-api";
 import { createReferenceImageId } from "../lib/referenceImages";
 import {
-  REFERENCE_IMAGE_SYSTEM_PROMPT,
+  REFERENCE_IMAGE_LINE_STYLE,
   REFERENCE_IMAGE_SYSTEM_PROMPT_ENABLED,
 } from "../lib/referenceImagePrompt";
 import {
@@ -191,14 +191,15 @@ describe("thong diep loi va dong y", () => {
     expect(first).not.toBe(second);
   });
 
-  it("system prompt da bat va van ban dong y gom Cloudflare", () => {
+  it("phong cách nét vẽ đã bật và văn bản đồng ý gồm Cloudflare klein", () => {
     expect(REFERENCE_IMAGE_SYSTEM_PROMPT_ENABLED).toBe(true);
-    expect(REFERENCE_IMAGE_SYSTEM_PROMPT.startsWith(
-      "You are a drawing reference assistant",
+    expect(REFERENCE_IMAGE_LINE_STYLE.startsWith(
+      "Black-and-white manga line drawing",
     )).toBe(true);
-    expect(REFERENCE_IMAGE_CONSENT_VERSION).toBe("ai-providers-v3");
+    expect(REFERENCE_IMAGE_CONSENT_VERSION).toBe("ai-providers-v4");
     expect(REFERENCE_IMAGE_CONSENT_NOTICE).toContain("Cloudflare");
     expect(REFERENCE_IMAGE_CONSENT_NOTICE).toContain("FLUX.2 klein 4B");
+    expect(REFERENCE_IMAGE_CONSENT_NOTICE).not.toContain("schnell");
   });
 
   it("fetch dong y loi thi dung ban sao kem theo", async () => {

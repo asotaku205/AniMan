@@ -1,7 +1,7 @@
 import sharp, { type Metadata, type OutputInfo } from "sharp";
 import {
   CLOUDFLARE_KLEIN_4B_MODEL_ID,
-  CLOUDFLARE_SCHNELL_MODEL_ID,
+  MAX_REFERENCE_IMAGE_COLORED_SHARE,
   MAX_REFERENCE_IMAGE_OUTPUT_BYTES,
   REFERENCE_IMAGE_OUTPUT_SIZE,
   REFERENCE_IMAGE_PROVIDER_TIMEOUT_MS,
@@ -68,12 +68,12 @@ export interface ReferenceImageGenerateInput {
 }
 
 export interface ReferenceImageGenerateResult {
-  /** Ảnh PNG đã ép xám, sẵn sàng trả về client dưới dạng data URL. */
+  /** Ảnh PNG như model trả về, sẵn sàng trả về client dưới dạng data URL. */
   imageBuffer: Buffer;
   mimeType: "image/png";
   width: number;
   height: number;
-  /** Tỉ lệ điểm màu trong ảnh gốc trước khi ép xám (0 tới 1). */
+  /** Tỉ lệ điểm màu trong ảnh (0 tới 1); dùng để loại ảnh có màu. */
   coloredShare: number;
   model: string;
   seed: number;
@@ -91,12 +91,15 @@ export interface CloudflareReferenceImageProvider {
 export const REFERENCE_IMAGE_PROVIDER = Symbol("REFERENCE_IMAGE_PROVIDER");
 
 /**
- * Kiểm tra ảnh Cloudflare trả về rồi ép xám về PNG.
+ * Kiểm tra ảnh Cloudflare trả về và mã lại thành PNG, KHÔNG ép xám.
  *
- * Ép xám là bước bảo đảm phong cách trắng đen một cách xác định: screentone
- * vốn đã xám nên không mất chi tiết, còn ánh màu do JPEG gây ra thì bị
- * loại. `coloredShare` được đo trước khi ép xám để ghi log và hiển thị
- * ghi chú, không dùng để loại ảnh (ép xám đã xử lý xong vấn đề màu).
+ * Phong cách nét vẽ phải do model vẽ ra ngay từ đầu (prompt nét vẽ
+ * trong reference-image-prompt.ts). Ép xám một ảnh có màu/tô bóng
+ * không biến nó thành nét vẽ, chỉ che đi việc model đã bỏ qua phong
+ * cách. Vì vậy ảnh có tỉ lệ điểm màu vượt ngưỡng thì bị loại thẳng
+ * (ReferenceImageInvalidError) để người dùng sinh lại, thay vì nhận
+ * về một ảnh xám giả nét vẽ. Ảnh nét vẽ trắng đen thật có tỉ lệ
+ * điểm màu gần 0, nên ngưỡng 0,2 vẫn chừa dư địa cho nhiễu JPEG.
  */
 export async function processCloudflareImage(buffer: Buffer): Promise<{
   imageBuffer: Buffer;
@@ -148,17 +151,22 @@ export async function processCloudflareImage(buffer: Buffer): Promise<{
     }
   }
   const coloredShare = sampled === 0 ? 0 : colored / sampled;
-  let gray: Buffer;
+  if (coloredShare > MAX_REFERENCE_IMAGE_COLORED_SHARE) {
+    throw new ReferenceImageInvalidError(
+      "Cloudflare returned a colored image instead of a black-and-white line drawing",
+    );
+  }
+  let png: Buffer;
   try {
-    gray = await sharp(buffer).grayscale().png().toBuffer();
+    png = await sharp(buffer).png().toBuffer();
   } catch {
     throw new ReferenceImageInvalidError();
   }
-  if (gray.length === 0 || gray.length > MAX_REFERENCE_IMAGE_OUTPUT_BYTES) {
+  if (png.length === 0 || png.length > MAX_REFERENCE_IMAGE_OUTPUT_BYTES) {
     throw new ReferenceImageInvalidError();
   }
   return {
-    imageBuffer: gray,
+    imageBuffer: png,
     width: metadata.width,
     height: metadata.height,
     coloredShare,
@@ -192,25 +200,27 @@ export function createCloudflareReferenceImageProvider(
     signal: AbortSignal,
     startedAt: number,
   ): Promise<ReferenceImageGenerateResult> {
-    const isSketch = input.source !== "prompt";
-    const model = isSketch
-      ? CLOUDFLARE_KLEIN_4B_MODEL_ID
-      : CLOUDFLARE_SCHNELL_MODEL_ID;
+    // Cả 3 nguồn dùng chung klein 4B qua multipart: klein dùng
+    // multipart cả khi chỉ có prompt, input_image_0 là tùy chọn.
+    // Không gửi guidance: 2 lần gọi có guidance 7.0 đều timeout ở
+    // 180 giây và 300 giây trong lần kiểm chứng 28/10/2026, nên giữ
+    // guidance mặc định của model.
+    const model = CLOUDFLARE_KLEIN_4B_MODEL_ID;
     const url = `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/ai/run/${model}`;
 
     let response: Response;
     try {
-      if (isSketch) {
-        if (!input.sketch) {
-          throw new ReferenceImageProviderError(
-            "A sketch image is required for this reference image source",
-          );
-        }
-        const form = new FormData();
-        form.append("prompt", input.prompt);
-        form.append("width", String(REFERENCE_IMAGE_OUTPUT_SIZE));
-        form.append("height", String(REFERENCE_IMAGE_OUTPUT_SIZE));
-        form.append("seed", String(input.seed));
+      if (input.source !== "prompt" && !input.sketch) {
+        throw new ReferenceImageProviderError(
+          "A sketch image is required for this reference image source",
+        );
+      }
+      const form = new FormData();
+      form.append("prompt", input.prompt);
+      form.append("width", String(REFERENCE_IMAGE_OUTPUT_SIZE));
+      form.append("height", String(REFERENCE_IMAGE_OUTPUT_SIZE));
+      form.append("seed", String(input.seed));
+      if (input.sketch) {
         form.append(
           "input_image_0",
           new Blob([Uint8Array.from(input.sketch.data)], {
@@ -218,24 +228,13 @@ export function createCloudflareReferenceImageProvider(
           }),
           "sketch.png",
         );
-        response = await fetch(url, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${config.token}` },
-          body: form,
-          signal,
-        });
-      } else {
-        // Schnell từ chối width/height/seed/guidance: chỉ gửi prompt.
-        response = await fetch(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${config.token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ prompt: input.prompt }),
-          signal,
-        });
       }
+      response = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${config.token}` },
+        body: form,
+        signal,
+      });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new ReferenceImageTimeoutError();
