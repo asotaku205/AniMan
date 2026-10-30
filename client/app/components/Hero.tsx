@@ -43,9 +43,7 @@ export function Hero() {
             </span>
           </h1>
 
-          <p className="mt-8 text-white/70 max-w-xl leading-relaxed">
-            Xem hoạt hình &amp; phim bản quyền, đọc truyện và tiểu thuyết, đồng thời tự sáng tác bằng các công cụ AI
-          </p>
+          
 
           <div className="mt-10 flex flex-wrap gap-3">
             <Button asChild size="lg" className="rounded-full bg-gradient-to-r from-pink-500 to-rose-400 text-white border-0 px-7 h-12 shadow-[0_0_30px_rgba(255,90,150,0.5)]">

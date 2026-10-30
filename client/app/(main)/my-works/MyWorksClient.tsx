@@ -455,11 +455,7 @@ export default function MyWorksClient() {
           >
             Sáng tác <span className="bg-gradient-to-r from-pink-300 to-fuchsia-300 bg-clip-text text-transparent">của tôi</span>
           </h1>
-          <p className="text-white/55 text-sm mt-2 max-w-2xl">
-            Mọi thứ Sơn đã làm trong các studio — tiểu thuyết, manga, phim,
-            thế giới và bản dịch — gom lại một chỗ, cập nhật theo dữ liệu
-            thật trên máy này.
-          </p>
+          
         </div>
 
         {loading ? (

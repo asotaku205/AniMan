@@ -109,11 +109,7 @@ export function LibraryHub() {
           <BookOpen className="w-3.5 h-3.5" /> THƯ VIỆN STUDIO
         </div>
         <h1 className="text-[28px] font-bold tracking-tight mt-1.5 bg-gradient-to-r from-fuchsia-300 via-pink-200 to-rose-200 bg-clip-text text-transparent">Dịch & lồng tiếng — thư viện series</h1>
-        <p className="text-sm text-white/50 mt-1 max-w-2xl leading-relaxed">
-          Quản lý series theo cấu trúc Series → Mùa → Tập. Mỗi series có
-          bảng thuật ngữ và dàn nhân vật riêng, dùng chung cho mọi tập khi
-          dịch và lồng tiếng.
-        </p>
+        
       </div>
 
       {loadError && (

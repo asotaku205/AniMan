@@ -2040,11 +2040,7 @@ export function TimelineEditor({
                   onPlaceRequest={() => setFxPlaceMode({ target: "panel" })}
                 />
               )}
-              <p className="text-[11px] text-white/35 leading-relaxed">
-                Hiệu ứng hiện ở cả lúc dựng, lúc phát thử và trong bản xuất.
-                Bản nháp chưa gắn thì chưa xem trước được — gắn vào cảnh rồi
-                tua timeline là thấy ngay trên sân khấu.
-              </p>
+              
             </section>
           )}
 
@@ -2089,11 +2085,7 @@ export function TimelineEditor({
                 <h4 className="text-[11px] font-semibold text-white/60">
                   MỐC HIỆU ỨNG THEO THỜI GIAN
                 </h4>
-                <p className="text-[11px] leading-relaxed text-white/35">
-                  Đặt mốc tại các thời điểm khác nhau để hiệu ứng tự biến
-                  đổi (phát sáng tăng dần, rung mạnh rồi tắt...). Giữa hai
-                  mốc, giá trị tự nội suy.
-                </p>
+                
                 <button
                   onClick={addFxKey}
                   className="w-full h-8 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10 transition"
@@ -2291,11 +2283,7 @@ export function TimelineEditor({
                 >
                   Gắn vào vật
                 </button>
-                <p className="text-[11px] leading-relaxed text-white/35">
-                  Gắn một lần sinh keys thật — sửa tay từng key được. Gắn
-                  lặp thì vật chạy theo tham số; muốn sửa tay thì bấm
-                  “Chuyển thành keys” ở dưới.
-                </p>
+                
                 {(selectedLayer.motionInstances ?? []).length > 0 && (
                   <div className="space-y-1.5">
                     <div className="text-[11px] font-semibold text-white/60">
@@ -2893,11 +2881,7 @@ export function TimelineEditor({
               <h4 className="text-[12px] font-semibold text-white/60">
                 VỆT VẼ TAY TRÊN KHUNG HÌNH
               </h4>
-              <p className="text-[11px] leading-relaxed text-white/35">
-                Bật chế độ vẽ rồi kéo chuột thẳng lên khung hình — vệt
-                sáng phép thuật, đường bay, vòng nhấn... Nét vẽ xuất hiện
-                dần đúng khoảng thời gian bạn vẽ.
-              </p>
+              
               <button
                 onClick={() => setStrokeMode((v) => !v)}
                 className={`w-full h-8 rounded-lg border text-[12px] font-medium transition ${

@@ -300,10 +300,7 @@ export function EnvironmentPanel({
             </label>
           </>
         )}
-        <p className="text-[10.5px] text-white/30 leading-relaxed">
-          Bật cọ rồi kéo trực tiếp trên mặt đất trong khung 3D — thả chuột
-          là lưu. Chỉnh chính xác nhất khi đang xem ở góc tự do.
-        </p>
+        
         <button
           onClick={() => setEnv({ terrain: createTerrainGrid() })}
           className="h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
@@ -404,21 +401,14 @@ export function EnvironmentPanel({
             </button>
           ))}
         </div>
-        <p className="text-[10.5px] text-white/30 leading-relaxed">
-          Set mẫu chỉ là điểm bắt đầu — bấm là thêm cả trời, đất và vật
-          vào cảnh hiện tại, vật cũ vẫn giữ nguyên, sửa thoải mái rồi lưu
-          theo cảnh như bình thường.
-        </p>
+        
         <button
           onClick={() => void importDiorama()}
           className="w-full h-8 rounded-lg bg-violet-500/25 border border-violet-400/40 text-[12px] font-medium hover:bg-violet-500/35"
         >
           Nhập sa bàn từ World Builder
         </button>
-        <p className="text-[10.5px] text-white/30 leading-relaxed">
-          Đưa địa hình + vật đã đặt trên sa bàn sang thành cảnh này rồi sửa
-          tiếp. Sông và đường vẽ riêng của sa bàn chưa chuyển được.
-        </p>
+        
       </div>
     </section>
   );

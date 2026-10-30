@@ -417,12 +417,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                           <h2 className="text-lg font-semibold">
                             Tách kịch bản thành cảnh
                           </h2>
-                          <p className="text-[12px] text-white/45 leading-relaxed">
-                            Dán kịch bản dạng: đầu cảnh INT./EXT., tên nhân
-                            vật VIẾT HOA rồi thoại bên dưới, mô tả viết
-                            thường. Dòng nào không nhận ra sẽ giữ trong ghi
-                            chú của cảnh, không mất.
-                          </p>
+                          
                           <textarea
                             value={screenplayText}
                             onChange={(e) => setScreenplayText(e.currentTarget.value)}
@@ -1000,11 +995,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             </p>
           )}
         </div>
-        <p className="mt-3 text-[12px] text-white/35 leading-relaxed">
-          {project.kind === "2d"
-            ? "Bước tiếp theo trên chính bảng cảnh này: phát thử animatic để chốt nhịp, rồi mở timeline keyframe cho từng cảnh."
-            : "Bước tiếp theo trên chính bảng cảnh này: dựng cảnh 3D xem trước cho từng cảnh (nhân vật, phong cảnh, camera theo mốc thời gian) rồi xuất đoạn phim."}
-        </p>
+        
       </div>
 
       {boardDrawSceneId &&
@@ -1033,11 +1024,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-[#120a1f] border border-white/10 p-6 space-y-4">
             <div>
               <h3 className="text-base font-semibold">Gợi ý phân cảnh từ đoạn novel</h3>
-              <p className="text-[12px] text-white/45 leading-relaxed mt-1">
-                Dán một đoạn truyện — công cụ tách theo đoạn văn, trích thoại
-                trong ngoặc kép và ước lượng thời lượng. Đây là bản NHÁP cơ
-                học (không tốn lượt AI); bạn sửa lại ở bảng phân cảnh sau.
-              </p>
+              
             </div>
             <textarea
               value={novelText}

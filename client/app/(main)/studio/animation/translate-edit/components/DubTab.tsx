@@ -197,11 +197,7 @@ export function DubTab({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-[12px] text-white/50 leading-relaxed flex-1 min-w-[180px]">
-          Thu nhiều bản cho mỗi câu — bản ★ sẽ được dùng khi xuất. "Thu
-          theo vòng lặp" phát đoạn phim kèm 3 tiếng bíp dẫn nhịp như trong
-          phòng thu.
-        </p>
+        
         <select
           value={ttsLang}
           onChange={(e) => setTtsLang(e.currentTarget.value)}

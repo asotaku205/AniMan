@@ -668,12 +668,7 @@ export function TranslateEditWorkspace({ episodeId }: { episodeId: string }) {
             currentTimeSec={currentTime}
             onCuesChange={applyCueLines}
           />
-            {!selectedCue && cues.length > 0 && (
-              <p className="text-[12px] text-white/35 leading-relaxed">
-                Bấm vào một thẻ cue để mở trình sửa ngay tại thẻ đó — mốc
-                thời gian, nhân vật và nội dung đều sửa tại chỗ.
-              </p>
-            )}
+            
             <CueScriptList
               cues={cues}
               series={series}

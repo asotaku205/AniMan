@@ -307,11 +307,7 @@ export function ReferenceImagePanel({
             </div>
           </div>
 
-          <p className="text-white/50 text-[10px]">
-            Phong cách khóa: Manga trắng đen, nét sạch. Ảnh mẫu chỉ dùng để
-            hỗ trợ bạn vẽ lại, không đưa vào bản chính và không xuất cùng
-            truyện.
-          </p>
+          
 
           <div className="space-y-1.5">
             <button
@@ -405,10 +401,7 @@ export function ReferenceImagePanel({
                   Xóa ghi chú sửa
                 </button>
               )}
-              <p className="text-white/40 text-[10px] leading-relaxed">
-                Sinh lại dùng cùng mô tả và cùng phác thảo (nếu có), chỉ
-                thêm ghi chú sửa của bạn.
-              </p>
+              
             </div>
           )}
 
@@ -539,10 +532,7 @@ export function ReferenceImagePanel({
                       Dưới nét vẽ
                     </button>
                   </div>
-                  <p className="text-white/40 text-[10px] leading-relaxed">
-                    Ảnh đè lên chỉ để đồ theo, không vào lớp vẽ hay bản
-                    xuất. Đổi khung thì lớp đè tự tắt.
-                  </p>
+                  
                 </div>
 
                 <div className="flex gap-1.5">

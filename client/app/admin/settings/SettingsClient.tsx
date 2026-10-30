@@ -101,7 +101,7 @@ export default function SettingsClient() {
   return <div className="space-y-5 max-w-2xl">
     <section className={`p-6 ${inputCard}`}>
       <p className="text-[10px] font-semibold tracking-widest text-white/30 uppercase mb-1">Áp dụng cho toàn hệ thống (lưu trên server)</p>
-      <p className="text-xs text-white/40 mb-4">Lưu trên server, tác dụng với mọi người dùng. Mỗi lần đổi đều ghi vào audit log.</p>
+      
       {realLoading ? (
         <div className="text-sm text-white/60 py-4">Đang tải cài đặt...</div>
       ) : realError ? (
@@ -127,9 +127,7 @@ export default function SettingsClient() {
       title="Bật chế độ bảo trì?"
       footer={<><GhostBtn onClick={() => setConfirmMaintenance(false)}>Hủy</GhostBtn><button onClick={() => { setConfirmMaintenance(false); void applyReal({ maintenance: true }); }} className="px-4 py-2.5 rounded-xl text-sm text-white font-medium bg-rose-600 hover:brightness-110 transition">Bật bảo trì</button></>}
     >
-      <p className="text-sm leading-relaxed text-white/75">
-        Từ lúc bật, mọi người dùng thường và khách ẩn danh sẽ thấy trang bảo trì và không dùng được app cho tới khi quản trị viên tắt. Chính tài khoản quản trị viên vẫn vào được bình thường. Hành động này được ghi vào audit log.
-      </p>
+      
     </Modal>
   </div>;
 }

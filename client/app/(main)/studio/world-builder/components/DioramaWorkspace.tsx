@@ -926,12 +926,7 @@ export function DioramaWorkspace() {
                   </button>
                 </span>
               </div>
-              {chunkDeleteMode && (
-                <p className="text-[11px] text-rose-200/70 mb-1.5">
-                  Bấm vào chunk cần xoá, bấm lần nữa để xác nhận. Chunk còn
-                  vật thì phải dời vật đi trước.
-                </p>
-              )}
+              
               <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                 {cells}
               </div>
@@ -1105,10 +1100,7 @@ export function DioramaWorkspace() {
       <div className="h-px bg-white/5 mb-3" />
       {leftTab === "models" ? (
         <>
-          <p className="text-[11px] text-white/40 leading-relaxed mb-2">
-            Bấm một mẫu để cầm lên, rồi bấm vào mặt đất để đặt. Bấm lại mẫu
-            để dừng đặt.
-          </p>
+          
           {/* Thư viện chính là đồ người dùng tạo/nạp (W9.7): mẫu gợi ý
               chỉ là điểm khởi đầu, thu gọn ở cuối tab. */}
           <p className="text-[11px] font-medium text-white/60 mb-2">
@@ -1120,11 +1112,7 @@ export function DioramaWorkspace() {
           >
             + Tạo mô hình mới
           </button>
-          <p className="text-[11px] text-white/40 leading-relaxed mb-3">
-            Mọi mô hình ở đây đều do bạn tạo (ghép từ chi tiết khối) hoặc
-            nạp file .glb. Bấm vào mô hình để đặt lên sa bàn, bấm Sửa để
-            sửa lại. Mẫu gợi ý ở cuối tab chỉ để tham khảo.
-          </p>
+          
           <p className="text-[11px] font-medium text-white/60 mb-2">
             Ghép từ chi tiết
           </p>
@@ -1223,11 +1211,7 @@ export function DioramaWorkspace() {
               }}
             />
           </label>
-          <p className="text-[11px] text-white/40 leading-relaxed mb-2">
-            Nguồn model realistic miễn phí: Meshy/Tripo sinh từ gói bàn
-            giao (tab hồ sơ), Mixamo (người rig sẵn), Ready Player Me,
-            Poly Haven (đạo cụ CC0).
-          </p>
+          
           <details className="rounded-xl border border-white/10 bg-black/30 px-2.5 py-2 mb-2">
             <summary className="text-[12px] text-white/70 cursor-pointer">
               Hướng dẫn xuất file từ Blender để nạp vào đây
@@ -1239,10 +1223,7 @@ export function DioramaWorkspace() {
               <li>Xuất File → Export → glTF 2.0 (.glb): bật Apply Modifiers, kèm animation + skinning + shape key; tắt nén Draco.</li>
               <li>Nạp file .glb ở trên, kiểm tra số tam giác, số xương, tên clip khớp rồi mới đặt lên sa bàn.</li>
             </ol>
-            <p className="text-[11px] text-white/40 leading-relaxed mt-1.5">
-              Lỗi hay gặp: nhân vật méo khi cử động là do quên bake IK hoặc
-              quên apply modifier; clip không hiện là do quên Fake User.
-            </p>
+            
           </details>
           {glbAssets.length === 0 ? (
             <p className="text-[11px] text-white/40 leading-relaxed">
@@ -1340,10 +1321,7 @@ export function DioramaWorkspace() {
               <Plus size={15} />
             </button>
           </div>
-          <p className="text-[11px] text-white/40 leading-relaxed mb-2">
-            Bấm vào thực thể để đặt nó lên sa bàn (nhân vật) hoặc xem vật
-            đã gắn.
-          </p>
+          
           <button
             onClick={() => {
               const entity: StoryEntity = {
@@ -1622,11 +1600,7 @@ export function DioramaWorkspace() {
         </>
       ) : leftTab === "terrain" ? (
         <>
-          <p className="text-[11px] text-white/40 leading-relaxed mb-3">
-            Bấm/kéo trực tiếp trên sa bàn để nặn địa hình. Vật đặt trên
-            đất tự bám theo cao độ — đào hố rồi đặt nhà xuống hố là nhà
-            chìm theo, không lơ lửng.
-          </p>
+          
           <p className="text-[11px] font-medium text-white/60 mb-1.5">Cọ địa hình</p>
           <div className="grid grid-cols-3 gap-1.5 mb-3">
             {(
@@ -1826,10 +1800,7 @@ export function DioramaWorkspace() {
             >
               {generating ? "Đang chờ bấm điểm trên sa bàn… (Esc để huỷ)" : "Chọn điểm để sinh"}
             </button>
-            <p className="text-[11px] text-white/40 leading-relaxed">
-              Sinh xong vẫn sửa được: địa hình sửa bằng cọ, vật sinh ra
-              kéo/xoá từng vật như vật đặt tay.
-            </p>
+            
           </div>
           {/* Sông / suối (W9.3): vẽ đường như đường đi rồi đào lòng. */}
           <div className="rounded-xl border border-white/10 bg-black/30 p-2.5 space-y-2 mb-4">
@@ -1926,17 +1897,11 @@ export function DioramaWorkspace() {
               ))}
             </div>
           </div>
-          <p className="text-[11px] text-white/40 leading-relaxed">
-            Thế giới giờ mở rộng bằng chunk 40m — xem bản đồ ở thẻ World
-            phía trên, bấm ô + để thêm đất kề bên.
-          </p>
+          
         </>
       ) : (
         <>
-          <p className="text-[11px] text-white/40 leading-relaxed mb-3">
-            Phe phái tô màu viền dưới chân vật trên sa bàn — nhìn là
-            biết vật thuộc phe nào. Một thực thể chỉ thuộc một phe.
-          </p>
+          
           <div className="flex gap-1.5 mb-3">
             <input
               value={newFactionName}
@@ -2651,10 +2616,7 @@ export function DioramaWorkspace() {
                   Xuất gói bàn giao cho AI 3D (ZIP)
                 </button>
               </div>
-              <p className="text-[11px] text-white/35 leading-relaxed">
-                Hồ sơ này sống trong chính vật trên sa bàn — đổi ở đây là
-                đổi chung cho mọi nơi dùng thực thể này.
-              </p>
+              
             </div>
           ) : (
             <p className="text-[12px] text-white/40 leading-relaxed">
@@ -2678,10 +2640,7 @@ export function DioramaWorkspace() {
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="text-[12.5px] text-white/50 leading-relaxed">
-            Bấm vào một vật trên sa bàn để xem và sửa hồ sơ của nó — tên,
-            vị trí, hướng xoay, tỉ lệ và thực thể truyện gắn kèm.
-          </p>
+          
           <p className="text-[12.5px] text-white/50 leading-relaxed">
             Chưa có vật nào được chọn. Muốn bày thế giới: chọn mẫu ở cột
             trái rồi bấm vào mặt đất.
@@ -2724,11 +2683,7 @@ export function DioramaWorkspace() {
                 <X size={16} />
               </button>
             </div>
-            <p className="text-[11px] text-white/40 leading-relaxed">
-              Mỗi chi tiết là một khối (hộp/nón/trụ/cầu) với kích thước,
-              vị trí và màu riêng. Kích thước: hộp [rộng, cao, sâu], nón
-              [bán kính, cao, số mặt], trụ [bán kính, cao], cầu [bán kính].
-            </p>
+            
             <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
               {editingModel.parts.map((part, idx) => (
                 <div key={idx} className="rounded-xl border border-white/10 bg-black/30 p-2.5 space-y-2">

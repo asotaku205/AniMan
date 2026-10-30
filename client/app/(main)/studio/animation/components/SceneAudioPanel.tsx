@@ -170,12 +170,7 @@ export function SceneAudioPanel({
       <h4 className="text-[12px] font-semibold text-emerald-200/80 flex items-center gap-1.5">
         <Sparkles className="w-3.5 h-3.5" /> ÂM THANH CỦA CẢNH (HIỆU ỨNG · NHẠC RIÊNG)
       </h4>
-      <p className="text-[11px] leading-relaxed text-white/40">
-        Tự thu hiệu ứng bằng micro (bước chân, vỗ tay, tiếng động quanh bạn)
-        hoặc nạp file — cắt, dời mốc, fade theo ý bạn. Bấm Phát ngay
-        trong trình dựng cảnh là nghe thấy clip cùng hình; clip cũng có
-        mặt trong Phát thử toàn phim và bản xuất.
-      </p>
+      
 
       <div className="flex flex-wrap gap-2">
         <button

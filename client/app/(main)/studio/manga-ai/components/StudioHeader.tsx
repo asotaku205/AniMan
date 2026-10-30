@@ -154,8 +154,8 @@ export function StudioHeader({
             </div>
 
             <div className="pt-2 border-t border-white/10 text-[11px] text-white/50 space-y-1">
-              <p>💡 <b>Tự động lưu:</b> Mọi nét vẽ trong các khung đều tự động lưu vào bộ nhớ trình duyệt, không lo mất tiến trình khi tải lại trang.</p>
-              <p>✨ <b>AI Trợ lý:</b> Nhập mô tả ý tưởng khi hình vẽ thô để nhận các nét gợi ý mờ chuẩn xác nhất.</p>
+              
+              
             </div>
 
             <button

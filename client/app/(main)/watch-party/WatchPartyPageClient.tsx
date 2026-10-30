@@ -111,9 +111,7 @@ export default function WatchPartyPageClient() {
             <div>
               <div className="text-[11px] tracking-[0.3em] text-pink-300/70">PHÒNG CỦA BẠN</div>
               <div className="mt-2 text-2xl text-white" style={{ fontFamily: "Shippori Mincho, serif" }}>Tự dựng phòng xem riêng</div>
-              <p className="text-white/60 mt-2 max-w-xl">
-                Mời tối đa 500 người, đồng bộ chính xác đến mili-giây, voice chat tích hợp, reaction theo timeline và lưu lại biên bản phòng.
-              </p>
+              
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
                   { label: "Sync ms-precise", icon: "Tv2" },

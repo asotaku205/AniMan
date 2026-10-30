@@ -365,9 +365,7 @@ export function WashiBookPage({ s }: { s: NovelStudioState }) {
         <p className="text-amber-100/90 font-medium" style={{ fontFamily: "Shippori Mincho, serif" }}>
           {s.selectedChapter ? "Chương này chưa có cảnh nào" : "Chưa chọn chương"}
         </p>
-        <p className="text-amber-100/60 text-sm leading-relaxed">
-          Tạo cảnh ở cây sách bên trái rồi bấm vào cảnh để bắt đầu viết — nội dung được lưu tự động.
-        </p>
+        
         {s.selectedChapter && (
           <button
             onClick={() => void s.addScene("Cảnh 1")}

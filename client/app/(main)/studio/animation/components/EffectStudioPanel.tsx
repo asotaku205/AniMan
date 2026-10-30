@@ -529,10 +529,7 @@ export function EffectStudioPanel({
           </div>
         </div>
       )}
-      <p className="text-[10.5px] text-white/30 leading-relaxed">
-        Muốn có tiếng: thêm clip tiếng trong panel Âm thanh tại cùng thời
-        điểm — tiếng sẽ vào cả phim xuất.
-      </p>
+      
     </section>
   );
 }

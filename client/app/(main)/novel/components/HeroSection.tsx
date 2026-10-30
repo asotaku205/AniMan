@@ -21,10 +21,7 @@ const HeroSection = () => {
           >
             Tủ sách <span className="text-shimmer">bản quyền</span>
           </h1>
-          <p className="mt-3 text-amber-100/50 max-w-lg mx-auto">
-            Đọc trực tuyến với giao diện sách giấy washi, hoặc tải EPUB. Hỗ trợ
-            chú thích song ngữ và bookmark theo dòng.
-          </p>
+          
         </div>
 
         {/* Featured book + top 3 */}

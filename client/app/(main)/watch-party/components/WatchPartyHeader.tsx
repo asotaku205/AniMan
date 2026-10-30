@@ -12,7 +12,6 @@ export default function WatchPartyHeader({ liveCount, totalViewers, onCreate }: 
     <PageHeader
       eyebrow="Watch Party"
       title="Tìm phòng xem cùng nhau"
-      desc="Tham gia phòng đang chiếu hoặc tự tạo phòng riêng, mời bạn bè và đồng bộ video theo thời gian thực."
     >
       <div className="mt-8 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 px-4 h-11 rounded-full bg-white/5 border border-white/10 backdrop-blur">

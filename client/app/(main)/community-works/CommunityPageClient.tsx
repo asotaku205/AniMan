@@ -127,7 +127,6 @@ export default function CommunityWorksPageClient() {
       <PageHeader
         eyebrow="Sáng tác cộng đồng"
         title="Tác phẩm của người sáng tác"
-        desc="Nơi cộng đồng đăng sáng tác cá nhân — manga, tiểu thuyết, animation, fan art — và nhận góp ý chân thành từ người xem."
       >
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-3 px-4 h-11 rounded-full glass-washi">

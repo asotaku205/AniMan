@@ -2311,10 +2311,7 @@ export function PrevizEditor({
               <h3 className="text-[12px] font-semibold text-white/70">
                 HẬU KỲ CẢNH — PHÁT SÁNG · MỜ HẬU CẢNH · DƯ ẢNH
               </h3>
-              <p className="text-[11px] text-white/40 leading-relaxed">
-                Tất cả mặc định tắt — bật lên mới tốn hiệu năng. Áp ngay
-                trong khung xem trước và cả khi xuất WebM cảnh này.
-              </p>
+              
               <label className="flex items-center gap-2 text-[12px] text-white/70">
                 <input
                   type="checkbox"
@@ -2826,11 +2823,7 @@ export function PrevizEditor({
                             />
                           </label>
                         </div>
-                        <p className="text-[10.5px] text-white/30 leading-relaxed">
-                          File .glb tải từ Mixamo hay mẫu trong thư viện đều được:
-                          chuyển động tự khớp sang tỉ lệ nhân vật này, đoạn nào
-                          không khớp xương sẽ báo rõ chứ không gắn hỏng.
-                        </p>
+                        
                       </div>
                     ) : (
                       <p className="text-[11px] text-white/40 leading-relaxed">
@@ -2983,11 +2976,7 @@ export function PrevizEditor({
                       Thêm dáng mẫu tại mốc đang xem
                     </button>
                   </div>
-                  <p className="text-[10.5px] text-white/30 leading-relaxed">
-                    Dáng mốc chỉ phát khi không có đoạn clip nào đang chạy tại
-                    thời điểm đó; giữa 2 mốc xương nội suy mượt. Chụp dáng
-                    trong lúc clip đang phát để giữ lại khoảnh khắc ưng ý.
-                  </p>
+                  
                 </>
               )}
             </section>
@@ -3066,14 +3055,7 @@ export function PrevizEditor({
                 Hiện mô hình máy quay
               </label>
             </div>
-            {camMoveMode && (
-              <p className="text-[11px] text-white/40 leading-relaxed">
-                Kéo thân máy để dời cả máy quay và điểm nhìn cùng nhau
-                (hướng nhìn giữ nguyên), kéo quả cầu vàng ở điểm nhìn để
-                đổi hướng ngắm. Ở chế độ này góc xem cố định, chỉ kéo được
-                máy quay. Kéo xong bấm "Đặt key camera" để lưu góc này.
-              </p>
-            )}
+            
             <div className="flex flex-wrap gap-1.5">
               {previz.cameraKeys.map((k) => (
                 <span
@@ -3098,10 +3080,7 @@ export function PrevizEditor({
             </div>
             <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 space-y-2">
               <div className="text-[11px] font-medium text-white/70">Cú máy mẫu</div>
-              <p className="text-[11px] text-white/40 leading-relaxed">
-                Chọn một cú máy, máy sẽ tự đặt key từ vị trí camera hiện
-                tại — sửa từng key tay sau đó như bình thường.
-              </p>
+              
               <div className="flex flex-wrap items-center gap-1.5">
                 <select
                   value={shotPreset}

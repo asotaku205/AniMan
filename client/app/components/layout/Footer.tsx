@@ -18,9 +18,7 @@ export function Footer() {
               <div className="font-cinzel text-[9px] tracking-[0.32em] uppercase text-gold">Tinh hoa · 桜 · Việt Nhật</div>
             </div>
           </div>
-          <p className="mt-5 text-white/55 max-w-md leading-relaxed font-vn-sans">
-            Một thế giới nơi câu chuyện của bạn được nhìn thấy, được lắng nghe và được tiếp nối.
-            </p>
+          
          
         </div>
         {[

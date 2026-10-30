@@ -216,10 +216,7 @@ export function ProjectsView({
             <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
               Quản lý Dự án Manga
             </h1>
-            <p className="text-white/60 text-xs lg:text-sm mt-1 max-w-2xl leading-relaxed">
-              Không gian sáng tác tập trung. Chọn dự án để tiếp tục vẽ, tinh chỉnh kịch bản
-              Story Board hoặc tiến hành xuất bản bản thảo.
-            </p>
+            
           </div>
 
           <div className="flex items-center gap-3">

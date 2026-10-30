@@ -41,13 +41,7 @@ export function SceneParticlesPanel({
           {sys ? "Đang bật — bấm để tắt" : "Bật hệ hạt"}
         </button>
       </div>
-      {!sys ? (
-        <p className="text-[11px] leading-relaxed text-white/35">
-          Bụi sáng, tàn lửa, bong bóng, vòi phun... — tự đặt nguồn phát,
-          hướng, tốc độ, trọng lực và màu theo ý bạn, khác hẳn thời tiết
-          mẫu ở trên.
-        </p>
-      ) : (
+      {sys && (
         <>
           <div className="flex flex-wrap gap-1.5">
             {PARTICLE_PRESETS.map((p) => (
@@ -90,10 +84,7 @@ export function SceneParticlesPanel({
             />
             <span className="text-white/60">{sys.color}</span>
           </label>
-          <p className="text-[10.5px] text-white/30 leading-relaxed">
-            Hướng 0° = rơi xuống, 90° = sang phải, 180° = bay lên. Trọng
-            lực dương kéo hạt cong xuống (vòi phun), âm nâng hạt nổi lên.
-          </p>
+          
         </>
       )}
     </section>

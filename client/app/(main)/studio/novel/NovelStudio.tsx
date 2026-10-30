@@ -23,7 +23,6 @@ export function NovelStudio() {
         <SectionEyebrow
           eyebrow="Novel Studio"
           title="Viết tiểu thuyết trên giấy washi"
-          desc="Click trực tiếp vào trang để viết. Tuỳ chỉnh font, mixer 5 lớp âm thanh, hẹn giờ Pomodoro và dán ghi chú lên lề trang."
         />
 
         <div className="mt-8 flex gap-2">

@@ -405,10 +405,7 @@ export function AiTab({
             )}
             <span>Phân Tích Nét Vẽ & Chỉ Lỗi Lệch</span>
           </button>
-          <p className="text-white/35 text-[9px] leading-relaxed">
-            Phân tích chỉ trả về nhận xét bằng chữ, không vẽ thêm nét nào lên
-            khung của bạn.
-          </p>
+          
         </div>
 
         {/* 2b. Ảnh mẫu tham khảo (sinh ảnh bằng job Cloudflare) */}
@@ -472,11 +469,7 @@ export function AiTab({
                 className="overflow-hidden"
               >
                 <div className="p-3 pt-0 space-y-2">
-                  <p className="text-[9px] text-white/40">
-                    Bố cục do studio soạn sẵn để tham chiếu, không phải kết quả
-                    AI và không gọi AI. Chọn một mẫu để tham chiếu khi vẽ, bật
-                    đường dóng ở mục dưới để tự căn theo mẫu đã chọn.
-                  </p>
+                  
                   <div className="grid grid-cols-2 gap-1.5">
                     {COMP_SUGGESTIONS[sceneType].map((c) => (
                       <button
@@ -530,10 +523,7 @@ export function AiTab({
                 className="overflow-hidden"
               >
                 <div className="p-3 pt-0 space-y-2">
-                  <p className="text-[9px] text-white/40">
-                    Tư thế mẫu chỉ để tham chiếu khi vẽ, không gọi AI và không
-                    sinh khung xương.
-                  </p>
+                  
 
                   <div className="flex gap-1 bg-white/5 p-1 rounded-xl">
                     {(

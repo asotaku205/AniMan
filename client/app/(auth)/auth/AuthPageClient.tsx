@@ -107,11 +107,7 @@ export default function AuthPageClient({
             <br />
             Thành câu chuyện của riêng bạn.
           </h1>
-          <p className="text-white/60 max-w-md leading-relaxed">
-            Tham gia AniMan để xem truyện tranh, phim hoạt hình và tiểu thuyết,
-            tạo phim hoạt hình từ truyện tranh của riêng bạn và chia sẻ với cộng
-            đồng.
-          </p>
+          
           <ul className="space-y-3 pt-2">
             {[
               "Xem cùng bạn bè qua Watch Party đồng bộ",

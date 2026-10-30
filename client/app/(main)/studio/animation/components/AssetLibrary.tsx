@@ -442,11 +442,7 @@ export function AssetLibrary({
                 </li>
               ))}
           </ul>
-          <p className="text-[11px] text-white/30">
-            Tài sản ở đây dùng chung cho mọi dự án phim. Nhân vật và phong
-            cảnh gửi từ World Builder có nhãn riêng — đổi tên ở đây không
-            ảnh hưởng bản gốc trong World Builder.
-          </p>
+          
         </LibSection>
       )}
 
@@ -717,11 +713,7 @@ export function AssetLibrary({
               Tạo nhân vật
             </button>
           </div>
-          <p className="text-[11px] leading-relaxed text-white/40">
-            Tự vẽ nhân vật một lần với nhiều biểu cảm (nền trong suốt), rồi
-            thêm vào từng cảnh với biểu cảm phù hợp — đổi nét mặt giữa các
-            cảnh là cách làm phim kể chuyện kinh điển.
-          </p>
+          
           {characters2d.map((char) => {
             const prog = expressionProgress(char);
             return (

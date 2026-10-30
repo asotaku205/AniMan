@@ -109,10 +109,7 @@ export default function SettingsClient() {
             <BookOpen className="w-4 h-4 text-amber-300" /> Hiển thị Novel
             Studio
           </h2>
-          <p className="text-white/40 text-xs mb-4">
-            Áp dụng làm mặc định cho quyển sách và dàn ý mỗi lần mở Novel
-            Studio (đổi trong lúc viết vẫn được, và sẽ nhớ lựa chọn mới).
-          </p>
+          
           <div className="space-y-4 text-sm">
             <div>
               <p className="text-white/60 mb-2">Giao diện quyển sách</p>

@@ -178,11 +178,7 @@ export function ProjectHub() {
             ANIMATION STUDIO
           </div>
           <h1 className="text-2xl font-semibold mt-1">Dự án phim của bạn</h1>
-          <p className="text-sm text-white/50 mt-1 max-w-xl leading-relaxed">
-            Quy trình gợi ý: Novel → Manga → Animation. Bạn có thể bắt đầu từ
-            một dự án manga đã vẽ, hoặc tạo phim độc lập — không bắt buộc đi
-            đủ các bước.
-          </p>
+          
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-2 px-4 h-11 rounded-xl bg-white/5 border border-white/10 text-sm hover:bg-white/10 transition cursor-pointer">

@@ -527,11 +527,7 @@ export function AnimaticPlayer({
           })}
         </div>
       </div>
-      <p className="mt-2 text-[11px] text-white/35">
-        Phát thử dùng đúng các bản thu giọng đã chọn và nhạc nền của phim —
-        nghe thấy thế nào thì bản xuất ra thế ấy. Dòng thoại chưa thu giọng
-        vẫn hiện phụ đề để kiểm tra nhịp.
-      </p>
+      
     </div>
   );
 }

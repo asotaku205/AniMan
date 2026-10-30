@@ -326,9 +326,7 @@ export default function ForumClient() {
                 <div className="text-white text-sm">Sakura Festival 2026</div>
               </div>
               <div className="text-pink-200/80 text-xs tracking-[0.2em] uppercase mt-0.5">15/05 → 15/06</div>
-              <p className="text-white/60 text-xs mt-3 leading-relaxed">
-                Cuộc thi Sketch-to-Manga toàn cầu. Giải thưởng tổng trị giá <span className="text-pink-300">500 triệu VNĐ</span>.
-              </p>
+              
               <Link
                 href="/studio"
                 className="mt-4 flex items-center justify-center gap-1.5 h-9 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 text-white text-sm hover:from-pink-400 hover:to-rose-300 transition"

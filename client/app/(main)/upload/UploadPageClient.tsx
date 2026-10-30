@@ -253,11 +253,7 @@ export default function UploadPageClient() {
           >
             Chia sẻ sáng tác của bạn
           </h1>
-          <p className="text-white/55 text-sm mt-2">
-            Tác phẩm gửi lên sẽ được quản trị viên duyệt trước khi hiện
-            công khai. Bạn theo dõi trạng thái duyệt trong trang Sáng tác
-            của tôi.
-          </p>
+          
         </div>
 
         <form

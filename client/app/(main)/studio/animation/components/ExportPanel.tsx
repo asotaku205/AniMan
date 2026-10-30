@@ -767,10 +767,7 @@ export function ExportPanel({
               />
             </label>
           </div>
-          <p className="text-[11px] text-white/35">
-            Âm lượng tổng tự cân về mức chuẩn khi xuất (không đo LUFS
-            phòng thu). Nhạc nền giữ tốc độ gốc.
-          </p>
+          
         </div>
       )}
 
@@ -1021,10 +1018,7 @@ export function ExportPanel({
               </span>
             </label>
           </div>
-          <p className="text-[11px] text-white/35">
-            Hậu kỳ chỉ áp khi xuất phim — không thay đổi cảnh gốc, đổi ý thì
-            xuất lại là xong.
-          </p>
+          
         </div>
       )}
 
@@ -1110,10 +1104,7 @@ export function ExportPanel({
           </span>
         </div>
       )}
-      <p className="text-[11px] text-white/30">
-        Định dạng MP4 (WebCodecs) là nâng cấp dự kiến sau; WebM hiện tại phát
-        tốt trên Chrome/Edge/Firefox và tải lên được YouTube/TikTok.
-      </p>
+      
     </div>
   );
 }

@@ -143,10 +143,7 @@ export default function NotificationPageClient() {
                 <p className="text-white/30 text-sm">
                   Không có thông báo nào
                 </p>
-                <p className="text-white/20 text-xs mt-2">
-                  Thông báo sẽ xuất hiện khi Sơn đăng tác phẩm, tạo dự án
-                  từ cầu nối hoặc chụp snapshot.
-                </p>
+                
               </div>
             )}
           </>

@@ -1055,22 +1055,10 @@ export function RigStudioModal({
         {!loaded && !error && (
           <p className="text-[12px] text-white/50">Đang nạp model…</p>
         )}
-        {loaded?.hasSkeleton && (
-          <p className="text-[12px] text-white/70 leading-relaxed">
-            Model này đã có xương sẵn ({loaded.boneCount} xương) — không cần
-            rig lại. Dùng thẳng clip ở Phase 4.
-          </p>
-        )}
+        
         {loaded && !loaded.hasSkeleton && joints && (
           <>
-            <p className="text-[11px] text-white/40 leading-relaxed">
-              Xương mẫu đã tự căn theo chiều cao {loaded.heightM.toFixed(2)}m,
-              gồm cả ngón tay và ngón chân. Kéo quả cầu trong khung xem
-              trước để chỉnh khớp cho đúng vai, khuỷu, gối, ngón của nhân
-              vật rồi thử dáng bên dưới. Clip
-              chuyển động dạng vật thể của model gốc (nếu có) sẽ không giữ
-              lại sau khi rig.
-            </p>
+            
             <div ref={previewRef} className="w-full h-[420px] rounded-xl overflow-hidden bg-[#150e24] border border-white/10" />
             <div className="flex flex-wrap gap-1.5 items-center">
               {TOOL_MODES.map((m) => (
@@ -1099,14 +1087,7 @@ export function RigStudioModal({
                 {(liveDragPos ?? jointByName.get(selectedJoint)!.pos)[2].toFixed(3)}
               </p>
             )}
-            <p className="text-[11px] text-white/40 leading-relaxed">
-              {toolMode === "joints" &&
-                "Kéo quả cầu để di chuyển khớp — kéo một khớp sẽ dời cả nhánh con theo. Chỉnh chính xác nhất ở dáng đứng thẳng."}
-              {toolMode === "ik" &&
-                "Kéo quả cầu tím (tay) hoặc xanh lá (chân) để với tới mục tiêu."}
-              {toolMode === "paint" &&
-                "Chọn xương ở mục Tô bên dưới rồi kéo trên nhân vật để tô."}
-            </p>
+            
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(TEST_POSES).map(([id, p]) => (
                 <button
@@ -1164,12 +1145,7 @@ export function RigStudioModal({
                 </button>
               )}
             </div>
-            <p className="text-[11px] text-white/40 leading-relaxed">
-              Thêm khớp làm con của khớp đang chọn (không chọn khớp nào thì
-              làm khớp gốc) — dùng để gắn xương cho vật không phải người
-              như nhà, đồ vật. Xoá khớp thì các khớp con gắn lại về cha
-              của khớp bị xoá.
-            </p>
+            
             {joints && joints.length === 0 && (
               <p className="text-[11px] text-amber-300/90 leading-relaxed">
                 Chưa có khớp nào — bấm “Thêm khớp” để bắt đầu, rồi lưu
@@ -1210,11 +1186,7 @@ export function RigStudioModal({
 
               <details className={sectionClass}>
                 <summary className="text-[12px] text-white/70 cursor-pointer">Gập/xòe ngón tay</summary>
-                <p className="text-[11px] text-white/40 leading-relaxed mt-2">
-                  Kéo thanh trượt để gập hoặc xòe ngón — vị trí khớp đổi thật
-                  và giữ nguyên khi lưu file. Kéo khớp ngón bằng chuột hoặc
-                  sửa số sẽ đặt lại thanh trượt của ngón đó.
-                </p>
+                
                 <div className="space-y-3 mt-2">
                   {(["Left", "Right"] as const).map((side) => (
                     <div key={side}>
@@ -1327,11 +1299,7 @@ export function RigStudioModal({
 
               <details className={sectionClass}>
                 <summary className="text-[12px] text-white/70 cursor-pointer">Tay chân với tới mục tiêu</summary>
-                <p className="text-[11px] text-white/40 leading-relaxed mt-2">
-                  Chọn công cụ “Tay chân với tới” phía trên khung xem trước,
-                  bật một bên tay/chân rồi kéo quả cầu hoặc nhập số mục tiêu.
-                  Quả cầu tím là tay, xanh lá là chân.
-                </p>
+                
                 <div className="space-y-2 mt-2">
                   {IK_LIMB_DEFS.map((def) => {
                     const t = effectiveIkTarget(def);
@@ -1387,11 +1355,7 @@ export function RigStudioModal({
 
               <details className={sectionClass}>
                 <summary className="text-[12px] text-white/70 cursor-pointer">Tô vùng ảnh hưởng của xương</summary>
-                <p className="text-[11px] text-white/40 leading-relaxed mt-2">
-                  Chọn công cụ “Tô vùng ảnh hưởng” phía trên khung xem trước,
-                  chọn một xương rồi bấm và kéo trên nhân vật để tô. Mẹo: tô
-                  chính xác nhất khi nhân vật ở dáng đứng thẳng.
-                </p>
+                
                 <div className="space-y-2 mt-2">
                   <label className="block text-[11px] text-white/50">
                     Xương muốn tô

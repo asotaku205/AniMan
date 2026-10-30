@@ -111,11 +111,7 @@ function PreviewMedia({
         <div className="bg-black rounded-xl overflow-hidden">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video src={work.fileUrl} controls preload="metadata" className="w-full max-h-96" />
-          <p className="text-white/40 text-xs px-3 py-2">
-            Video của tác phẩm đã duyệt phát trực tiếp tại đây; tác phẩm chờ
-            duyệt thì mở bằng nút bên dưới sau khi duyệt, hoặc tải file về
-            để xem trước.
-          </p>
+          
         </div>
       )}
       {!isImageFile && !isVideo && (
