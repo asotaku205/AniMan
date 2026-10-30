@@ -12,6 +12,8 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import {
@@ -228,6 +230,11 @@ export function DioramaCanvas({
   const glbCacheRef = useRef<Map<string, { group: THREE.Group; clips: THREE.AnimationClip[] }>>(new Map());
   const glbMixersRef = useRef<THREE.AnimationMixer[]>([]);
   const glbFailedRef = useRef<Set<string>>(new Set());
+  // Loader GLB dùng chung cho cả canvas: cấu hình 1 lần (Draco + KTX2)
+  // rồi tái dùng, tránh tạo worker giải nén mới mỗi lần dựng lại vật.
+  // File giải nén lấy từ CDN (gstatic cho Draco, jsdelivr cho KTX2):
+  // repo không chứa được file nhị phân wasm qua kênh đẩy snapshot.
+  const glbLoaderRef = useRef<GLTFLoader | null>(null);
   const [glbTick, setGlbTick] = useState(0);
   const callbacksRef = useRef({
     onSelect, onPlace, onMove, placing, terrainTool, pathMode, riverMode,
@@ -846,7 +853,20 @@ export function DioramaCanvas({
       if (!(child as THREE.Group).userData.sharedGlb) disposeObject(child);
     }
     const entityById = new Map(entitiesRef.current.map((e) => [e.id, e]));
-    const loader = new GLTFLoader();
+    // Loader cấu hình 1 lần: file Draco/KTX2 (Meshy, Tripo, Blender
+    // xuất kèm nén) trước đây nạp lỗi âm thầm rồi hiện hộp giữ chỗ.
+    if (!glbLoaderRef.current) {
+      const loader = new GLTFLoader();
+      const draco = new DRACOLoader();
+      draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
+      loader.setDRACOLoader(draco);
+      const ktx2 = new KTX2Loader();
+      ktx2.setTranscoderPath("https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/basis/");
+      ktx2.detectSupport(t.renderer);
+      loader.setKTX2Loader(ktx2);
+      glbLoaderRef.current = loader;
+    }
+    const loader = glbLoaderRef.current;
     for (const p of placements) {
       if (!p.visible) continue;
       if (p.glbAssetId) {

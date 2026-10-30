@@ -2,12 +2,19 @@
 
 import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
 
 export function createAnimationGltfLoader(): GLTFLoader {
   const loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
+  // Cùng kho tài sản với World Builder: file Draco phải đọc được ở
+  // cả hai studio, file giải nén lấy từ CDN gstatic (repo không chứa
+  // được file nhị phân wasm qua kênh đẩy snapshot).
+  const draco = new DRACOLoader();
+  draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
+  loader.setDRACOLoader(draco);
   return loader;
 }
 

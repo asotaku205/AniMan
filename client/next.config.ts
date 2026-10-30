@@ -27,6 +27,10 @@ const nextConfig: NextConfig = {
         source: "/admin/:path*",
         destination: `${apiOrigin}/admin/:path*`,
       },
+      {
+        source: "/site/status",
+        destination: `${apiOrigin}/site/status`,
+      },
     ];
   },
 };
