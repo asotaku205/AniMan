@@ -207,7 +207,11 @@ export class NovelAiService {
   private readonly client: GoogleGenAI;
   private readonly preferredModel?: string;
 
-  constructor(apiKey: string, preferredModel?: string) {
+  constructor(
+    apiKey: string,
+    preferredModel?: string,
+    private readonly timeoutMs = 60_000,
+  ) {
     if (!apiKey || apiKey.trim().length === 0) {
       throw new Error("GEMINI_API_KEY is required for NovelAiService");
     }
@@ -216,6 +220,29 @@ export class NovelAiService {
   }
 
   async run(input: NovelAiInput): Promise<NovelAiResult> {
+    // Cuộc gọi Gemini không có timeout mặc định của SDK: nếu mạng tới
+    // Google treo, request treo theo và proxy Next cắt kết nối (socket
+    // hang up) trước khi server kịp trả lỗi. Đặt trần 60s cho toàn bộ
+    // lượt thử model để lỗi hiện rõ thay vì treo rồi 500 chung chung.
+    let timeoutId: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(
+          new HttpException(
+            `Gemini request timed out after ${this.timeoutMs / 1000}s; check the server network to Google.`,
+            HttpStatus.GATEWAY_TIMEOUT,
+          ),
+        );
+      }, this.timeoutMs);
+    });
+    try {
+      return await Promise.race([this.execute(input), timeout]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  private async execute(input: NovelAiInput): Promise<NovelAiResult> {
     const { systemInstruction, userPrompt } = buildNovelAiPrompt(input);
     const models = Array.from(
       new Set(

@@ -95,6 +95,21 @@ describe("parseNovelAiResponse", () => {
     await expect(run).rejects.toThrow("API key not valid");
   });
 
+  it("run() hết timeout khi cuộc gọi Gemini treo không trả về", async () => {
+    const service = new NovelAiService("dummy-key", undefined, 50);
+    const client = (
+      service as unknown as {
+        client: { models: { generateContent: unknown } };
+      }
+    ).client;
+    client.models.generateContent = vi
+      .fn()
+      .mockImplementation(() => new Promise(() => {}));
+    await expect(
+      service.run({ task: "summarize", text: "Aoi rời ga." }),
+    ).rejects.toThrow("timed out");
+  });
+
   it("từ chối breakdown thiếu prompt, sai loại cảnh, ít hơn 3 khung", () => {
     expect(
       parseNovelAiResponse(
