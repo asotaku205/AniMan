@@ -70,7 +70,9 @@ describe("assembleReferenceImagePrompt", () => {
       source: ReferenceImageSource.Prompt,
       userPrompt: "thanh pho ve dem",
     });
-    expect(prompt.startsWith("Black-and-white manga line drawing")).toBe(true);
+    expect(prompt.startsWith("Black-and-white manga illustration ONLY")).toBe(
+      true,
+    );
     expect(prompt).toContain("Landscape scene");
     expect(prompt).toContain("Draw this scene: thanh pho ve dem");
     expect(prompt).not.toContain("You are a drawing reference assistant");
@@ -96,7 +98,7 @@ describe("assembleReferenceImagePrompt", () => {
       userPrompt: "co gai vung kiem",
       fixHints: ["dau qua to -> thu nho dau", "tay ngan -> keo dai tay"],
     });
-    expect(prompt).toContain("Black-and-white manga line drawing");
+    expect(prompt).toContain("Black-and-white manga illustration ONLY");
     expect(prompt).toContain("Keep the exact composition");
     expect(prompt).toContain("User description: co gai vung kiem");
     expect(prompt).toContain("- dau qua to -> thu nho dau");
@@ -117,7 +119,7 @@ describe("assembleReferenceImagePrompt", () => {
       source: ReferenceImageSource.Prompt,
       userPrompt: "thanh pho ve dem",
     });
-    expect(prompt.startsWith("Black-and-white manga line drawing ONLY")).toBe(
+    expect(prompt.startsWith("Black-and-white manga illustration ONLY")).toBe(
       true,
     );
     expect(prompt).toContain("only black and white");

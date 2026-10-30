@@ -103,9 +103,13 @@ export function resolveReferenceImageOutputSize(
  * prompt tiếng Việt, phác thảo nhà; đều ra đúng tỉ lệ 1024x768, trắng
  * đen, tỉ lệ điểm màu 0): mô tả cụ thể hơn bản cũ ở chỗ chỉ rõ chỉ có
  * đen và trắng, cấm xám/màu/gradient/tô bóng, và bắt lấp đầy khung.
+ * Sơn dặn thêm cùng ngày: phong cách phải là vẽ manga, nên bản này
+ * nói rõ kiểu mực manga cổ điển, nét đậm nhạt theo khối, tô bóng
+ * bằng screentone manga. Câu chữ manga này chưa thử thật trên
+ * Cloudflare, Sơn kiểm tra live một lần sau khi pull.
  */
 export const REFERENCE_IMAGE_LINE_STYLE =
-  "Black-and-white manga line drawing ONLY. The entire image uses only pure black ink lines on a pure white background: only black and white, no gray fill, no color of any kind, no gradients, no soft shading, no painterly brushwork, no photorealistic rendering, no 3D render, no watercolor. Draw with clean, confident, uniform black outlines, like a finished manga ink drawing that a learner can copy by hand with a pen. Shading only with sparse screentone dots or a few short parallel hatch lines, never with gray wash. Fill the whole frame edge to edge with the drawing: no empty white margins around the scene, no letterbox bars. No text, no letters, no numbers, no speech bubbles, no sound-effect words, no watermark, no signature, no panel border, no inner frame.";
+  "Black-and-white manga illustration ONLY, drawn in classic manga ink style. The entire image uses only pure black ink lines on a pure white background: only black and white, no gray fill, no color of any kind, no gradients, no soft shading, no painterly brushwork, no photorealistic rendering, no 3D render, no watercolor, no anime cel shading. Draw with clean, confident manga ink outlines with varied line weight, thicker on foreground shapes and shadows, thinner on fine details, like a finished manga page inked for print that a learner can copy by hand with a pen. Shade only with manga screentone dots, cross-hatching, or short parallel hatch lines, never with gray wash. Fill the whole frame edge to edge with the drawing: no empty white margins around the scene, no letterbox bars. No text, no letters, no numbers, no speech bubbles, no sound-effect words, no watermark, no signature, no panel border, no inner frame.";
 
 /**
  * Cụm từ mô tả loại cảnh bằng tiếng Anh, đặt ngay sau phong cách nét vẽ.

@@ -196,7 +196,7 @@ describe("thong diep loi va dong y", () => {
   it("phong cách nét vẽ đã bật và văn bản đồng ý gồm Cloudflare klein", () => {
     expect(REFERENCE_IMAGE_SYSTEM_PROMPT_ENABLED).toBe(true);
     expect(REFERENCE_IMAGE_LINE_STYLE.startsWith(
-      "Black-and-white manga line drawing",
+      "Black-and-white manga illustration",
     )).toBe(true);
     expect(REFERENCE_IMAGE_CONSENT_VERSION).toBe("ai-providers-v4");
     expect(REFERENCE_IMAGE_CONSENT_NOTICE).toContain("Cloudflare");

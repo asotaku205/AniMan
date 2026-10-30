@@ -178,8 +178,11 @@ describe("Ảnh mẫu không vào lớp vẽ và không vào xuất bản", () =
 
   it("phong cách nét vẽ giữ đúng nội dung đã duyệt: trắng đen, không màu, nét mực", () => {
     expect(REFERENCE_IMAGE_LINE_STYLE).toContain(
-      "Black-and-white manga line drawing ONLY",
+      "Black-and-white manga illustration ONLY",
     );
+    expect(REFERENCE_IMAGE_LINE_STYLE).toContain("classic manga ink style");
+    expect(REFERENCE_IMAGE_LINE_STYLE).toContain("varied line weight");
+    expect(REFERENCE_IMAGE_LINE_STYLE).toContain("manga screentone dots");
     expect(REFERENCE_IMAGE_LINE_STYLE).toContain("only black and white");
     expect(REFERENCE_IMAGE_LINE_STYLE).toContain("no color of any kind");
     expect(REFERENCE_IMAGE_LINE_STYLE).toContain(
