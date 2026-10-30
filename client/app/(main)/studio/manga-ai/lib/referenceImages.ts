@@ -11,14 +11,13 @@
 /** Tối đa 3 ảnh mẫu mỗi khung (lịch sử so sánh, theo mockup đã duyệt). */
 export const MAX_REFERENCE_IMAGES = 3;
 
-export type ReferenceImageSource = "prompt" | "drawing" | "drawing-prompt";
+export type ReferenceImageSource = "prompt" | "drawing-prompt";
 
 export const REFERENCE_IMAGE_SOURCE_LABELS: Record<
   ReferenceImageSource,
   string
 > = {
   prompt: "Chỉ prompt",
-  drawing: "Chỉ bức vẽ của tôi",
   "drawing-prompt": "Bức vẽ + prompt",
 };
 

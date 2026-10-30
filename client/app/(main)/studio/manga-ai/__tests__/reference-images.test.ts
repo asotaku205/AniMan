@@ -24,7 +24,7 @@ function item(id: string): ReferenceImageItem {
   return {
     id,
     dataUrl: `data:image/png;base64,${id}`,
-    source: "drawing",
+    source: "drawing-prompt",
     createdAt: Number(id.slice(1)),
   };
 }

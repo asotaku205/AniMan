@@ -7,17 +7,19 @@
  * gọi model dao động mạnh (đo thật 48 giây tới 171 giây) và không thể
  * hứa xong trong timeout 90 giây của đường Gemini.
  *
- * CẢ BA NGUỒN DÙNG CHUNG MỘT MODEL (sửa 30/10/2026 theo lệnh của Sơn):
- * trước đây nguồn "Chỉ prompt" dùng FLUX.1 schnell còn 2 nguồn có bức
+ * CẢ HAI NGUỒN DÙNG CHUNG MỘT MODEL (sửa 30/10/2026 theo lệnh của Sơn):
+ * trước đây nguồn "Chỉ prompt" dùng FLUX.1 schnell còn nguồn có bức
  * vẽ dùng FLUX.2 klein 4B, nên ảnh từ prompt sai prompt và sai phong
- * cách, trong khi ảnh từ bức vẽ thì đúng. Nay cả 3 nguồn đều dùng
+ * cách, trong khi ảnh từ bức vẽ thì đúng. Nay cả 2 nguồn đều dùng
  * klein 4B: có bức vẽ thì gửi kèm ảnh qua multipart, chỉ prompt thì
  * gửi multipart không kèm ảnh (klein dùng multipart cả khi chỉ có
  * prompt, input_image_0 là tùy chọn). Cùng một model, cùng một
- * cách ghép prompt nét vẽ, nên phong cách giữa 3 nguồn mới nhất quán.
+ * cách ghép prompt nét vẽ, nên phong cách giữa 2 nguồn mới nhất quán.
+ * Nguồn "Chỉ bức vẽ" đã bỏ ngày 30/10/2026 theo lệnh của Sơn, chỉ còn
+ * "Chỉ prompt" và "Bức vẽ + prompt".
  */
 
-/** Model duy nhất cho cả 3 nguồn sinh ảnh mẫu. */
+/** Model duy nhất cho cả 2 nguồn sinh ảnh mẫu. */
 export const CLOUDFLARE_KLEIN_4B_MODEL_ID =
   "@cf/black-forest-labs/flux-2-klein-4b";
 

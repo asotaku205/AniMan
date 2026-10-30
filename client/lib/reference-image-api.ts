@@ -38,7 +38,7 @@ export interface ReferenceImageJob {
 }
 
 export interface CreateReferenceImageJobInput {
-  source: "prompt" | "drawing" | "drawing-prompt";
+  source: "prompt" | "drawing-prompt";
   sceneType: string;
   prompt?: string;
   fixHints?: string[];

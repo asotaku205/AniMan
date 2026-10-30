@@ -17,7 +17,6 @@ import { MAX_REFERENCE_SKETCH_BYTES } from "./reference-image.constants.js";
 
 export enum ReferenceImageSource {
   Prompt = "prompt",
-  Drawing = "drawing",
   DrawingPrompt = "drawing-prompt",
 }
 

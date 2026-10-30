@@ -59,7 +59,6 @@ interface ReferenceImageJobRecord extends ReferenceImageJobView {
 
 const SOURCE_LABELS: Record<ReferenceImageSource, string> = {
   [ReferenceImageSource.Prompt]: "mô tả của bạn",
-  [ReferenceImageSource.Drawing]: "bức vẽ của bạn",
   [ReferenceImageSource.DrawingPrompt]: "bức vẽ và mô tả của bạn",
 };
 

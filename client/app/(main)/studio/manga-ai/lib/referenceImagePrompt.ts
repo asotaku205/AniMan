@@ -1,6 +1,6 @@
 /**
  * Phong cách nét vẽ cho sinh ảnh mẫu tham khảo manga (mockup đã duyệt 28/10/2026,
- * sửa cách ghép prompt 30/10/2026: cả 3 nguồn dùng chung klein 4B).
+ * sửa cách ghép prompt 30/10/2026: cả 2 nguồn dùng chung klein 4B).
  *
  * ĐÃ NỐI (29/10/2026): prompt này chạy phía SERVER, trong
  * `server/src/ai/reference-image/reference-image.constants.ts`, và server

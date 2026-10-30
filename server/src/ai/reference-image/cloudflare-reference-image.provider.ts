@@ -200,7 +200,7 @@ export function createCloudflareReferenceImageProvider(
     signal: AbortSignal,
     startedAt: number,
   ): Promise<ReferenceImageGenerateResult> {
-    // Cả 3 nguồn dùng chung klein 4B qua multipart: klein dùng
+    // Cả 2 nguồn dùng chung klein 4B qua multipart: klein dùng
     // multipart cả khi chỉ có prompt, input_image_0 là tùy chọn.
     // Không gửi guidance: 2 lần gọi có guidance 7.0 đều timeout ở
     // 180 giây và 300 giây trong lần kiểm chứng 28/10/2026, nên giữ

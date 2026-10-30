@@ -106,7 +106,7 @@ describe("assembleReferenceImagePrompt", () => {
   it("co phac thao khong co fixHints thi khong them muc sua", () => {
     const prompt = assembleReferenceImagePrompt({
       sceneType: "wide",
-      source: ReferenceImageSource.Drawing,
+      source: ReferenceImageSource.DrawingPrompt,
     });
     expect(prompt).not.toContain("Fix these specific problems");
   });
@@ -151,7 +151,7 @@ describe("createCloudflareReferenceImageProvider", () => {
     const result = await provider.generate(
       {
         prompt: "test prompt",
-        source: ReferenceImageSource.Drawing,
+        source: ReferenceImageSource.DrawingPrompt,
         sketch: { data: png, mimeType: "image/png" },
         seed: 42,
       },
@@ -348,7 +348,7 @@ describe("ReferenceImageJobsService", () => {
     await expect(
       service.createJob(
         "u1",
-        validDto({ source: ReferenceImageSource.Drawing, prompt: undefined }),
+        validDto({ source: ReferenceImageSource.DrawingPrompt, prompt: undefined }),
       ),
     ).rejects.toThrow();
   });
@@ -360,7 +360,7 @@ describe("ReferenceImageJobsService", () => {
       service.createJob(
         "u1",
         validDto({
-          source: ReferenceImageSource.Drawing,
+          source: ReferenceImageSource.DrawingPrompt,
           prompt: undefined,
           image: sketchDto(png, 100, 100),
         }),
@@ -374,7 +374,7 @@ describe("ReferenceImageJobsService", () => {
     const created = await service.createJob(
       "u1",
       validDto({
-        source: ReferenceImageSource.Drawing,
+        source: ReferenceImageSource.DrawingPrompt,
         prompt: undefined,
         image: sketchDto(png),
       }),
@@ -441,7 +441,7 @@ describe("ReferenceImageJobsService", () => {
       await service.createJob(
         "u1",
         validDto({
-          source: ReferenceImageSource.Drawing,
+          source: ReferenceImageSource.DrawingPrompt,
           prompt: undefined,
           image: sketchDto(white),
         }),
@@ -483,13 +483,13 @@ describe("ReferenceImageJobsService", () => {
     const created = await service.createJob(
       "u1",
       validDto({
-        source: ReferenceImageSource.Drawing,
+        source: ReferenceImageSource.DrawingPrompt,
         prompt: undefined,
         image: sketchDto(mostlyWhite),
       }),
     );
     await waitForStatus(service, "u1", created.id, "succeeded");
-    expect(seenInput?.source).toBe(ReferenceImageSource.Drawing);
+    expect(seenInput?.source).toBe(ReferenceImageSource.DrawingPrompt);
     expect(seenInput?.sketch).toBeDefined();
   });
 
@@ -534,13 +534,19 @@ describe("ReferenceImageJobsService", () => {
     });
   });
 
-  it("DTO tu choi enum sai va chap nhan DTO hop le", async () => {
+  it("DTO tu choi enum sai, tu choi nguon drawing da bo, va chap nhan DTO hop le", async () => {
     const bad = plainToInstance(CreateReferenceImageJobDto, {
       source: "nope",
       sceneType: "action",
       prompt: "abc",
     });
     expect((await validate(bad)).length).toBeGreaterThan(0);
+    const removed = plainToInstance(CreateReferenceImageJobDto, {
+      source: "drawing",
+      sceneType: "action",
+      prompt: "abc",
+    });
+    expect((await validate(removed)).length).toBeGreaterThan(0);
     const good = plainToInstance(
       CreateReferenceImageJobDto,
       validDto(),

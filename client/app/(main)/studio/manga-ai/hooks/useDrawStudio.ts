@@ -611,7 +611,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     Record<string, ReferenceImageItem[]>
   >({});
   const [referenceSource, setReferenceSource] =
-    useState<ReferenceImageSource>("drawing");
+    useState<ReferenceImageSource>("drawing-prompt");
   const referenceImagesLoadedRef = useRef<Set<string>>(new Set());
   const referenceImages = useMemo(
     () => (activePanel ? (referenceImagesByPanel[activePanel] ?? []) : []),
