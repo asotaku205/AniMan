@@ -12,7 +12,7 @@
  * sinh ra rồi ép xám: xem processCloudflareImage phía server.
  */
 export const REFERENCE_IMAGE_LINE_STYLE =
-  "Black-and-white manga line drawing, clean confident black ink outlines on a plain white background, simple clear outlines that are easy to copy by hand, screentone dots only where shading is needed. No color, no color gradients, no painterly shading, no photorealism, no 3D-render look, no text, no letters, no numbers, no speech bubbles, no sound-effect words, no watermark, no signature, no panel border.";
+  "Black-and-white manga line drawing ONLY. The entire image uses only pure black ink lines on a pure white background: only black and white, no gray fill, no color of any kind, no gradients, no soft shading, no painterly brushwork, no photorealistic rendering, no 3D render, no watercolor. Draw with clean, confident, uniform black outlines, like a finished manga ink drawing that a learner can copy by hand with a pen. Shading only with sparse screentone dots or a few short parallel hatch lines, never with gray wash. Fill the whole frame edge to edge with the drawing: no empty white margins around the scene, no letterbox bars. No text, no letters, no numbers, no speech bubbles, no sound-effect words, no watermark, no signature, no panel border, no inner frame.";
 
 export const REFERENCE_IMAGE_SCENE_PHRASES: Record<string, string> = {
   action: "Dynamic action scene.",

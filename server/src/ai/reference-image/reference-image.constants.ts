@@ -36,8 +36,57 @@ export const MAX_REFERENCE_IMAGE_OUTPUT_BYTES = 5 * 1024 * 1024;
 export const MAX_REFERENCE_SKETCH_BYTES = 1 * 1024 * 1024;
 export const MAX_REFERENCE_SKETCH_DIMENSION = 512;
 
-/** Cạnh ảnh đầu ra 1024x1024 cho klein (đúng lần gọi đã kiểm chứng). */
-export const REFERENCE_IMAGE_OUTPUT_SIZE = 1024;
+/** Cạnh dài nhất của ảnh đầu ra: 1024 (đúng lần gọi đã kiểm chứng). */
+export const REFERENCE_IMAGE_OUTPUT_LONGEST_SIDE = 1024;
+
+/** Klein chấp nhận width/height từ 256 tới 1920 (tài liệu Cloudflare). */
+export const REFERENCE_IMAGE_OUTPUT_MIN_SIDE = 256;
+export const REFERENCE_IMAGE_OUTPUT_MAX_SIDE = 1920;
+
+/** FLUX yêu cầu width/height là bội số của 16. */
+export const REFERENCE_IMAGE_OUTPUT_SIZE_STEP = 16;
+
+/**
+ * Kích thước ảnh đầu ra theo đúng tỉ lệ của khung đang vẽ.
+ *
+ * Mỗi khung có tỉ lệ khác nhau (lấy từ kích thước backing của đúng khung
+ * đang mở, ví dụ khung 1200x896 ra 1024x768), nên không được ép vuông
+ * 1024x1024 như trước: ảnh vuông đặt vào khung chữ nhật không bao giờ
+ * vừa khít. Cạnh dài nhất giữ 1024, cạnh còn lại thu theo tỉ lệ rồi làm
+ * tròn theo bội số của 16. Không có kích thước khung hợp lệ (client cũ)
+ * thì giữ 1024x1024 như trước.
+ */
+export function resolveReferenceImageOutputSize(
+  panelWidth?: number,
+  panelHeight?: number,
+): { width: number; height: number } {
+  const fallback = { width: 1024, height: 1024 };
+  if (
+    !Number.isFinite(panelWidth) ||
+    !Number.isFinite(panelHeight) ||
+    !panelWidth ||
+    !panelHeight ||
+    panelWidth <= 0 ||
+    panelHeight <= 0
+  ) {
+    return fallback;
+  }
+  const scale =
+    REFERENCE_IMAGE_OUTPUT_LONGEST_SIDE / Math.max(panelWidth, panelHeight);
+  const roundStep = (value: number): number =>
+    Math.min(
+      REFERENCE_IMAGE_OUTPUT_MAX_SIDE,
+      Math.max(
+        REFERENCE_IMAGE_OUTPUT_MIN_SIDE,
+        Math.round(value / REFERENCE_IMAGE_OUTPUT_SIZE_STEP) *
+          REFERENCE_IMAGE_OUTPUT_SIZE_STEP,
+      ),
+    );
+  return {
+    width: roundStep(panelWidth * scale),
+    height: roundStep(panelHeight * scale),
+  };
+}
 
 /**
  * Phong cách nét vẽ, là một phần của prompt ảnh gửi tới model.
@@ -49,9 +98,14 @@ export const REFERENCE_IMAGE_OUTPUT_SIZE = 1024;
  * trong client (referenceImagePrompt.ts) chỉ là bản sao để hiển
  * thị/tham khảo, không bao giờ được gửi đi từ client. Hai bản phải
  * giữ nguyên văn giống nhau.
+ *
+ * Bản này đã thử thật 3 lần gọi ngày 30/10/2026 (prompt tiếng Anh,
+ * prompt tiếng Việt, phác thảo nhà; đều ra đúng tỉ lệ 1024x768, trắng
+ * đen, tỉ lệ điểm màu 0): mô tả cụ thể hơn bản cũ ở chỗ chỉ rõ chỉ có
+ * đen và trắng, cấm xám/màu/gradient/tô bóng, và bắt lấp đầy khung.
  */
 export const REFERENCE_IMAGE_LINE_STYLE =
-  "Black-and-white manga line drawing, clean confident black ink outlines on a plain white background, simple clear outlines that are easy to copy by hand, screentone dots only where shading is needed. No color, no color gradients, no painterly shading, no photorealism, no 3D-render look, no text, no letters, no numbers, no speech bubbles, no sound-effect words, no watermark, no signature, no panel border.";
+  "Black-and-white manga line drawing ONLY. The entire image uses only pure black ink lines on a pure white background: only black and white, no gray fill, no color of any kind, no gradients, no soft shading, no painterly brushwork, no photorealistic rendering, no 3D render, no watercolor. Draw with clean, confident, uniform black outlines, like a finished manga ink drawing that a learner can copy by hand with a pen. Shading only with sparse screentone dots or a few short parallel hatch lines, never with gray wash. Fill the whole frame edge to edge with the drawing: no empty white margins around the scene, no letterbox bars. No text, no letters, no numbers, no speech bubbles, no sound-effect words, no watermark, no signature, no panel border, no inner frame.";
 
 /**
  * Cụm từ mô tả loại cảnh bằng tiếng Anh, đặt ngay sau phong cách nét vẽ.

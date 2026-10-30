@@ -169,6 +169,9 @@ export function RightPanel({ s }: Props) {
           onReferenceOverlayPositionChange={s.setReferenceOverlayPosition}
           referenceOverlayImageId={s.referenceOverlayImageId}
           onReferenceOverlayImageSelect={s.selectReferenceOverlayImage}
+          referenceCorrection={s.referenceCorrection}
+          onReferenceCorrectionChange={s.setReferenceCorrection}
+          referenceOutputSize={s.referenceOutputSize}
           generateReferenceImage={s.generateReferenceImage}
           cancelReferenceImageGeneration={s.cancelReferenceImageGeneration}
           referenceGenerating={s.referenceGenerating}

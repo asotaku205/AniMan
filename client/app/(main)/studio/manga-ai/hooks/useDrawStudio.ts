@@ -122,6 +122,7 @@ import {
   clampReferenceOverlayOpacity,
   createReferenceImageId,
   DEFAULT_REFERENCE_OVERLAY_OPACITY,
+  resolveReferenceImageOutputSize,
   resolveReferenceOverlayImage,
   type ReferenceImageItem,
   type ReferenceImageSource,
@@ -616,6 +617,13 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   >({});
   const [referenceSource, setReferenceSource] =
     useState<ReferenceImageSource>("drawing-prompt");
+  // Ghi chú sửa của người dùng về ảnh mẫu trước đó, khi model hiểu sai
+  // prompt (mockup đã duyệt 30/10/2026): viết ngắn gọn chỗ sai, tối đa
+  // 300 ký tự, gửi kèm lần sinh lại, giữ nguyên văn. Chỉ là text trong
+  // bộ nhớ, không lưu IndexedDB. Đổi khung thì xóa, vì ghi chú nói về
+  // ảnh của khung cũ, không áp cho khung mới.
+  const [referenceCorrection, setReferenceCorrection] = useState("");
+  const referenceCorrectionText = referenceCorrection.trim().slice(0, 300);
   const referenceImagesLoadedRef = useRef<Set<string>>(new Set());
   const referenceImages = useMemo(
     () => (activePanel ? (referenceImagesByPanel[activePanel] ?? []) : []),
@@ -3581,6 +3589,9 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setReferenceError(null);
     setReferenceJobStatusText("Đã gửi yêu cầu, đang chờ model...");
     try {
+      // Kích thước của đúng khung đang vẽ (mỗi khung một tỉ lệ khác
+      // nhau): server tính kích thước đầu ra theo đúng tỉ lệ này.
+      const panelSize = getPanelBackingSize(layout, panelId);
       const job = await createReferenceImageJob(
         authenticatedFetch,
         {
@@ -3589,6 +3600,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
           ...(promptText ? { prompt: promptText.slice(0, 800) } : {}),
           ...(effectiveSource !== "prompt" && fixHints.length > 0
             ? { fixHints }
+            : {}),
+          panelWidth: panelSize.w,
+          panelHeight: panelSize.h,
+          ...(referenceCorrectionText
+            ? { correction: referenceCorrectionText }
             : {}),
           ...(sketch ? { image: sketch } : {}),
         },
@@ -3664,6 +3680,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     sceneType,
     userDrawingPrompt,
     reviewResult,
+    layout,
+    referenceCorrectionText,
     showToast,
     refreshAiQuota,
   ]);
@@ -3779,6 +3797,8 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       // ảnh của khung khác lên khung mới (mockup đã duyệt 30/10/2026).
       setReferenceOverlayOn(false);
       setReferenceOverlayImageId(null);
+      // Ghi chú sửa nói về ảnh của khung cũ, đổi khung thì xóa.
+      setReferenceCorrection("");
       setShowPanelSuggestions(false);
       setShowSuggestBtn(true);
       setShowAnalysis(false);
@@ -3804,6 +3824,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setActivePanel(null);
     setReferenceOverlayOn(false);
     setReferenceOverlayImageId(null);
+    setReferenceCorrection("");
     setShowPanelSuggestions(false);
     setShowSuggestBtn(true);
     setPanelFullscreen(false);
@@ -3844,6 +3865,18 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
    */
   const panelBackingSize = activePanel
     ? getPanelBackingSize(layout, activePanel)
+    : null;
+
+  /**
+   * Kích thước ảnh mẫu sẽ ra, theo đúng tỉ lệ của khung đang vẽ (cạnh
+   * dài nhất 1024). Hiện trong panel để người dùng biết ảnh vừa khít
+   * khung; server tính lại từ panelWidth/panelHeight gửi kèm.
+   */
+  const referenceOutputSize = panelBackingSize
+    ? resolveReferenceImageOutputSize(
+        panelBackingSize.w,
+        panelBackingSize.h,
+      )
     : null;
 
   const panelDef = activePanel
@@ -4185,6 +4218,11 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     deleteReferenceImage,
     referenceSource,
     setReferenceSource,
+    /** Ghi chú sửa khi model hiểu sai prompt, gửi kèm lần sinh lại */
+    referenceCorrection,
+    setReferenceCorrection,
+    /** Kích thước ảnh mẫu sẽ ra, theo đúng tỉ lệ khung đang vẽ */
+    referenceOutputSize,
     /** Lớp ảnh mẫu đè lên khung vẽ để đồ theo: chỉ xem, không vào lớp vẽ hay bản xuất */
     referenceOverlayOn,
     setReferenceOverlayOn,

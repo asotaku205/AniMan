@@ -95,6 +95,11 @@ type Props = {
   onReferenceOverlayPositionChange: (position: ReferenceOverlayPosition) => void;
   referenceOverlayImageId: string | null;
   onReferenceOverlayImageSelect: (id: string) => void;
+  /** Ghi chú sửa khi model hiểu sai prompt, gửi kèm lần sinh lại */
+  referenceCorrection: string;
+  onReferenceCorrectionChange: (value: string) => void;
+  /** Kích thước ảnh mẫu sẽ ra, theo đúng tỉ lệ khung đang vẽ */
+  referenceOutputSize: { width: number; height: number } | null;
   /** Sinh ảnh mẫu tham khảo (Cloudflare, job bất đồng bộ) */
   generateReferenceImage: () => void;
   cancelReferenceImageGeneration: () => void;
@@ -283,6 +288,9 @@ export function AiTab({
   onReferenceOverlayPositionChange,
   referenceOverlayImageId,
   onReferenceOverlayImageSelect,
+  referenceCorrection,
+  onReferenceCorrectionChange,
+  referenceOutputSize,
   generateReferenceImage,
   cancelReferenceImageGeneration,
   referenceGenerating,
@@ -415,6 +423,9 @@ export function AiTab({
           onOverlayPositionChange={onReferenceOverlayPositionChange}
           overlayImageId={referenceOverlayImageId}
           onOverlayImageSelect={onReferenceOverlayImageSelect}
+          correction={referenceCorrection}
+          onCorrectionChange={onReferenceCorrectionChange}
+          outputSize={referenceOutputSize}
           onGenerate={generateReferenceImage}
           onCancelGenerate={cancelReferenceImageGeneration}
           generating={referenceGenerating}

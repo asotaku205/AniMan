@@ -15,6 +15,7 @@ import {
   REFERENCE_IMAGE_BLANK_CHANNEL_THRESHOLD,
   REFERENCE_IMAGE_ERROR_CODES,
   REFERENCE_IMAGE_JOB_TTL_MS,
+  resolveReferenceImageOutputSize,
 } from "./reference-image.constants.js";
 import {
   REFERENCE_IMAGE_PROVIDER,
@@ -204,6 +205,14 @@ export class ReferenceImageJobsService {
     }
 
     const seed = randomInt(0, 2_147_483_647);
+    // Kích thước đầu ra lấy đúng tỉ lệ của khung đang vẽ: client gửi
+    // kích thước backing của đúng khung đang mở (mỗi khung một tỉ lệ
+    // khác nhau), không ép vuông như trước.
+    const outputSize = resolveReferenceImageOutputSize(
+      dto.panelWidth,
+      dto.panelHeight,
+    );
+    const correction = dto.correction?.trim();
     const prompt = assembleReferenceImagePrompt({
       sceneType: dto.sceneType,
       source: effectiveSource,
@@ -212,6 +221,9 @@ export class ReferenceImageJobsService {
         effectiveSource === ReferenceImageSource.Prompt
           ? undefined
           : dto.fixHints,
+      outputWidth: outputSize.width,
+      outputHeight: outputSize.height,
+      correction: correction ? correction.slice(0, 300) : undefined,
     });
     const model = CLOUDFLARE_KLEIN_4B_MODEL_ID;
     const now = Date.now();
@@ -226,7 +238,7 @@ export class ReferenceImageJobsService {
       finishedAt: null,
       elapsedMs: null,
       imageDataUrl: null,
-      note: `Ảnh mẫu tham khảo sinh từ ${SOURCE_LABELS[effectiveSource]}, nét trắng đen.`,
+      note: `Ảnh mẫu tham khảo sinh từ ${SOURCE_LABELS[effectiveSource]}, nét trắng đen, ${outputSize.width}x${outputSize.height}.`,
       coloredShare: null,
       errorCode: null,
       errorMessage: null,
@@ -239,6 +251,8 @@ export class ReferenceImageJobsService {
       source: effectiveSource,
       sketch,
       seed,
+      width: outputSize.width,
+      height: outputSize.height,
     });
     return this.toView(record);
   }
@@ -284,6 +298,8 @@ export class ReferenceImageJobsService {
       source: ReferenceImageSource;
       sketch?: { data: Buffer; mimeType: "image/png" | "image/jpeg" };
       seed: number;
+      width: number;
+      height: number;
     },
   ): Promise<void> {
     record.status = "running";
@@ -301,7 +317,7 @@ export class ReferenceImageJobsService {
       record.status = "succeeded";
       record.finishedAt = Date.now();
       this.logger.log(
-        `Reference image succeeded: model=${result.model} seed=${result.seed} elapsedMs=${result.elapsedMs} bytes=${result.imageBuffer.length} coloredShare=${result.coloredShare.toFixed(4)}`,
+        `Reference image succeeded: model=${result.model} seed=${result.seed} elapsedMs=${result.elapsedMs} bytes=${result.imageBuffer.length} size=${result.width}x${result.height} coloredShare=${result.coloredShare.toFixed(4)}`,
       );
     } catch (error) {
       // Hủy từ người dùng: giữ nguyên trạng thái "cancelled" mà

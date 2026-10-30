@@ -110,6 +110,166 @@ describe("assembleReferenceImagePrompt", () => {
     });
     expect(prompt).not.toContain("Fix these specific problems");
   });
+
+  it("phong cach moi mo ta ro: chi den trang, lap day khung", () => {
+    const prompt = assembleReferenceImagePrompt({
+      sceneType: "landscape",
+      source: ReferenceImageSource.Prompt,
+      userPrompt: "thanh pho ve dem",
+    });
+    expect(prompt.startsWith("Black-and-white manga line drawing ONLY")).toBe(
+      true,
+    );
+    expect(prompt).toContain("only black and white");
+    expect(prompt).toContain("Fill the whole frame edge to edge");
+    expect(prompt).toContain(
+      "Follow the description literally, word by word",
+    );
+  });
+
+  it("dinh dang khung theo kich thuoc dau ra: ngang, doc, vuong", () => {
+    const wide = assembleReferenceImagePrompt({
+      sceneType: "auto",
+      source: ReferenceImageSource.Prompt,
+      userPrompt: "pho",
+      outputWidth: 1024,
+      outputHeight: 768,
+    });
+    expect(wide).toContain("Wide landscape format");
+    const tall = assembleReferenceImagePrompt({
+      sceneType: "auto",
+      source: ReferenceImageSource.Prompt,
+      userPrompt: "pho",
+      outputWidth: 768,
+      outputHeight: 1024,
+    });
+    expect(tall).toContain("Tall portrait format");
+    const square = assembleReferenceImagePrompt({
+      sceneType: "auto",
+      source: ReferenceImageSource.Prompt,
+      userPrompt: "pho",
+      outputWidth: 1024,
+      outputHeight: 1024,
+    });
+    expect(square).toContain("Square format");
+    const noSize = assembleReferenceImagePrompt({
+      sceneType: "auto",
+      source: ReferenceImageSource.Prompt,
+      userPrompt: "pho",
+    });
+    expect(noSize).not.toContain("landscape format");
+    expect(noSize).not.toContain("portrait format");
+    expect(noSize).not.toContain("Square format");
+  });
+
+  it("ghi chu sua them khoi cuoi cho ca 2 nguon, khong co thi khong them", () => {
+    const correction = "ve nhan vat trong khi mo ta chi co canh pho";
+    for (const source of [
+      ReferenceImageSource.Prompt,
+      ReferenceImageSource.DrawingPrompt,
+    ]) {
+      const prompt = assembleReferenceImagePrompt({
+        sceneType: "landscape",
+        source,
+        userPrompt: "canh pho",
+        correction,
+      });
+      expect(prompt).toContain("Correction from the user");
+      expect(prompt).toContain(correction);
+      expect(prompt).toContain("Do not repeat the previous mistake");
+    }
+    const plain = assembleReferenceImagePrompt({
+      sceneType: "landscape",
+      source: ReferenceImageSource.Prompt,
+      userPrompt: "canh pho",
+    });
+    expect(plain).not.toContain("Correction from the user");
+    const blank = assembleReferenceImagePrompt({
+      sceneType: "landscape",
+      source: ReferenceImageSource.Prompt,
+      userPrompt: "canh pho",
+      correction: "   ",
+    });
+    expect(blank).not.toContain("Correction from the user");
+  });
+});
+
+describe("resolveReferenceImageOutputSize", () => {
+  it("lay dung ti le khung dang ve, canh dai nhat 1024, boi so 16", async () => {
+    const { resolveReferenceImageOutputSize } = await import(
+      "../src/ai/reference-image/reference-image.constants.js"
+    );
+    expect(resolveReferenceImageOutputSize(1200, 896)).toEqual({
+      width: 1024,
+      height: 768,
+    });
+    expect(resolveReferenceImageOutputSize(2400, 1216)).toEqual({
+      width: 1024,
+      height: 512,
+    });
+    expect(resolveReferenceImageOutputSize(768, 1536)).toEqual({
+      width: 512,
+      height: 1024,
+    });
+    expect(resolveReferenceImageOutputSize(1024, 1024)).toEqual({
+      width: 1024,
+      height: 1024,
+    });
+  });
+
+  it("khong co kich thuoc khung hop le thi giu 1024x1024", async () => {
+    const { resolveReferenceImageOutputSize } = await import(
+      "../src/ai/reference-image/reference-image.constants.js"
+    );
+    expect(resolveReferenceImageOutputSize()).toEqual({
+      width: 1024,
+      height: 1024,
+    });
+    expect(resolveReferenceImageOutputSize(0, 896)).toEqual({
+      width: 1024,
+      height: 1024,
+    });
+    expect(resolveReferenceImageOutputSize(-10, 896)).toEqual({
+      width: 1024,
+      height: 1024,
+    });
+    expect(resolveReferenceImageOutputSize(Number.NaN, 896)).toEqual({
+      width: 1024,
+      height: 1024,
+    });
+  });
+});
+
+describe("CreateReferenceImageJobDto", () => {
+  it("chap nhan panelWidth/panelHeight va correction trong gioi han", async () => {
+    const dto = plainToInstance(CreateReferenceImageJobDto, {
+      source: "prompt",
+      sceneType: "landscape",
+      prompt: "canh pho",
+      panelWidth: 1200,
+      panelHeight: 896,
+      correction: "sai doi tuong",
+    });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it("tu choi panelWidth qua nho va correction qua dai", async () => {
+    const small = plainToInstance(CreateReferenceImageJobDto, {
+      source: "prompt",
+      sceneType: "landscape",
+      prompt: "canh pho",
+      panelWidth: 10,
+      panelHeight: 896,
+    });
+    expect(await validate(small)).not.toHaveLength(0);
+    const long = plainToInstance(CreateReferenceImageJobDto, {
+      source: "prompt",
+      sceneType: "landscape",
+      prompt: "canh pho",
+      correction: "x".repeat(301),
+    });
+    expect(await validate(long)).not.toHaveLength(0);
+  });
 });
 
 describe("createCloudflareReferenceImageProvider", () => {
@@ -198,6 +358,29 @@ describe("createCloudflareReferenceImageProvider", () => {
     expect(form.get("input_image_0")).toBeNull();
     expect(result.model).toContain("klein-4b");
     expect(result.seed).toBe(7);
+  });
+
+  it("gui dung width/height theo ti le khung dang ve", async () => {
+    const png = await makePng({ r: 255, g: 255, b: 255 });
+    const calls = stubFetch(async () => okImageResponse(png.toString("base64")));
+    const provider = createCloudflareReferenceImageProvider({
+      enabled: true,
+      accountId: "test-account",
+      token: "test-token",
+    });
+    await provider.generate(
+      {
+        prompt: "test prompt",
+        source: ReferenceImageSource.Prompt,
+        seed: 3,
+        width: 1024,
+        height: 768,
+      },
+      new AbortController().signal,
+    );
+    const form = calls[0].init.body as FormData;
+    expect(form.get("width")).toBe("1024");
+    expect(form.get("height")).toBe("768");
   });
 
   it("tat thi khong goi fetch", async () => {
@@ -433,6 +616,66 @@ describe("ReferenceImageJobsService", () => {
     expect(seenInput?.prompt).not.toContain("Keep the exact composition");
   });
 
+  it("kich thuoc khung dang ve duoc truyen xuong provider theo dung ti le", async () => {
+    let seenInput: { width?: number; height?: number; prompt: string } | null =
+      null;
+    const capturing: CloudflareReferenceImageProvider = {
+      isEnabled: () => true,
+      generate: async (input) => {
+        seenInput = {
+          width: input.width,
+          height: input.height,
+          prompt: input.prompt,
+        };
+        return fixtureResult();
+      },
+    };
+    const service = new ReferenceImageJobsService(capturing);
+    const created = await service.createJob(
+      "u1",
+      validDto({ panelWidth: 1200, panelHeight: 896 }),
+    );
+    await waitForStatus(service, "u1", created.id, "succeeded");
+    expect(seenInput?.width).toBe(1024);
+    expect(seenInput?.height).toBe(768);
+    expect(seenInput?.prompt).toContain("Wide landscape format");
+  });
+
+  it("khong co kich thuoc khung thi giu 1024x1024", async () => {
+    let seenInput: { width?: number; height?: number } | null = null;
+    const capturing: CloudflareReferenceImageProvider = {
+      isEnabled: () => true,
+      generate: async (input) => {
+        seenInput = { width: input.width, height: input.height };
+        return fixtureResult();
+      },
+    };
+    const service = new ReferenceImageJobsService(capturing);
+    const created = await service.createJob("u1", validDto());
+    await waitForStatus(service, "u1", created.id, "succeeded");
+    expect(seenInput?.width).toBe(1024);
+    expect(seenInput?.height).toBe(1024);
+  });
+
+  it("ghi chu sua duoc gui kem trong prompt, giu nguyen van", async () => {
+    let seenPrompt = "";
+    const capturing: CloudflareReferenceImageProvider = {
+      isEnabled: () => true,
+      generate: async (input) => {
+        seenPrompt = input.prompt;
+        return fixtureResult();
+      },
+    };
+    const service = new ReferenceImageJobsService(capturing);
+    const created = await service.createJob(
+      "u1",
+      validDto({ correction: "sai doi tuong, chi co canh pho" }),
+    );
+    await waitForStatus(service, "u1", created.id, "succeeded");
+    expect(seenPrompt).toContain("sai doi tuong, chi co canh pho");
+    expect(seenPrompt).toContain("Do not repeat the previous mistake");
+  });
+
   it("phac thao trang + khong prompt thi tu choi ngay voi ma blank_sketch", async () => {
     const service = new ReferenceImageJobsService(fakeProvider(fixtureResult));
     const white = await makePng({ r: 255, g: 255, b: 255 }, 16);
@@ -453,7 +696,6 @@ describe("ReferenceImageJobsService", () => {
     const response = (caught as { getResponse?: () => unknown }).getResponse?.();
     expect(response).toMatchObject({ code: "reference_image_blank_sketch" });
   });
-
   it("phac thao chi co mot diem den van la phac thao, khong doi sang chi prompt", async () => {
     let seenInput: { source: string; sketch?: unknown } | null = null;
     const capturing: CloudflareReferenceImageProvider = {

@@ -13,6 +13,7 @@ import {
   addReferenceImageToHistory,
   referenceImageIsOutsideLayers,
   removeReferenceImageFromHistory,
+  resolveReferenceImageOutputSize,
   resolveReferenceOverlayImage,
   type ReferenceImageItem,
 } from "../lib/referenceImages";
@@ -177,13 +178,59 @@ describe("Ảnh mẫu không vào lớp vẽ và không vào xuất bản", () =
 
   it("phong cách nét vẽ giữ đúng nội dung đã duyệt: trắng đen, không màu, nét mực", () => {
     expect(REFERENCE_IMAGE_LINE_STYLE).toContain(
-      "Black-and-white manga line drawing",
+      "Black-and-white manga line drawing ONLY",
     );
-    expect(REFERENCE_IMAGE_LINE_STYLE).toContain("No color");
-    expect(REFERENCE_IMAGE_LINE_STYLE).toContain("black ink outlines");
+    expect(REFERENCE_IMAGE_LINE_STYLE).toContain("only black and white");
+    expect(REFERENCE_IMAGE_LINE_STYLE).toContain("no color of any kind");
+    expect(REFERENCE_IMAGE_LINE_STYLE).toContain(
+      "Fill the whole frame edge to edge",
+    );
     expect(REFERENCE_IMAGE_LINE_STYLE).not.toContain(
       "You are a drawing reference assistant",
     );
+  });
+});
+
+describe("Kích thước ảnh mẫu theo đúng tỉ lệ khung đang vẽ", () => {
+  it("khung ngang 1200x896 ra 1024x768, khung rong ra 1024x512", () => {
+    expect(resolveReferenceImageOutputSize(1200, 896)).toEqual({
+      width: 1024,
+      height: 768,
+    });
+    expect(resolveReferenceImageOutputSize(2400, 1216)).toEqual({
+      width: 1024,
+      height: 512,
+    });
+  });
+
+  it("khung dọc thì cạnh dài nhất vẫn 1024, làm tròn theo bội số 16", () => {
+    expect(resolveReferenceImageOutputSize(768, 1536)).toEqual({
+      width: 512,
+      height: 1024,
+    });
+    expect(resolveReferenceImageOutputSize(1024, 1024)).toEqual({
+      width: 1024,
+      height: 1024,
+    });
+  });
+
+  it("không có kích thước khung hợp lệ thì giữ 1024x1024", () => {
+    expect(resolveReferenceImageOutputSize()).toEqual({
+      width: 1024,
+      height: 1024,
+    });
+    expect(resolveReferenceImageOutputSize(null, 896)).toEqual({
+      width: 1024,
+      height: 1024,
+    });
+    expect(resolveReferenceImageOutputSize(0, 896)).toEqual({
+      width: 1024,
+      height: 1024,
+    });
+    expect(resolveReferenceImageOutputSize(Number.NaN, 896)).toEqual({
+      width: 1024,
+      height: 1024,
+    });
   });
 });
 

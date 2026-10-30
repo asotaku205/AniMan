@@ -51,6 +51,15 @@ interface Props {
   consentNotice: { version: string; notice: string } | null;
   onAcceptConsent: () => void;
   onDeclineConsent: () => void;
+  /**
+   * Ghi chú sửa khi model hiểu sai prompt (mockup đã duyệt 30/10/2026):
+   * viết ngắn gọn ảnh sai chỗ nào, tối đa 300 ký tự, gửi kèm lần sinh
+   * lại, giữ nguyên văn. Chỉ hiện hộp ghi chú khi khung đã có ảnh mẫu.
+   */
+  correction: string;
+  onCorrectionChange: (value: string) => void;
+  /** Kích thước ảnh mẫu sẽ ra, theo đúng tỉ lệ khung đang vẽ. */
+  outputSize: { width: number; height: number } | null;
 }
 
 /**
@@ -88,6 +97,9 @@ export function ReferenceImagePanel({
   consentNotice,
   onAcceptConsent,
   onDeclineConsent,
+  correction,
+  onCorrectionChange,
+  outputSize,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -95,6 +107,30 @@ export function ReferenceImagePanel({
   const [compareId, setCompareId] = useState<string | null>(null);
   const [zoomedId, setZoomedId] = useState<string | null>(null);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
+
+  /** Gợi ý nhanh cho ghi chú sửa, theo mockup đã duyệt 30/10/2026. */
+  const correctionPresets = [
+    {
+      label: "Sai đối tượng",
+      text: "Sai đối tượng: vẽ đúng thứ trong mô tả, không thay bằng chủ thể khác.",
+    },
+    {
+      label: "Có màu / tô bóng",
+      text: "Ảnh có màu hoặc tô bóng: chỉ dùng nét mực đen trên nền trắng, không màu, không tô bóng.",
+    },
+    {
+      label: "Thêm thứ không có",
+      text: "Ảnh thêm thứ không có trong mô tả: chỉ vẽ đúng những gì mô tả đã nêu.",
+    },
+  ] as const;
+
+  function appendCorrectionPreset(text: string) {
+    if (correction.includes(text)) return;
+    const next = correction.trim()
+      ? `${correction.trim()} ${text}`
+      : text;
+    onCorrectionChange(next.slice(0, 300));
+  }
 
   const selected =
     images.find((image) => image.id === selectedId) ?? images[0] ?? null;
@@ -273,11 +309,72 @@ export function ReferenceImagePanel({
               </p>
             )}
             <p className="text-white/40 text-[10px] leading-relaxed">
+              {outputSize && (
+                <>
+                  Ảnh mẫu sẽ ra {outputSize.width}x{outputSize.height},
+                  đúng tỉ lệ khung đang vẽ, vừa khít khung.{" "}
+                </>
+              )}
               Sinh ảnh có thể mất vài phút vì model chạy trên Cloudflare.
               Ảnh về sẽ vào lịch sử bên dưới, tối đa 3 ảnh, để bạn vừa
               nhìn theo vừa vẽ.
             </p>
           </div>
+
+          {/* Ghi chú sửa khi model hiểu sai prompt (mockup đã duyệt
+              30/10/2026): chỉ hiện khi khung đã có ảnh mẫu để sửa theo.
+              Sinh lại dùng cùng mô tả và phác thảo, chỉ thêm ghi chú. */}
+          {images.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-white/60 text-[10px] font-semibold">
+                Ảnh chưa đúng ý?
+              </span>
+              <textarea
+                value={correction}
+                onChange={(event) =>
+                  onCorrectionChange(event.target.value.slice(0, 300))
+                }
+                rows={2}
+                maxLength={300}
+                placeholder="Ảnh sai chỗ nào, viết ngắn gọn. Ví dụ: vẽ nhân vật trong khi mô tả chỉ có cảnh phố, hoặc ảnh có màu."
+                aria-label="Ghi chú sửa cho lần sinh lại ảnh mẫu"
+                className="w-full rounded-xl bg-white/5 border border-white/10 px-2 py-1.5 text-[11px] leading-relaxed text-white placeholder:text-white/35 focus:outline-none focus:border-amber-400/50 resize-none"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {correctionPresets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => appendCorrectionPreset(preset.text)}
+                    className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-amber-500/20 hover:text-amber-100 border border-white/5 text-[9px] text-white/60 transition-colors"
+                  >
+                    + {preset.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={onGenerate}
+                disabled={generating || correction.trim().length === 0}
+                className="w-full py-2 px-3 rounded-xl bg-amber-500/25 border border-amber-400/50 text-amber-100 text-xs font-semibold transition-colors hover:bg-amber-500/35 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Sinh lại theo ghi chú sửa
+              </button>
+              {correction.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onCorrectionChange("")}
+                  className="w-full py-1.5 px-3 rounded-xl bg-white/5 border border-white/10 text-white/70 text-xs transition-colors hover:bg-white/10"
+                >
+                  Xóa ghi chú sửa
+                </button>
+              )}
+              <p className="text-white/40 text-[10px] leading-relaxed">
+                Sinh lại dùng cùng mô tả và cùng phác thảo (nếu có), chỉ
+                thêm ghi chú sửa của bạn.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">

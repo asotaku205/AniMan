@@ -3,7 +3,6 @@ import {
   CLOUDFLARE_KLEIN_4B_MODEL_ID,
   MAX_REFERENCE_IMAGE_COLORED_SHARE,
   MAX_REFERENCE_IMAGE_OUTPUT_BYTES,
-  REFERENCE_IMAGE_OUTPUT_SIZE,
   REFERENCE_IMAGE_PROVIDER_TIMEOUT_MS,
 } from "./reference-image.constants.js";
 import type { ReferenceImageSource } from "./reference-image.dto.js";
@@ -65,6 +64,13 @@ export interface ReferenceImageGenerateInput {
     mimeType: "image/png" | "image/jpeg";
   };
   seed: number;
+  /**
+   * Kích thước đầu ra đã tính theo đúng tỉ lệ khung đang vẽ. Không có
+   * thì giữ 1024x1024 như trước (đường gọi cũ, test).
+   */
+  width?: number;
+  /** Kích thước đầu ra đã tính theo đúng tỉ lệ khung đang vẽ. */
+  height?: number;
 }
 
 export interface ReferenceImageGenerateResult {
@@ -217,8 +223,10 @@ export function createCloudflareReferenceImageProvider(
       }
       const form = new FormData();
       form.append("prompt", input.prompt);
-      form.append("width", String(REFERENCE_IMAGE_OUTPUT_SIZE));
-      form.append("height", String(REFERENCE_IMAGE_OUTPUT_SIZE));
+      // Kích thước theo đúng tỉ lệ khung đang vẽ, do jobs service tính
+      // từ panelWidth/panelHeight client gửi. Không có thì 1024x1024.
+      form.append("width", String(input.width ?? 1024));
+      form.append("height", String(input.height ?? 1024));
       form.append("seed", String(input.seed));
       if (input.sketch) {
         form.append(

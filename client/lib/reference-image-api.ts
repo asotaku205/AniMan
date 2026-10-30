@@ -43,6 +43,19 @@ export interface CreateReferenceImageJobInput {
   prompt?: string;
   fixHints?: string[];
   image?: AiDrawingImagePayload;
+  /**
+   * Kích thước backing của đúng khung đang vẽ, để server tính kích
+   * thước đầu ra theo đúng tỉ lệ khung đó (mỗi khung một tỉ lệ khác
+   * nhau, không ép vuông).
+   */
+  panelWidth?: number;
+  /** Kích thước backing của đúng khung đang vẽ. */
+  panelHeight?: number;
+  /**
+   * Ghi chú sửa của người dùng về ảnh trước đó khi model hiểu sai,
+   * tối đa 300 ký tự. Server giữ nguyên văn trong khối cuối prompt.
+   */
+  correction?: string;
 }
 
 export interface ReferenceImageStatus {

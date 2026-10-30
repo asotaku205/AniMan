@@ -34,6 +34,38 @@ export function clampReferenceOverlayOpacity(value: number): number {
 }
 
 /**
+ * Kích thước ảnh mẫu sẽ ra, tính theo đúng tỉ lệ của khung đang vẽ.
+ *
+ * Bản sao phía client của `resolveReferenceImageOutputSize` phía server
+ * (server là nguồn sự thật, client chỉ dùng để hiện chú thích tỉ lệ
+ * đầu ra trong panel). Cạnh dài nhất 1024, làm tròn theo bội số của
+ * 16, kẹp 256 tới 1920; không có kích thước khung hợp lệ thì 1024x1024.
+ */
+export function resolveReferenceImageOutputSize(
+  panelWidth?: number | null,
+  panelHeight?: number | null,
+): { width: number; height: number } {
+  const fallback = { width: 1024, height: 1024 };
+  if (
+    !panelWidth ||
+    !panelHeight ||
+    !Number.isFinite(panelWidth) ||
+    !Number.isFinite(panelHeight) ||
+    panelWidth <= 0 ||
+    panelHeight <= 0
+  ) {
+    return fallback;
+  }
+  const scale = 1024 / Math.max(panelWidth, panelHeight);
+  const roundStep = (value: number): number =>
+    Math.min(1920, Math.max(256, Math.round(value / 16) * 16));
+  return {
+    width: roundStep(panelWidth * scale),
+    height: roundStep(panelHeight * scale),
+  };
+}
+
+/**
  * Ảnh mẫu đang đè lên khung vẽ: ảnh có id đã chọn, nếu không có hoặc
  * đã bị xóa thì lấy ảnh mới nhất còn ảnh thật (bỏ bản ghi không có
  * dataUrl). Trả về null khi khung chưa có ảnh mẫu nào có ảnh thật.

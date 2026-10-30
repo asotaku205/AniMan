@@ -75,6 +75,34 @@ export class CreateReferenceImageJobDto {
   @MaxLength(200, { each: true })
   fixHints?: string[];
 
+  /**
+   * Kích thước backing (pixel thật) của đúng khung đang vẽ, để server
+   * tính kích thước đầu ra theo đúng tỉ lệ khung đó. Không có thì
+   * server giữ 1024x1024 như trước (client cũ).
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(32)
+  @Max(4096)
+  panelWidth?: number;
+
+  /** Kích thước backing (pixel thật) của đúng khung đang vẽ. */
+  @IsOptional()
+  @IsInt()
+  @Min(32)
+  @Max(4096)
+  panelHeight?: number;
+
+  /**
+   * Ghi chú sửa của người dùng về ảnh trước đó khi model hiểu sai:
+   * ảnh sai chỗ nào, tối đa 300 ký tự. Server giữ nguyên văn trong
+   * khối cuối prompt. Không có hoặc trắng thì bỏ hẳn.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  correction?: string;
+
   /** Phác thảo đã thu nhỏ. Bắt buộc khi nguồn có bức vẽ. */
   @IsOptional()
   @ValidateNested()
