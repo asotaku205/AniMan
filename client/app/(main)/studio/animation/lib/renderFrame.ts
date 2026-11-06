@@ -12,6 +12,7 @@ import { dialogueLineAt } from "./dialogue";
 import { layerEffectAt, weatherParticles } from "./layerEffects";
 import { particlePointsAt } from "./particles";
 import { strokeVisiblePoints } from "./strokes";
+import { frameStrokesAt } from "./frameDrawings";
 import {
   drawFxFlash,
   drawSceneFx,
@@ -25,6 +26,9 @@ export interface DrawSceneFrameOptions {
   effectFormulas?: EffectFormula[];
   /** Ảnh hạt custom (mặc định dùng cache module của fx2d). */
   getEffectImage?: (url: string) => HTMLImageElement | null;
+  /** Khung hình/giây của dự án (mặc định 24) để tính frame vẽ từng
+   * khung tại thời điểm t; thumbnail ở t = 0 thì fps nào cũng ra frame 0. */
+  fps?: number;
 }
 
 export function drawSceneFrame(
@@ -92,6 +96,35 @@ export function drawSceneFrame(
       ctx.font = `600 ${Math.round(height * 0.041)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(layer.name, 0, 8);
+    }
+    // Nét vẽ từng khung của layer này tại thời điểm t (giữ hình theo
+    // fps của dự án): nét ghi bằng tọa độ local nên vẽ dưới đúng
+    // transform này là dính theo layer, khớp sân khấu editor.
+    for (const s of frameStrokesAt(
+      scene.frameDrawings ?? [],
+      layer.id,
+      t,
+      opts.fps ?? 24,
+      scene.durationSec,
+    )) {
+      if (s.tool !== "pen" || s.points.length === 0) continue;
+      ctx.save();
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = Math.max(1, (s.widthPx * height) / 540);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      const first = s.points[0];
+      ctx.moveTo((first.x - 0.5) * width, (first.y - 0.5) * height);
+      if (s.points.length === 1) {
+        ctx.lineTo((first.x - 0.5) * width + 0.01, (first.y - 0.5) * height + 0.01);
+      } else {
+        for (const p of s.points.slice(1)) {
+          ctx.lineTo((p.x - 0.5) * width, (p.y - 0.5) * height);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
     }
     ctx.restore();
   }

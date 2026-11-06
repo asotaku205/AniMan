@@ -54,6 +54,10 @@ export interface AnimScene {
   /** Vệt vẽ tay trên khung hình (R3, chỉ 2D): nét vẽ xuất hiện dần theo
    * thời gian — vệt sáng phép thuật, đường bay, gạch nhấn tự vẽ. */
   strokes?: import("./strokes").SceneStroke[];
+  /** Nét vẽ theo từng khung hình (frame-by-frame, chỉ 2D): mỗi frame
+   * drawing gắn nét vẽ với một frame rời rạc của một layer, vẽ ở frame
+   * nào thì nét thuộc frame đó. Optional để project cũ vẫn load được. */
+  frameDrawings?: import("./frameDrawings").FrameDrawing[];
   /** Event hiệu ứng hạt cho cảnh 2D (đợt 3): vị trí theo tọa độ khung
    * hình (x 0..1 trái→phải, y 0..1 trên→dưới, z bỏ qua) — KHÁC previz 3D
    * dùng tọa độ thế giới. Chỉ dự án 2d dùng; optional để project cũ

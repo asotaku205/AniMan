@@ -91,6 +91,30 @@ import {
   strokeVisiblePoints,
   type SceneStroke,
 } from "../lib/strokes";
+import {
+  addEmptyFrameDrawing,
+  addStrokeToFrame,
+  bracketingKeyPoses,
+  countFrameStrokes,
+  duplicateFrameDrawing,
+  findFrameDrawing,
+  frameCount,
+  frameIndex,
+  frameStrokesAt,
+  frameTime,
+  ghostFramesAfter,
+  ghostFramesBefore,
+  layerPointToStagePoint,
+  MAX_FRAME_DRAWING_STROKES,
+  normalizeFrameDrawings,
+  penStrokesOnly,
+  removeEmptyFrameDrawings,
+  removeFrameDrawing,
+  setFrameKeyPose,
+  stagePointToLayerPoint,
+  type FrameDrawing,
+} from "../lib/frameDrawings";
+import { newDrawStrokeId, type DrawStroke } from "../lib/drawStrokes";
 import { SceneParticlesPanel } from "./SceneParticlesPanel";
 import DrawStudioModal from "./DrawStudioModal";
 import { suggestMotionPresets } from "../lib/motionPrompt";
@@ -143,6 +167,10 @@ function TimelineStrip({
   onMoveDialogue,
   onMoveAudio,
   onAddKey,
+  frameDrawings,
+  frameTotal,
+  currentFrame,
+  onSeekFrame,
 }: {
   timeline: SceneTimeline;
   dialogue: DialogueLine[];
@@ -161,6 +189,14 @@ function TimelineStrip({
   onMoveAudio: (id: string, startSec: number) => void;
   /** Lưu key cho track đang chọn tại playhead. */
   onAddKey: (trackId: string) => void;
+  /** Nét vẽ từng khung của cảnh (đã chuẩn hóa), vẽ theo layer đang chọn. */
+  frameDrawings: FrameDrawing[];
+  /** Tổng số frame của cảnh (theo fps). */
+  frameTotal: number;
+  /** Frame chứa playhead hiện tại. */
+  currentFrame: number;
+  /** Nhảy playhead tới đầu frame (dừng phát). */
+  onSeekFrame: (frame: number) => void;
 }) {
   const pct = (t: number) => `${Math.max(0, Math.min(100, (t / duration) * 100))}%`;
   // Bê từ timeline 3D (PrevizEditor): chọn key, kéo key/clip, xóa key, zoom.
@@ -269,6 +305,7 @@ function TimelineStrip({
       onClick: () => onSelectLayer(l.id),
     })),
     { id: "dialogue", label: "Thoại", color: "#f472b6" },
+    { id: "frames", label: "Khung vẽ", color: "#f59e0b" },
     ...(audioClips.length > 0
       ? [{ id: "audio", label: "Âm thanh", color: "#34d399" }]
       : []),
@@ -455,6 +492,41 @@ function TimelineStrip({
                       {line.speaker}
                     </span>
                   ))}
+                {r.id === "frames" &&
+                  selectedLayerId &&
+                  Array.from({ length: frameTotal }, (_, f) => {
+                    const d = frameDrawings.find(
+                      (x) => x.layerId === selectedLayerId && x.frame === f,
+                    );
+                    // Frame trống (không nét, không phải key pose) thì
+                    // không hiện ô trên dải, chỉ thấy trong danh sách.
+                    if (!d || (d.strokes.length === 0 && !d.isKeyPose)) return null;
+                    return (
+                      <span
+                        key={f}
+                        title={
+                          d.isKeyPose
+                            ? `Key pose frame ${f}${d.note ? `: ${d.note}` : ""}`
+                            : `Frame ${f} đã có nét vẽ`
+                        }
+                        data-timeline-key="true"
+                        onClick={() => onSeekFrame(f)}
+                        className={`absolute top-[2px] bottom-[2px] rounded-sm cursor-pointer ${
+                          f === currentFrame
+                            ? "bg-amber-300 ring-1 ring-white"
+                            : "bg-amber-500/70"
+                        }`}
+                        style={{
+                          left: pct(frameTime(f, fps)),
+                          width: `calc(${Math.max(1.5, 100 / Math.max(1, frameTotal))}% - 1px)`,
+                        }}
+                      >
+                        {d.isKeyPose && (
+                          <span className="absolute -top-[5px] left-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full bg-yellow-300 ring-1 ring-amber-900" />
+                        )}
+                      </span>
+                    );
+                  })}
                 {r.id === "audio" &&
                   audioClips.map((clip) => (
                     <span
@@ -475,7 +547,7 @@ function TimelineStrip({
                     >
                       {clip.name}
                     </span>
-                  ))}
+                  ))}    
               </div>
             ))}
             <div
@@ -499,6 +571,7 @@ export function TimelineEditor({
   onAudioChange,
   onParticlesChange,
   onStrokesChange,
+  onFrameDrawingsChange,
   onSceneFxChange,
 }: {
   scene: AnimScene;
@@ -510,6 +583,8 @@ export function TimelineEditor({
   onAudioChange?: (clips: SceneAudioClip[]) => void;
   onParticlesChange?: (particles: ParticleSystemSettings | null) => void;
   onStrokesChange?: (strokes: SceneStroke[]) => void;
+  /** Nét vẽ từng khung của cảnh: workspace lưu vào scene.frameDrawings. */
+  onFrameDrawingsChange?: (drawings: FrameDrawing[]) => void;
   /** Hiệu ứng hạt của cảnh (đợt 3) — workspace lưu vào scene.fxEvents. */
   onSceneFxChange?: (events: EffectEvent[]) => void;
 }) {
@@ -528,12 +603,51 @@ export function TimelineEditor({
   const [renamingLayerValue, setRenamingLayerValue] = useState("");
   const cancelLayerRenameRef = useRef(false);
   const [onion, setOnion] = useState(false);
+  // Vẽ từng khung (frame-by-frame): nét vẽ gắn với một frame rời rạc
+  // của layer đang chọn. Tắt mặc định để người dùng cũ không bị đổi
+  // hành vi bất ngờ; bật lên thì vẽ trên sân khấu ghi vào frame hiện
+  // tại thay vì tạo vệt SceneStroke.
+  const [frameDrawMode, setFrameDrawMode] = useState(false);
+  const [frameMode, setFrameMode] = useState<"straight" | "pose">("straight");
+  const [frameOnion, setFrameOnion] = useState(true);
+  const [frameGhostBefore, setFrameGhostBefore] = useState(1);
+  const [frameGhostAfter, setFrameGhostAfter] = useState(0);
+  const [frameHold, setFrameHold] = useState(true);
+  const [poseName, setPoseName] = useState("");
+  const frameDrawings = useMemo(
+    () => normalizeFrameDrawings(scene.frameDrawings),
+    [scene.frameDrawings],
+  );
+  const totalFrames = frameCount(duration, fps);
+  const currentFrame = frameIndex(timeSec, fps, duration);
+  /** Đang vẽ dở một nét frame: layer và frame đích (khóa lúc bấm chuột). */
+  const frameDrawRef = useRef<{ layerId: string; frame: number } | null>(null);
   const [propsOpen, setPropsOpen] = useState(true);
   const [draftT, setDraftT] = useState<Transform>(IDENTITY_TRANSFORM);
   const [draftEasing, setDraftEasing] = useState<EasingId>("ease-in-out");
   const [draftDirty, setDraftDirty] = useState(false);
   const [draftCam, setDraftCam] = useState(IDENTITY_CAMERA);
   const [draftCamDirty, setDraftCamDirty] = useState(false);
+  /** Transform của layer như đang hiển thị trên sân khấu (kể cả bản
+   * nháp đang kéo), dùng để đổi tọa độ sân khấu sang tọa độ local của
+   * layer khi ghi nét frame, khớp đúng logic trong drawLayer. */
+  const displayedLayerTransform = (layer: SceneLayer): Transform => {
+    if (draftDirty && layer.id === selectedLayerId) {
+      return applyLayerMotions(draftT, layer.motions, timeSec);
+    }
+    return sampleLayerTransform(layer, timeSec);
+  };
+  const displayedCamera = () =>
+    draftCamDirty ? draftCam : sampleCamera(timeline.cameraKeys, timeSec);
+  /** Nhảy playhead tới đầu frame và dừng phát. */
+  const seekFrame = useCallback(
+    (frame: number) => {
+      const f = Math.max(0, Math.min(totalFrames - 1, frame));
+      setPlaying(false);
+      setTimeSec(frameTime(f, fps));
+    },
+    [fps, totalFrames],
+  );
   const { authenticatedFetch } = useAuth();
   const [motionQuery, setMotionQuery] = useState("");
   // Hiệu ứng hạt của cảnh (đợt 3): công thức từ thư viện chung với 3D.
@@ -709,6 +823,24 @@ export function TimelineEditor({
       canvasRef.current?.setPointerCapture(e.pointerId);
       return;
     }
+    if (frameDrawMode && onFrameDrawingsChange) {
+      const layer = timeline.layers.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        // Ghi nét bằng tọa độ local của layer để nét dính theo layer
+        // khi layer chuyển động (xem stagePointToLayerPoint).
+        const local = stagePointToLayerPoint(
+          point,
+          displayedLayerTransform(layer),
+          displayedCamera(),
+          STAGE_W,
+          STAGE_H,
+        );
+        frameDrawRef.current = { layerId: layer.id, frame: currentFrame };
+        setDrawingStroke([local]);
+        canvasRef.current?.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
     if (strokeMode && onStrokesChange) {
       drawingRef.current = { startSec: timeSec, wallStart: performance.now() };
       setDrawingStroke([point]);
@@ -741,6 +873,29 @@ export function TimelineEditor({
       );
       return;
     }
+    if (frameDrawRef.current) {
+      const point = stagePointOf(e);
+      if (!point) return;
+      const layer = timeline.layers.find(
+        (l) => l.id === frameDrawRef.current!.layerId,
+      );
+      const local = layer
+        ? stagePointToLayerPoint(
+            point,
+            displayedLayerTransform(layer),
+            displayedCamera(),
+            STAGE_W,
+            STAGE_H,
+          )
+        : point;
+      setDrawingStroke((prev) => {
+        if (!prev) return prev;
+        const last = prev[prev.length - 1];
+        if (last && Math.hypot(local.x - last.x, local.y - last.y) < 0.004) return prev;
+        return [...prev, local];
+      });
+      return;
+    }
     if (drawingRef.current) {
       const point = stagePointOf(e);
       if (!point) return;
@@ -768,6 +923,29 @@ export function TimelineEditor({
   const onStagePointerUp = () => {
     if (pathDragRef.current !== null) {
       pathDragRef.current = null;
+      return;
+    }
+    if (frameDrawRef.current && onFrameDrawingsChange) {
+      const info = frameDrawRef.current;
+      frameDrawRef.current = null;
+      const points = drawingStroke ?? [];
+      setDrawingStroke(null);
+      if (points.length >= 1) {
+        const drawn =
+          points.length === 1
+            ? [points[0], { x: points[0].x + 0.001, y: points[0].y }]
+            : points;
+        const newStroke: DrawStroke = {
+          id: newDrawStrokeId(),
+          tool: "pen",
+          color: strokeColor,
+          widthPx: strokeWidth,
+          points: drawn,
+        };
+        commitFrameDrawings(
+          addStrokeToFrame(frameDrawings, info.layerId, info.frame, newStroke),
+        );
+      }
       return;
     }
     if (drawingRef.current && onStrokesChange) {
@@ -804,29 +982,53 @@ export function TimelineEditor({
   // ── Hoàn tác / làm lại (Slice B7): mọi thay đổi qua `update` đều ghi
   // một mốc lịch sử (tối đa 60); các thay đổi dồn dập trong 800ms (kéo
   // thanh trượt) gộp chung một mốc để hoàn tác không nhảy từng nấc nhỏ.
+  // Mỗi mốc giữ cả timeline lẫn nét vẽ từng khung, vì vẽ frame sai là
+  // thao tác thường gặp nhất và phải hoàn tác được như keyframe.
   const HISTORY_LIMIT = 60;
-  const pastRef = useRef<SceneTimeline[]>([]);
-  const futureRef = useRef<SceneTimeline[]>([]);
+  interface HistoryEntry {
+    timeline: SceneTimeline;
+    frameDrawings: FrameDrawing[];
+  }
+  const pastRef = useRef<HistoryEntry[]>([]);
+  const futureRef = useRef<HistoryEntry[]>([]);
   const lastPushAtRef = useRef(0);
   const [, setHistoryTick] = useState(0);
   const timelineRef = useRef(timeline);
   timelineRef.current = timeline;
+  const frameDrawingsRef = useRef(frameDrawings);
+  frameDrawingsRef.current = frameDrawings;
+
+  const pushHistory = useCallback(() => {
+    const now = performance.now();
+    if (now - lastPushAtRef.current > 800) {
+      pastRef.current = [
+        ...pastRef.current.slice(-(HISTORY_LIMIT - 1)),
+        {
+          timeline: timelineRef.current,
+          frameDrawings: frameDrawingsRef.current,
+        },
+      ];
+      lastPushAtRef.current = now;
+    }
+    futureRef.current = [];
+    setHistoryTick((t) => t + 1);
+  }, []);
 
   const update = useCallback(
     (next: SceneTimeline) => {
-      const now = performance.now();
-      if (now - lastPushAtRef.current > 800) {
-        pastRef.current = [
-          ...pastRef.current.slice(-(HISTORY_LIMIT - 1)),
-          timelineRef.current,
-        ];
-        lastPushAtRef.current = now;
-      }
-      futureRef.current = [];
-      setHistoryTick((t) => t + 1);
+      pushHistory();
       onChange(next);
     },
-    [onChange],
+    [onChange, pushHistory],
+  );
+
+  /** Ghi một thay đổi nét frame vào lịch sử rồi mới lưu (như `update`). */
+  const commitFrameDrawings = useCallback(
+    (next: FrameDrawing[]) => {
+      pushHistory();
+      onFrameDrawingsChange?.(next);
+    },
+    [onFrameDrawingsChange, pushHistory],
   );
 
   const undo = useCallback(() => {
@@ -834,22 +1036,30 @@ export function TimelineEditor({
     if (past.length === 0) return;
     const prev = past[past.length - 1];
     pastRef.current = past.slice(0, -1);
-    futureRef.current = [...futureRef.current, timelineRef.current];
+    futureRef.current = [
+      ...futureRef.current,
+      { timeline: timelineRef.current, frameDrawings: frameDrawingsRef.current },
+    ];
     lastPushAtRef.current = 0;
     setHistoryTick((t) => t + 1);
-    onChange(prev);
-  }, [onChange]);
+    onChange(prev.timeline);
+    onFrameDrawingsChange?.(prev.frameDrawings);
+  }, [onChange, onFrameDrawingsChange]);
 
   const redo = useCallback(() => {
     const future = futureRef.current;
     if (future.length === 0) return;
     const next = future[future.length - 1];
     futureRef.current = future.slice(0, -1);
-    pastRef.current = [...pastRef.current, timelineRef.current];
+    pastRef.current = [
+      ...pastRef.current,
+      { timeline: timelineRef.current, frameDrawings: frameDrawingsRef.current },
+    ];
     lastPushAtRef.current = 0;
     setHistoryTick((t) => t + 1);
-    onChange(next);
-  }, [onChange]);
+    onChange(next.timeline);
+    onFrameDrawingsChange?.(next.frameDrawings);
+  }, [onChange, onFrameDrawingsChange]);
 
   const canUndo = pastRef.current.length > 0;
   const canRedo = futureRef.current.length > 0;
@@ -876,6 +1086,28 @@ export function TimelineEditor({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
+  // Lật frame trước/sau bằng phím , và . (Ctrl+Z/Y đã dùng cho hoàn tác).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        target.closest("input, textarea, select, [contenteditable='true']")
+      ) {
+        return; // đang gõ chữ, để phím , . gõ bình thường
+      }
+      if (e.key === ",") {
+        e.preventDefault();
+        seekFrame(currentFrame - 1);
+      } else if (e.key === ".") {
+        e.preventDefault();
+        seekFrame(currentFrame + 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [seekFrame, currentFrame]);
   const updateLayer = useCallback(
     (layerId: string, patch: Partial<SceneLayer>) => {
       update({
@@ -964,6 +1196,40 @@ export function TimelineEditor({
 
     const cam = draftCamDirty ? draftCam : sampleCamera(timeline.cameraKeys, timeSec);
 
+    // Vẽ nét frame (tọa độ local của layer) dưới đúng transform hiện
+    // tại của layer. Nét tẩy không vẽ ở đây: tẩy chỉ hiệu chỉnh nét
+    // của chính frame, vẽ bằng destination-out sẽ đục thủng cả ảnh
+    // layer bên dưới; giao diện vẽ frame hiện chỉ có bút, khi nào thêm
+    // tẩy thì vẽ nét frame qua canvas phụ rồi mới ghép lên.
+    const paintLocalStrokeList = (
+      strokes: readonly DrawStroke[],
+      colorOverride: string | null,
+      alphaMul = 1,
+    ) => {
+      if (strokes.length === 0) return;
+      ctx.save();
+      ctx.globalAlpha = ctx.globalAlpha * alphaMul;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      for (const s of strokes) {
+        if (s.tool !== "pen" || s.points.length === 0) continue;
+        ctx.strokeStyle = colorOverride ?? s.color;
+        ctx.lineWidth = s.widthPx;
+        ctx.beginPath();
+        const first = s.points[0];
+        ctx.moveTo((first.x - 0.5) * STAGE_W, (first.y - 0.5) * STAGE_H);
+        if (s.points.length === 1) {
+          ctx.lineTo((first.x - 0.5) * STAGE_W + 0.01, (first.y - 0.5) * STAGE_H + 0.01);
+        } else {
+          for (const p of s.points.slice(1)) {
+            ctx.lineTo((p.x - 0.5) * STAGE_W, (p.y - 0.5) * STAGE_H);
+          }
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
     const drawLayer = (layer: SceneLayer, t: number, ghost?: "prev" | "next") => {
       let tr = sampleLayerTransform(layer, t);
       if (!ghost && draftDirty && layer.id === selectedLayerId) {
@@ -1025,6 +1291,50 @@ export function TimelineEditor({
           ctx.font = "600 22px sans-serif";
           ctx.textAlign = "center";
           ctx.fillText(layer.name, 0, 8);
+        }
+      }
+      // Nét vẽ từng khung của layer này tại thời điểm t (chỉ lượt vẽ
+      // chính, không vẽ vào bóng key chuyển động): nét ghi bằng tọa độ
+      // local nên vẽ lại dưới đúng transform này là dính theo layer.
+      if (!ghost) {
+        const frame = frameIndex(t, fps, duration);
+        paintLocalStrokeList(
+          frameStrokesAt(frameDrawings, layer.id, t, fps, duration, frameHold),
+          null,
+        );
+        if (layer.id === selectedLayerId && frameOnion) {
+          const exact = findFrameDrawing(frameDrawings, layer.id, frame);
+          const displayedFrame = exact
+            ? frame
+            : frameHold
+              ? (ghostFramesBefore(frameDrawings, layer.id, frame, 1)[0] ?? null)
+              : null;
+          const ghosts: { frame: number; color: string }[] =
+            frameMode === "pose"
+              ? (() => {
+                  const b = bracketingKeyPoses(frameDrawings, layer.id, frame);
+                  return [
+                    ...(b.prev !== null
+                      ? [{ frame: b.prev, color: "#7f1d2d" }]
+                      : []),
+                    ...(b.next !== null
+                      ? [{ frame: b.next, color: "#14532d" }]
+                      : []),
+                  ];
+                })()
+              : [
+                  ...ghostFramesBefore(frameDrawings, layer.id, frame, frameGhostBefore).map(
+                    (f) => ({ frame: f, color: "#7f1d2d" }),
+                  ),
+                  ...ghostFramesAfter(frameDrawings, layer.id, frame, frameGhostAfter).map(
+                    (f) => ({ frame: f, color: "#14532d" }),
+                  ),
+                ];
+          for (const g of ghosts) {
+            if (g.frame === displayedFrame) continue;
+            const gd = findFrameDrawing(frameDrawings, layer.id, g.frame);
+            if (gd) paintLocalStrokeList(penStrokesOnly(gd.strokes), g.color, 0.3);
+          }
         }
       }
       ctx.restore();
@@ -1101,7 +1411,28 @@ export function TimelineEditor({
     for (const stroke of scene.strokes ?? []) {
       drawStrokePath(strokeVisiblePoints(stroke, timeSec), stroke.color, stroke.widthPx);
     }
-    if (drawingStroke) drawStrokePath(drawingStroke, strokeColor, strokeWidth);
+    if (drawingStroke) {
+      if (frameDrawMode) {
+        // Nét nháp đang vẽ dở lưu bằng tọa độ local của layer: đổi lại
+        // sang tọa độ sân khấu để thấy trên mọi layer, đúng vị trí bút.
+        const layer = timeline.layers.find((l) => l.id === selectedLayerId);
+        if (layer) {
+          const tr = displayedLayerTransform(layer);
+          const cam = displayedCamera();
+          drawStrokePath(
+            drawingStroke.map((p) =>
+              layerPointToStagePoint(p, tr, cam, STAGE_W, STAGE_H),
+            ),
+            strokeColor,
+            strokeWidth,
+          );
+        } else {
+          drawStrokePath(drawingStroke, strokeColor, strokeWidth);
+        }
+      } else {
+        drawStrokePath(drawingStroke, strokeColor, strokeWidth);
+      }
+    }
 
     // Đường đi của vật đang chọn (gắn chuyển động 2D): nét đứt qua các
     // điểm cong Catmull-Rom, điểm kiểm soát là chấm tròn (điểm đang chọn
@@ -1170,7 +1501,7 @@ export function TimelineEditor({
       ctx.restore();
     }
 
-  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue, scene.weather, scene.particles, scene.strokes, drawingStroke, strokeColor, strokeWidth, scene.durationSec, pathMode, pathDraft, selectedPathPoint, scene.fxEvents, effectFormulas]);
+  }, [timeline, timeSec, draftDirty, draftT, draftCam, draftCamDirty, selectedLayerId, onion, scene.dialogue, scene.weather, scene.particles, scene.strokes, scene.frameDrawings, drawingStroke, strokeColor, strokeWidth, scene.durationSec, pathMode, pathDraft, selectedPathPoint, scene.fxEvents, effectFormulas, frameDrawMode, frameMode, frameOnion, frameGhostBefore, frameGhostAfter, frameHold]);
 
   // ── Thao tác keyframe ──────────────────────────────────────────────────────
   const placeLayerKey = () => {
@@ -2883,7 +3214,10 @@ export function TimelineEditor({
               </h4>
               
               <button
-                onClick={() => setStrokeMode((v) => !v)}
+                onClick={() => {
+                  if (!strokeMode) setFrameDrawMode(false);
+                  setStrokeMode((v) => !v);
+                }}
                 className={`w-full h-8 rounded-lg border text-[12px] font-medium transition ${
                   strokeMode
                     ? "bg-cyan-500/25 border-cyan-300/40 text-cyan-100"
@@ -2934,6 +3268,286 @@ export function TimelineEditor({
               )}
             </section>
           )}
+          {onFrameDrawingsChange && (
+            <section className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2.5">
+              <h4 className="text-[12px] font-semibold text-white/60">
+                VẼ TỪNG KHUNG (FRAME-BY-FRAME)
+              </h4>
+              <div className="flex gap-3 text-[12px] text-white/75">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="frame-mode"
+                    checked={frameMode === "straight"}
+                    onChange={() => setFrameMode("straight")}
+                  />
+                  Vẽ lần lượt (Straight-ahead)
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="frame-mode"
+                    checked={frameMode === "pose"}
+                    onChange={() => setFrameMode("pose")}
+                  />
+                  Đặt tư thế rồi vẽ giữa (Pose-to-pose)
+                </label>
+              </div>
+              <button
+                disabled={!selectedLayerId}
+                onClick={() => {
+                  if (!frameDrawMode) setStrokeMode(false);
+                  setFrameDrawMode((v) => !v);
+                }}
+                className={`w-full h-8 rounded-lg border text-[12px] font-medium transition disabled:opacity-40 ${
+                  frameDrawMode
+                    ? "bg-amber-500/25 border-amber-300/40 text-amber-100"
+                    : "bg-white/5 border-white/10 hover:bg-white/10"
+                }`}
+              >
+                {frameDrawMode
+                  ? "Đang vẽ frame, bấm để tắt"
+                  : "Bật chế độ vẽ frame"}
+              </button>
+              {!selectedLayerId && (
+                <p className="text-[11px] text-white/45">
+                  Chọn một layer để vẽ frame (nét vẽ thuộc layer đó).
+                </p>
+              )}
+              {selectedLayerId && (
+                <>
+                  <div className="flex items-center justify-between gap-2 text-[12px]">
+                    <span className="text-white/60 tabular-nums">
+                      Frame hiện tại: {currentFrame} / {totalFrames}
+                    </span>
+                    <span className="flex gap-1">
+                      <button
+                        onClick={() => seekFrame(currentFrame - 1)}
+                        disabled={currentFrame <= 0}
+                        title="Frame trước (,)"
+                        className="px-2 h-7 rounded bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-30"
+                      >
+                        &lt;
+                      </button>
+                      <button
+                        onClick={() => seekFrame(currentFrame + 1)}
+                        disabled={currentFrame >= totalFrames - 1}
+                        title="Frame sau (.)"
+                        className="px-2 h-7 rounded bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-30"
+                      >
+                        &gt;
+                      </button>
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      onClick={() =>
+                        commitFrameDrawings(
+                          duplicateFrameDrawing(
+                            frameDrawings,
+                            selectedLayerId,
+                            currentFrame,
+                            Math.min(totalFrames - 1, currentFrame + 1),
+                          ),
+                        )
+                      }
+                      disabled={!findFrameDrawing(frameDrawings, selectedLayerId, currentFrame)}
+                      title="Copy nét frame hiện tại sang frame kề sau để vẽ tiếp"
+                      className="h-8 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10 disabled:opacity-30"
+                    >
+                      Nhân đôi frame
+                    </button>
+                    <button
+                      onClick={() =>
+                        commitFrameDrawings(
+                          removeFrameDrawing(frameDrawings, selectedLayerId, currentFrame),
+                        )
+                      }
+                      disabled={!findFrameDrawing(frameDrawings, selectedLayerId, currentFrame)}
+                      title="Xóa nét của frame hiện tại (không dời frame khác)"
+                      className="h-8 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10 disabled:opacity-30"
+                    >
+                      Xóa frame
+                    </button>
+                    <button
+                      onClick={() => {
+                        commitFrameDrawings(
+                          addEmptyFrameDrawing(frameDrawings, selectedLayerId, currentFrame),
+                        );
+                        seekFrame(currentFrame);
+                      }}
+                      title="Tạo frame trống tại playhead (không cần vẽ ngay)"
+                      className="h-8 rounded-lg bg-white/5 border border-white/10 text-[12px] hover:bg-white/10 disabled:opacity-30"
+                    >
+                      Thêm frame trống
+                    </button>
+                  </div>
+                  {frameMode === "pose" && (
+                    <div className="space-y-2 rounded-lg border border-yellow-400/20 bg-yellow-400/5 p-2">
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={poseName}
+                          onChange={(e) => setPoseName(e.currentTarget.value)}
+                          placeholder="Tên tư thế, ví dụ: giơ tay"
+                          className="flex-1 min-w-0 h-8 px-2 rounded-lg bg-white/5 border border-white/10 text-[12px] placeholder:text-white/30"
+                        />
+                        <button
+                          onClick={() => {
+                            const cur = findFrameDrawing(
+                              frameDrawings,
+                              selectedLayerId,
+                              currentFrame,
+                            );
+                            commitFrameDrawings(
+                              setFrameKeyPose(
+                                frameDrawings,
+                                selectedLayerId,
+                                currentFrame,
+                                !(cur?.isKeyPose ?? false),
+                                poseName,
+                              ),
+                            );
+                          }}
+                          className="h-8 px-2 rounded-lg bg-yellow-400/20 border border-yellow-300/30 text-[12px] hover:bg-yellow-400/30 whitespace-nowrap"
+                        >
+                          {findFrameDrawing(frameDrawings, selectedLayerId, currentFrame)
+                            ?.isKeyPose
+                            ? "Bỏ key pose"
+                            : "Đặt key pose"}
+                        </button>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => {
+                            const keys = frameDrawings
+                              .filter(
+                                (d) => d.layerId === selectedLayerId && d.isKeyPose,
+                              )
+                              .map((d) => d.frame)
+                              .sort((a, b) => a - b);
+                            const prev = [...keys].reverse().find((f) => f < currentFrame);
+                            if (prev !== undefined) seekFrame(prev);
+                          }}
+                          className="flex-1 h-7 rounded bg-white/5 border border-white/10 text-[12px] hover:bg-white/10"
+                        >
+                          &lt; Key pose trước
+                        </button>
+                        <button
+                          onClick={() => {
+                            const keys = frameDrawings
+                              .filter(
+                                (d) => d.layerId === selectedLayerId && d.isKeyPose,
+                              )
+                              .map((d) => d.frame)
+                              .sort((a, b) => a - b);
+                            const next = keys.find((f) => f > currentFrame);
+                            if (next !== undefined) seekFrame(next);
+                          }}
+                          className="flex-1 h-7 rounded bg-white/5 border border-white/10 text-[12px] hover:bg-white/10"
+                        >
+                          Key pose sau &gt;
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 text-[12px] text-white/65 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={frameOnion}
+                      onChange={(e) => setFrameOnion(e.currentTarget.checked)}
+                    />
+                    Onion skin nét vẽ
+                    <span className="text-white/40">
+                      (trước đỏ / sau xanh)
+                    </span>
+                  </label>
+                  {frameOnion && frameMode === "straight" && (
+                    <div className="flex items-center gap-2 text-[12px] text-white/65">
+                      <span>Bóng trước</span>
+                      <select
+                        value={frameGhostBefore}
+                        onChange={(e) => setFrameGhostBefore(Number(e.currentTarget.value))}
+                        className="h-7 px-1 rounded bg-white/5 border border-white/10"
+                      >
+                        <option value={0}>0</option>
+                        <option value={1}>1</option>
+                        <option value={2}>2</option>
+                      </select>
+                      <span>Bóng sau</span>
+                      <select
+                        value={frameGhostAfter}
+                        onChange={(e) => setFrameGhostAfter(Number(e.currentTarget.value))}
+                        className="h-7 px-1 rounded bg-white/5 border border-white/10"
+                      >
+                        <option value={0}>0</option>
+                        <option value={1}>1</option>
+                        <option value={2}>2</option>
+                      </select>
+                    </div>
+                  )}
+                  {frameOnion && frameMode === "pose" && (
+                    <p className="text-[11px] text-white/45">
+                      Pose-to-pose: bóng hai key pose kẹp giữa frame hiện tại.
+                    </p>
+                  )}
+                  <label className="flex items-center gap-2 text-[12px] text-white/65 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={frameHold}
+                      onChange={(e) => setFrameHold(e.currentTarget.checked)}
+                    />
+                    Giữ hình tới frame có vẽ tiếp theo
+                  </label>
+                  {countFrameStrokes(frameDrawings) > MAX_FRAME_DRAWING_STROKES && (
+                    <div className="rounded-lg border border-rose-400/30 bg-rose-400/10 p-2 text-[12px] text-rose-200 space-y-1.5">
+                      <p>
+                        Cảnh đã có {countFrameStrokes(frameDrawings)} nét vẽ frame,
+                        vượt ngưỡng {MAX_FRAME_DRAWING_STROKES}, file lưu sẽ nặng.
+                      </p>
+                      <button
+                        onClick={() =>
+                          commitFrameDrawings(removeEmptyFrameDrawings(frameDrawings))
+                        }
+                        className="h-7 px-2 rounded bg-white/10 border border-white/15 text-[12px] hover:bg-white/15"
+                      >
+                        Xóa các frame trống
+                      </button>
+                    </div>
+                  )}
+                  {frameDrawings.filter((d) => d.layerId === selectedLayerId).length > 0 && (
+                    <ul className="space-y-1 max-h-32 overflow-auto">
+                      {frameDrawings
+                        .filter((d) => d.layerId === selectedLayerId)
+                        .sort((a, b) => a.frame - b.frame)
+                        .map((d) => (
+                          <li key={d.id}>
+                            <button
+                              onClick={() => seekFrame(d.frame)}
+                              className={`w-full flex items-center gap-2 text-left text-[11px] px-2 py-1 rounded ${
+                                d.frame === currentFrame
+                                  ? "bg-amber-500/20 text-amber-100"
+                                  : "text-white/55 hover:bg-white/5"
+                              }`}
+                            >
+                              <span className="tabular-nums">Frame {d.frame}</span>
+                              {d.isKeyPose && (
+                                <span className="text-yellow-300">
+                                  key pose{d.note ? `: ${d.note}` : ""}
+                                </span>
+                              )}
+                              <span className="ml-auto text-white/35">
+                                {d.strokes.length} nét
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </section>
+          )}
           {onAudioChange && (
             <SceneAudioPanel scene={scene} onChange={onAudioChange} />
           )}
@@ -2959,6 +3573,10 @@ export function TimelineEditor({
         onMoveDialogue={moveStripDialogue}
         onMoveAudio={moveStripAudio}
         onAddKey={addStripKey}
+        frameDrawings={frameDrawings}
+        frameTotal={totalFrames}
+        currentFrame={currentFrame}
+        onSeekFrame={seekFrame}
       />
     </div>
   );

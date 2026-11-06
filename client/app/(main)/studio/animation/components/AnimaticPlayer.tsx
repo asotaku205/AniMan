@@ -249,6 +249,7 @@ export function AnimaticPlayer({
     if (project.kind === "2d") {
       drawSceneFrame(ctx, scene, tInScene, W, H, (url) => imagesRef.current.get(url) ?? null, {
         effectFormulas: effectFormulasRef.current,
+        fps: project.fps,
       });
     } else {
       if (!filmRef.current)

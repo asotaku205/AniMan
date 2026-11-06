@@ -66,6 +66,60 @@ describe("animStorage — dự án phim + kho file tiếng", () => {
     expect(back!.scenes[0].dialogue).toBeUndefined();
   });
 
+  it("frame drawing ghi/đọc lại còn nguyên, dự án cũ không có trường vẫn đọc được", async () => {
+    const storage = await import("../lib/animStorage");
+    const { createAnimProject, createAnimScene } = await import(
+      "../lib/animProject",
+    );
+
+    const project = createAnimProject("Phim có vẽ từng khung", "2d");
+    const scene = createAnimScene("Cảnh vẽ tay", 3);
+    scene.frameDrawings = [
+      {
+        id: "frame-1",
+        frame: 0,
+        layerId: "layer-a",
+        strokes: [
+          {
+            id: "stroke-1",
+            tool: "pen",
+            color: "#171717",
+            widthPx: 4,
+            points: [
+              { x: 0.1, y: 0.1 },
+              { x: 0.2, y: 0.2 },
+            ],
+          },
+        ],
+        isKeyPose: true,
+        note: "đứng thẳng",
+      },
+      {
+        id: "frame-2",
+        frame: 12,
+        layerId: "layer-a",
+        strokes: [],
+        isKeyPose: true,
+        note: "giơ tay",
+      },
+    ];
+    project.scenes = [scene];
+    await storage.saveAnimProject(project);
+
+    const back = await storage.getAnimProject(project.id);
+    expect(back).not.toBeNull();
+    expect(back!.scenes[0].frameDrawings).toHaveLength(2);
+    expect(back!.scenes[0].frameDrawings![0].strokes[0].points).toHaveLength(2);
+    expect(back!.scenes[0].frameDrawings![1].note).toBe("giơ tay");
+
+    // Dự án cũ không có frameDrawings vẫn đọc bình thường, coi như rỗng.
+    const legacy = createAnimProject("Phim cũ", "2d");
+    await storage.saveAnimProject(legacy);
+    const legacyBack = await storage.getAnimProject(legacy.id);
+    expect(legacyBack).not.toBeNull();
+    expect(legacyBack!.scenes[0].frameDrawings).toBeUndefined();
+  });
+
   it("file tiếng ghi/đọc lại đúng bytes và xoá được", async () => {
     const storage = await import("../lib/animStorage");
     const bytes = new Uint8Array([9, 8, 7, 6, 5]);

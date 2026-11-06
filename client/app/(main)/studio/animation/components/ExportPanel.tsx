@@ -307,6 +307,7 @@ export function ExportPanel({
           if (t >= wallDur) return resolve();
           drawSceneFrame(ctx, scene, t * speed, W, H, getImage, {
             effectFormulas: effectFormulas2d,
+            fps: project.fps,
           });
           composite(canvas, t, t * speed, i, wallDur, scene);
           requestAnimationFrame(step);

@@ -519,6 +519,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
                     onStrokesChange={(strokes) =>
                       void apply(updateScene(project, sc.id, { strokes }))
                     }
+                    onFrameDrawingsChange={(frameDrawings) =>
+                      void apply(
+                        updateScene(project, sc.id, { frameDrawings }),
+                      )
+                    }
                     onSceneFxChange={(fxEvents) =>
                       void apply(updateScene(project, sc.id, { fxEvents }))
                     }
