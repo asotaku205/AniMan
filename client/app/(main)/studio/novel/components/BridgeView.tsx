@@ -515,6 +515,9 @@ export default function BridgeView({
             Xem trước phân cảnh
           </button>
         </div>
+        <p className="mt-2 text-xs text-amber-100/70">
+          Phạm vi: {scopeLabel}
+        </p>
         {scopeEmpty && (
           <p className="mt-2 text-xs text-amber-100/70">
             Phạm vi này chưa có nội dung.
@@ -632,6 +635,9 @@ export default function BridgeView({
             Phân tích bằng AI
           </button>
         </div>
+        <p className="mt-2 text-xs text-amber-100/70">
+          Phạm vi: {scopeLabel}
+        </p>
         {scopeEmpty && (
           <p className="mt-2 text-xs text-amber-100/70">
             Phạm vi này chưa có nội dung.
