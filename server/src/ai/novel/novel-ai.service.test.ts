@@ -53,8 +53,26 @@ describe("parseNovelAiResponse", () => {
     });
     expect(systemInstruction).toContain("splash-3");
     expect(systemInstruction).toContain("Never put text");
+    expect(systemInstruction).toContain("1 to 3 pages per scene");
+    expect(systemInstruction).toContain("never drop a line");
     expect(userPrompt).toContain("Aoi bước vào ga lúc hoàng hôn.");
     expect(userPrompt).toContain("Truyện về Aoi rời quê.");
+  });
+
+  it("tách cảnh: pageCount ép đúng số trang, kẹp trong 1-3", () => {
+    const one = buildNovelAiPrompt({
+      task: "breakdown",
+      text: "Aoi rời ga.",
+      pageCount: 1,
+    });
+    expect(one.systemInstruction).toContain("Return exactly 1 page(s)");
+    expect(one.systemInstruction).not.toContain("1 to 3 pages per scene");
+    const many = buildNovelAiPrompt({
+      task: "breakdown",
+      text: "Aoi rời ga.",
+      pageCount: 9,
+    });
+    expect(many.systemInstruction).toContain("Return exactly 3 page(s)");
   });
 
   it("chấp nhận breakdown hợp lệ, sửa layout theo đúng số khung", () => {

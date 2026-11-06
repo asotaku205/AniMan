@@ -68,6 +68,12 @@ export interface NovelAiInput {
   bible?: string;
   /** Ngữ cảnh truyện: tiền đề + tóm tắt + tóm tắt cảnh (chỉ dùng cho task breakdown). */
   context?: string;
+  /**
+   * Số trang yêu cầu cho breakdown (chỉ dùng khi client đã chia cảnh
+   * thành đoạn và tính trước: mỗi đoạn = đúng 1 trang, để nội dung
+   * dài không bị dồn vào 1 trang. Không có thì giữ 1-3 trang như trước.
+   */
+  pageCount?: number;
 }
 
 export interface NovelAiResult {
@@ -83,12 +89,22 @@ export function buildNovelAiPrompt(input: NovelAiInput): {
   userPrompt: string;
 } {
   if (input.task === "breakdown") {
+    // Client chia cảnh dài thành đoạn trước (mỗi đoạn đủ cho đúng 1
+    // trang) vì prompt "1-3 trang" để model tự chọn thường chỉ trả 1
+    // trang, nội dung dài bị rớt hết. Khi có pageCount thì ép đúng số
+    // trang đó; không có thì giữ hành vi cũ.
+    const pageRule =
+      typeof input.pageCount === "number" && input.pageCount >= 1
+        ? `Return exactly ${Math.min(3, Math.floor(input.pageCount))} page(s), 3 to 6 panels per page. `
+        : "Rules: 1 to 3 pages per scene, 3 to 6 panels per page. ";
     return {
       systemInstruction:
         "You break one novel scene into manga pages in Vietnamese. Reply with JSON only: " +
         '{"pages": [{"layout": "classic-5", "panels": [{"prompt": "...", "sceneType": "wide", "dialogue": ["..."], "note": "..."}]}]}. ' +
-        "Rules: 1 to 3 pages per scene, 3 to 6 panels per page. The layout must match the panel count exactly: " +
+        pageRule +
+        "The layout must match the panel count exactly: " +
         "3 panels use splash-3, 4 use action-4, 5 use classic-5, 6 use manga-6. " +
+        "Cover every dialogue line in the provided text: if a line does not fit, use more panels on the page, never drop a line. " +
         "Each panel prompt is a purely visual description for a black-and-white manga reference image: what is seen, who, where, camera angle and mood. " +
         "Never put text, letters, speech bubbles or sound-effect words in the prompt. " +
         "sceneType is one of action, dialogue, landscape, closeup, wide and must fit the panel. " +

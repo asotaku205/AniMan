@@ -87,8 +87,20 @@ export class NovelAiController {
     }
     const bible = asString(b.bible, MAX_BIBLE_LENGTH);
     const context = asString(b.context, MAX_CONTEXT_LENGTH);
+    // Số trang yêu cầu cho breakdown: client đã chia cảnh thành đoạn
+    // và tính trước (mỗi đoạn = đúng 1 trang). Chỉ nhận 1-3.
+    const pages =
+      typeof b.pages === "number" && Number.isFinite(b.pages)
+        ? Math.min(3, Math.max(1, Math.floor(b.pages)))
+        : undefined;
 
     this.rateLimiter.assertCanRequest(request.user.id);
-    return this.novelAi.run({ task, text, bible, context });
+    return this.novelAi.run({
+      task,
+      text,
+      bible,
+      context,
+      pageCount: task === "breakdown" ? pages : undefined,
+    });
   }
 }

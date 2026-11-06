@@ -3,13 +3,17 @@ import type { AnimProject } from "../../animation/lib/animProject";
 import {
   changePlanPageLayout,
   cuesForAnimProject,
+  estimateScenePlan,
   mangaPageTexts,
   mangaPlanPageTexts,
   pagesForAnimProject,
   pagesForPanels,
   panelDraftForAnimScene,
   panelDraftsForText,
+  panelsForTextBlock,
+  planDialogueCoverage,
   planPagesFromBreakdown,
+  splitSceneIntoChunks,
 } from "../lib/novelBridge";
 
 describe("novelBridge — panel nháp từ văn bản", () => {
@@ -141,5 +145,68 @@ describe("novelBridge  -  kế hoạch từ AI phân tích (cầu nối Novel ->
     expect(texts.p2[0].text).toBe("Chuyến cuối...");
     expect(texts.p5).toHaveLength(1);
     expect(texts.p5[0].text).toBe("Đi thôi.");
+  });
+});
+
+describe("novelBridge - chia cảnh thành đoạn theo số trang", () => {
+  const longScene = [
+    "Mai đếm bước trên đường tới chợ. “Một, hai, ba...”",
+    "Bà Sáu mở ngăn kéo, lấy ra một chiếc chìa khóa nhỏ. “Đây là chìa khóa cổng sau của Hải Đăng.”",
+    "Mai cầm bức thư lên, đọc dòng chữ viết tay. “Gửi người giữ đèn.”",
+    "“Bà ơi, phố này tên là gì ạ?” Mai hỏi, rồi buộc miệng hỏi thêm: “Bà ơi, bức thư này gửi cho ai?”",
+    "Mây trôi qua che mất nắng. Mai đứng lại hẳn giữa đường.",
+    "Ông Tư giữ Ngọn Hải Đăng đã bốn mươi năm. “Con nhận giao, dù phải lên tới Hải Đăng.”",
+    "Mai chạy nhanh về phía cổng chợ, túi thư đập vào hông cô.",
+    "Bức thư không có tên người nhận, không địa chỉ. Chỉ có dòng chữ đó.",
+  ].join("\n\n");
+
+  it("đếm khung theo khối: 1 khung phần kể, 3 câu thoại/khung", () => {
+    expect(panelsForTextBlock("Mai đếm bước trên đường.")).toBe(1);
+    expect(panelsForTextBlock("“Một.” “Hai.” “Ba.” “Bốn.”")).toBe(2);
+    expect(panelsForTextBlock("“Một.”")).toBe(1);
+  });
+
+  it("cảnh ngắn ra 1 đoạn, cảnh dài tách nhiều đoạn theo đúng nội dung", () => {
+    const short = splitSceneIntoChunks("Mai đếm bước. “Một, hai, ba...”");
+    expect(short).toHaveLength(1);
+    expect(short[0].panels).toBeLessThanOrEqual(6);
+    const chunks = splitSceneIntoChunks(longScene);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.panels).toBeLessThanOrEqual(6);
+    }
+    // Không mất đoạn văn hay câu thoại nào khi chia.
+    expect(chunks.flatMap((c) => c.dialogues)).toHaveLength(6);
+    expect(chunks.map((c) => c.text).join("\n\n")).toContain("Hải Đăng");
+  });
+
+  it("ước tính trả đúng số trang = số đoạn = số lượt AI", () => {
+    const est = estimateScenePlan(longScene);
+    expect(est.pages).toBe(splitSceneIntoChunks(longScene).length);
+    expect(est.chunks).toBe(est.pages);
+    expect(est.dialogues).toBe(6);
+    expect(est.panels).toBeGreaterThanOrEqual(est.pages);
+  });
+
+  it("độ bao phủ thoại chỉ ra đúng câu còn thiếu trong kế hoạch", () => {
+    const pages = planPagesFromBreakdown(
+      {
+        pages: [
+          {
+            layout: "classic-5",
+            panels: [
+              { prompt: "a", sceneType: "wide", dialogue: ["Một, hai, ba..."], note: "" },
+              { prompt: "b", sceneType: "closeup", dialogue: ["Gửi người giữ đèn."], note: "" },
+              { prompt: "c", sceneType: "wide", dialogue: [], note: "" },
+            ],
+          },
+        ],
+      },
+      "Cảnh 1",
+    );
+    const coverage = planDialogueCoverage(pages, [longScene]);
+    expect(coverage.total).toBe(6);
+    expect(coverage.covered).toBe(2);
+    expect(coverage.missing).toContain("Đây là chìa khóa cổng sau của Hải Đăng.");
   });
 });

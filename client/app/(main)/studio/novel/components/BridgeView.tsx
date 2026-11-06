@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   BRIDGE_KIND_LABEL,
@@ -8,7 +8,7 @@ import {
 } from "../lib/novel";
 import type { NovelStudioState } from "../hooks/useNovelStudio";
 import type { AuthenticatedFetch } from "../../../../../lib/auth-api";
-import { breakdownScene } from "../../../../../lib/novel-ai";
+import { breakdownScene, type NovelBreakdown } from "../../../../../lib/novel-ai";
 import {
   suggestScenesFromText,
   type SceneDraft,
@@ -23,6 +23,9 @@ import {
   pagesForAnimProject,
   planPagesFromBreakdown,
   changePlanPageLayout,
+  estimateScenePlan,
+  planDialogueCoverage,
+  splitSceneIntoChunks,
   type MangaPageDraft,
   type MangaPlanPage,
 } from "../lib/novelBridge";
@@ -52,6 +55,10 @@ const sectionCls =
 
 function sceneText(sc: { contentLeft: string; contentRight: string }) {
   return [sc.contentLeft, sc.contentRight].filter(Boolean).join("\n\n");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Nút xoá 2 lần (bấm lần 2 trong 2s mới xoá thật). */
@@ -96,6 +103,17 @@ export default function BridgeView({
   const [targetLang, setTargetLang] = useState("en");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [planCoverage, setPlanCoverage] = useState<{
+    covered: number;
+    total: number;
+    missing: string[];
+  } | null>(null);
+  /**
+   * Đoạn đã phân tích xong trong phiên này (key = đúng văn bản đoạn):
+   * bấm lại sau lỗi thì chỉ gọi lại các đoạn chưa xong, không đốt
+   * lượt AI cho đoạn đã có kết quả.
+   */
+  const chunkCacheRef = useRef(new Map<string, NovelBreakdown>());
   const [result, setResult] = useState<{ label: string; route: string } | null>(
     null,
   );
@@ -122,6 +140,39 @@ export default function BridgeView({
         ? s.scenes.map(sceneText).join("\n\n")
         : s.novelScenes.map(sceneText).join("\n\n");
   const scopeEmpty = scopeText.trim().length === 0;
+  /**
+   * Ước tính kế hoạch cho phạm vi đang chọn, tính trước khi gọi AI:
+   * chia từng cảnh thành đoạn (mỗi đoạn = đúng 1 trang = 1 lượt AI)
+   * rồi cộng dồn. Sơn thấy trước cần bao nhiêu trang và bao nhiêu
+   * lượt AI, thay vì gọi xong mới biết chỉ được 1 trang.
+   */
+  const planEstimate = useMemo(() => {
+    const scenes =
+      scope === "scene"
+        ? s.selectedScene
+          ? [s.selectedScene]
+          : []
+        : scope === "chapter"
+          ? s.scenes
+          : s.novelScenes;
+    const withText = scenes.filter((sc) => sceneText(sc).trim().length > 0);
+    let chunks = 0;
+    let panels = 0;
+    let dialogues = 0;
+    for (const sc of withText) {
+      const est = estimateScenePlan(sceneText(sc));
+      chunks += est.chunks;
+      panels += est.panels;
+      dialogues += est.dialogues;
+    }
+    return {
+      scenes: withText.length,
+      chunks,
+      panels,
+      pages: chunks,
+      dialogues,
+    };
+  }, [scope, s.selectedScene, s.scenes, s.novelScenes]);
   const sourceNote = `Từ tiểu thuyết ${novel.title} — ${scopeLabel}`;
   const novelDesc = [novel.premise, novel.summary].filter(Boolean).join("\n\n");
   const animProject = animProjects.find((p) => p.id === animId) ?? null;
@@ -206,9 +257,15 @@ export default function BridgeView({
     });
 
   /**
-   * AI phân tích từng cảnh trong phạm vi thành trang/khung manga.
-   * Mỗi cảnh tốn 1 lượt AI (giới hạn chung 5/phút, 30/ngày). Kết quả
-   * là bản nháp, Sơn duyệt/sửa ở dưới trước khi tạo dự án Manga.
+   * AI phân tích phạm vi thành trang/khung manga.
+   * Trước đây mỗi cảnh gọi AI 1 lần và prompt để model tự chọn 1-3
+   * trang, nên cảnh dài cũng chỉ về 1 trang, nội dung rớt hết. Giờ
+   * mỗi cảnh được chia thành đoạn trước (mỗi đoạn = đúng 1 trang,
+   * tính từ số câu thoại + đoạn kể), rồi gọi AI từng đoạn với ép đúng
+   * 1 trang. 1 đoạn = 1 lượt AI (giới hạn chung 5/phút, 30/ngày),
+   * nên giữa các lần gọi đợi 13 giây để không chạm trần phút; hết
+   * lượt thì đợi 65 giây rồi thử lại đúng đoạn đó 1 lần. Đoạn lỗi thì
+   * giữ lại các trang đã xong, bấm lại chỉ gọi các đoạn còn lại.
    */
   const analyzePlan = () =>
     run("Đang phân tích bằng AI…", async () => {
@@ -229,22 +286,81 @@ export default function BridgeView({
         .filter(Boolean)
         .join("\n\n")
         .slice(0, 2000);
-      const all: MangaPlanPage[] = [];
-      for (let i = 0; i < withText.length; i += 1) {
-        const sc = withText[i];
-        setBusy(`Đang phân tích cảnh ${i + 1}/${withText.length}: ${sc.title}…`);
-        const sceneContext = [context, sc.synopsis]
-          .filter(Boolean)
-          .join("\n\n")
-          .slice(0, 2000);
-        const breakdown = await breakdownScene(
-          authenticatedFetch,
-          sceneText(sc),
-          sceneContext || undefined,
-        );
-        all.push(...planPagesFromBreakdown(breakdown, sc.title));
+      const jobs: { sceneTitle: string; sceneSynopsis: string; chunkText: string }[] = [];
+      for (const sc of withText) {
+        for (const chunk of splitSceneIntoChunks(sceneText(sc))) {
+          jobs.push({
+            sceneTitle: sc.title,
+            sceneSynopsis: sc.synopsis ?? "",
+            chunkText: chunk.text,
+          });
+        }
       }
-      setPlanPages(all);
+      setPlanCoverage(null);
+      const all: MangaPlanPage[] = [];
+      let madeCalls = 0;
+      for (let i = 0; i < jobs.length; i += 1) {
+        const job = jobs[i];
+        setBusy(
+          `Đang phân tích đoạn ${i + 1}/${jobs.length} (cảnh “${job.sceneTitle}”)…`,
+        );
+        let breakdown = chunkCacheRef.current.get(job.chunkText);
+        if (!breakdown) {
+          if (madeCalls > 0) {
+            setBusy(
+              `Đang phân tích đoạn ${i + 1}/${jobs.length} (đang đợi lượt AI)…`,
+            );
+            await sleep(13_000);
+          }
+          const sceneContext = [context, job.sceneSynopsis]
+            .filter(Boolean)
+            .join("\n\n")
+            .slice(0, 2000);
+          const failChunk = (e: unknown): Error =>
+            new Error(
+              `Đã phân tích được ${all.length} trang, dừng ở đoạn ${i + 1}/${jobs.length}: ${
+                e instanceof Error ? e.message : "Có lỗi xảy ra."
+              } Bấm lại để thử tiếp các đoạn còn lại (đoạn đã xong không tốn lượt nữa).`,
+            );
+          try {
+            breakdown = await breakdownScene(
+              authenticatedFetch,
+              job.chunkText,
+              sceneContext || undefined,
+              { pages: 1 },
+            );
+          } catch (e) {
+            if (e instanceof Error && e.message.includes("Đã hết lượt AI")) {
+              setBusy(
+                `Đã hết lượt AI, đợi 65 giây rồi thử lại đoạn ${i + 1}/${jobs.length}…`,
+              );
+              await sleep(65_000);
+              try {
+                breakdown = await breakdownScene(
+                  authenticatedFetch,
+                  job.chunkText,
+                  sceneContext || undefined,
+                  { pages: 1 },
+                );
+              } catch (e2) {
+                throw failChunk(e2);
+              }
+            } else {
+              throw failChunk(e);
+            }
+          }
+          chunkCacheRef.current.set(job.chunkText, breakdown);
+          madeCalls += 1;
+        }
+        all.push(...planPagesFromBreakdown(breakdown, job.sceneTitle));
+        setPlanPages([...all]);
+      }
+      setPlanCoverage(
+        planDialogueCoverage(
+          all,
+          withText.map((sc) => sceneText(sc)),
+        ),
+      );
     });
 
   const updatePlanPanel = (
@@ -378,6 +494,7 @@ export default function BridgeView({
                 setScope(e.target.value as Scope);
                 setDrafts(null);
                 setPlanPages(null);
+                setPlanCoverage(null);
               }}
             >
               <option value="scene" disabled={!s.selectedScene}>
@@ -485,6 +602,7 @@ export default function BridgeView({
                 setScope(e.target.value as Scope);
                 setDrafts(null);
                 setPlanPages(null);
+                setPlanCoverage(null);
               }}
             >
               <option value="scene" disabled={!s.selectedScene}>
@@ -517,6 +635,16 @@ export default function BridgeView({
         {scopeEmpty && (
           <p className="mt-2 text-xs text-amber-100/70">
             Phạm vi này chưa có nội dung.
+          </p>
+        )}
+        {!scopeEmpty && (
+          <p className="mt-2 text-xs text-amber-100/70">
+            Ước tính: {planEstimate.scenes} cảnh, {planEstimate.chunks} đoạn
+            = {planEstimate.pages} trang, {planEstimate.panels} khung,{" "}
+            {planEstimate.dialogues} câu thoại, cần {planEstimate.chunks}{" "}
+            lượt AI (giới hạn 30/ngày).
+            {planEstimate.chunks > 30 &&
+              " Vượt giới hạn ngày, nên chia nhỏ phạm vi (từng chương) rồi làm nhiều lần."}
           </p>
         )}
         {planPages && (
@@ -602,6 +730,29 @@ export default function BridgeView({
               <p className="text-sm text-amber-100/70">
                 Không còn khung nào.
               </p>
+            )}
+            {planCoverage && planCoverage.total > 0 && (
+              <div className="text-xs text-amber-100/70">
+                <p>
+                  Thoại đã vào kế hoạch: {planCoverage.covered}/
+                  {planCoverage.total} câu.
+                </p>
+                {planCoverage.missing.length > 0 && (
+                  <div className="mt-1">
+                    <p>Câu chưa vào kế hoạch (thêm khung tay nếu cần):</p>
+                    <ul className="list-disc pl-4">
+                      {planCoverage.missing.slice(0, 5).map((line) => (
+                        <li key={line}>“{line}”</li>
+                      ))}
+                    </ul>
+                    {planCoverage.missing.length > 5 && (
+                      <p>
+                        Và {planCoverage.missing.length - 5} câu khác.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
             <button
               type="button"

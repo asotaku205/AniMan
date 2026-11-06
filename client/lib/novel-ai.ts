@@ -36,6 +36,8 @@ async function callNovelAi(
     text: string;
     bible?: string;
     context?: string;
+    /** Số trang yêu cầu cho breakdown (mỗi đoạn nội dung = đúng 1 trang). */
+    pages?: number;
   },
 ): Promise<NovelAiResponse> {
   const response = await authenticatedFetch("/ai/novel", {
@@ -88,17 +90,20 @@ export async function checkSceneConsistency(
 /**
  * Tách một cảnh thành trang/khung manga (cầu nối Novel -> Manga)  -  kết
  * quả là bản nháp, client hiển thị để người dùng duyệt/sửa trước khi
- * tạo dự án Manga. Mỗi cảnh tốn 1 lượt AI.
+ * tạo dự án Manga. Mỗi đoạn nội dung tốn 1 lượt AI; options.pages ép
+ * đúng số trang trả về cho đoạn đó (mặc định không ép, 1-3 trang).
  */
 export async function breakdownScene(
   authenticatedFetch: AuthenticatedFetch,
   text: string,
   context?: string,
+  options?: { pages?: number },
 ): Promise<NovelBreakdown> {
   const result = await callNovelAi(authenticatedFetch, {
     task: "breakdown",
     text,
     context,
+    pages: options?.pages,
   });
   if (!result.breakdown || result.breakdown.pages.length === 0) {
     throw new Error("AI không tách được cảnh thành trang manga, thử lại sau.");
