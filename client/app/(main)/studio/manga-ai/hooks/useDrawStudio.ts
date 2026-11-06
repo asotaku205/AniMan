@@ -1127,6 +1127,38 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     [projectId, layout.id, onSavePageData, encodeStacksPixels],
   );
 
+  /**
+   * Đổi bố cục trang và ghi ngay vào dự án + bản vẽ trang.
+   * Trước đây nút chọn layout chỉ đổi state trong bộ nhớ: đổi trang
+   * hoặc F5 là layout trở về layout cũ đã lưu, vì chỉ lần lưu nét vẽ
+   * sau mới ghi layoutId. Chọn layout phải dính ngay từ lúc chọn,
+   * trước khi vẽ trang, nên ghi luôn bằng đúng đường lưu của commitSave
+   * (dữ liệu vẽ hiện tại giữ nguyên, chỉ đổi layoutId). Khung thừa
+   * của layout cũ vẫn nằm trong dữ liệu, đổi lại layout cũ là hiện lại.
+   */
+  const changeLayout = useCallback(
+    (next: LayoutDef) => {
+      if (next.id === layout.id) return;
+      setLayout(next);
+      if (!projectId) return;
+      const stacksToSave = encodeStacksPixels(stacksRef.current);
+      savePageDrawingToDB(
+        projectId,
+        page,
+        stacksToSave,
+        next.id,
+        panelDataRef.current,
+        panelTextsRef.current,
+        panelShapesRef.current,
+      );
+      setIsSaved(true);
+      if (onSavePageData) {
+        onSavePageData(page, next.id, panelDataRef.current, stacksToSave);
+      }
+    },
+    [layout.id, projectId, page, onSavePageData, encodeStacksPixels],
+  );
+
   /** Debounce 800ms: lên lịch ghi và đánh dấu "Chưa lưu" (AC-L4.4). */
   const scheduleSave = useCallback(
     (data: Record<string, string>, targetPage: number) => {
@@ -4187,6 +4219,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     addPage,
     layout,
     setLayout,
+    changeLayout,
     activePanel,
     panelData,
     // Right panel
