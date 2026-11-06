@@ -111,6 +111,24 @@ export function createReferenceImageId(): string {
 }
 
 /**
+ * Khóa lưu lịch sử ảnh mẫu của một khung, gắn đủ dự án + trang + khung:
+ * `${projectId}:${pageNumber}:${panelId}`.
+ *
+ * Trước bản sửa này khóa chỉ là id khung trần ("p1".."p6") nên mọi dự
+ * án và mọi trang dùng chung một lịch sử: dự án mới mở ra đã thấy ảnh
+ * mẫu của dự án cũ, sinh ảnh ở dự án mới còn đè mất lịch sử của dự án
+ * cũ. Khóa có đủ 3 thành phần thì mỗi khung của mỗi trang trong mỗi dự
+ * án có lịch sử riêng, không đè nhau nữa.
+ */
+export function buildReferenceImageKey(
+  projectId: string,
+  pageNumber: number,
+  panelId: string,
+): string {
+  return `${projectId}:${pageNumber}:${panelId}`;
+}
+
+/**
  * Thêm một ảnh vào lịch sử: ảnh mới nhất lên đầu, ảnh cũ nhất bị loại khi
  * lịch sử đã đủ `MAX_REFERENCE_IMAGES`. Hàm thuần, không chạm IndexedDB.
  */

@@ -7,6 +7,7 @@
 import { indexedDB as fakeIdb } from "fake-indexeddb";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  buildReferenceImageKey,
   clampReferenceOverlayOpacity,
   DEFAULT_REFERENCE_OVERLAY_OPACITY,
   MAX_REFERENCE_IMAGES,
@@ -113,6 +114,32 @@ describe("Kho ảnh mẫu: ghi/đọc lại theo khung, tách khỏi lớp vẽ"
     expect((await loadReferenceImages("panel-d")).map((entry) => entry.id)).toEqual(
       ["a1"],
     );
+  });
+
+  it("khóa gắn đủ dự án + trang + khung: cùng ô p1 ở dự án/trang khác nhau không chung lịch sử", async () => {
+    const { addReferenceImage, loadReferenceImages } = await import(
+      "../lib/referenceImageStorage"
+    );
+    const oldKey = buildReferenceImageKey("proj-old", 1, "p1");
+    const newKey = buildReferenceImageKey("proj-new", 1, "p1");
+    const page2Key = buildReferenceImageKey("proj-new", 2, "p1");
+    expect(oldKey).not.toBe(newKey);
+    expect(newKey).not.toBe(page2Key);
+    expect(buildReferenceImageKey("proj-new", 1, "p1")).toBe(newKey);
+
+    await addReferenceImage(oldKey, item("a1"));
+    // Dự án mới mở khung p1 lần đầu: không thấy ảnh của dự án cũ.
+    expect(await loadReferenceImages(newKey)).toEqual([]);
+    await addReferenceImage(newKey, item("a2"));
+    expect((await loadReferenceImages(newKey)).map((entry) => entry.id)).toEqual([
+      "a2",
+    ]);
+    // Sinh ảnh ở dự án mới không đè mất lịch sử của dự án cũ.
+    expect((await loadReferenceImages(oldKey)).map((entry) => entry.id)).toEqual([
+      "a1",
+    ]);
+    // Trang 2 cùng dự án cũng có lịch sử riêng, không lấy ảnh trang 1.
+    expect(await loadReferenceImages(page2Key)).toEqual([]);
   });
 
   it("ảnh mẫu không nằm trong stack lớp vẽ sau khi chuẩn hóa", async () => {

@@ -119,6 +119,7 @@ import {
   loadReferenceImages,
 } from "../lib/referenceImageStorage";
 import {
+  buildReferenceImageKey,
   clampReferenceOverlayOpacity,
   createReferenceImageId,
   DEFAULT_REFERENCE_OVERLAY_OPACITY,
@@ -635,7 +636,7 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   // mỗi khung, lưu riêng trong IndexedDB, không vào lớp vẽ hay xuất bản.
   // Sinh ảnh chạy bằng job bất đồng bộ qua Cloudflare Workers AI; ảnh về
   // đã được server kiểm tra là nét vẽ trắng đen và chỉ lưu vào kho riêng này, không vào canvas.
-  const [referenceImagesByPanel, setReferenceImagesByPanel] = useState<
+  const [referenceImagesByKey, setReferenceImagesByKey] = useState<
     Record<string, ReferenceImageItem[]>
   >({});
   const [referenceSource, setReferenceSource] =
@@ -648,9 +649,28 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
   const [referenceCorrection, setReferenceCorrection] = useState("");
   const referenceCorrectionText = referenceCorrection.trim().slice(0, 300);
   const referenceImagesLoadedRef = useRef<Set<string>>(new Set());
+  /**
+   * Khóa lịch sử ảnh mẫu của khung đang mở, gắn đủ dự án + trang +
+   * khung. Trước đây khóa chỉ là id khung trần ("p1".."p6") nên mọi dự
+   * án và mọi trang dùng chung một lịch sử: dự án mới mở ra đã thấy
+   * ảnh mẫu của dự án cũ, sinh ảnh mới còn đè mất lịch sử của dự án
+   * cũ. Chưa mở dự án/khung thì không có khóa, không nạp ảnh nào.
+   */
+  const referenceKey = useMemo(
+    () =>
+      projectId && activePanel
+        ? buildReferenceImageKey(projectId, page, activePanel)
+        : null,
+    [projectId, page, activePanel],
+  );
+  /** Mirror `referenceKey` để callback đọc giá trị hiện tại không cần đưa vào deps */
+  const referenceKeyRef = useRef<string | null>(referenceKey);
+  useEffect(() => {
+    referenceKeyRef.current = referenceKey;
+  }, [referenceKey]);
   const referenceImages = useMemo(
-    () => (activePanel ? (referenceImagesByPanel[activePanel] ?? []) : []),
-    [activePanel, referenceImagesByPanel],
+    () => (referenceKey ? (referenceImagesByKey[referenceKey] ?? []) : []),
+    [referenceKey, referenceImagesByKey],
   );
   // Lớp ảnh mẫu đè lên khung vẽ để đồ theo (mockup đã duyệt 30/10/2026):
   // chỉ là lớp xem trong bộ nhớ, mặc định tắt, độ mờ mặc định 40%,
@@ -684,31 +704,31 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
     setReferenceOverlayOn(true);
   }, []);
   useEffect(() => {
-    if (!activePanel || referenceImagesLoadedRef.current.has(activePanel)) {
+    if (!referenceKey || referenceImagesLoadedRef.current.has(referenceKey)) {
       return;
     }
-    referenceImagesLoadedRef.current.add(activePanel);
+    referenceImagesLoadedRef.current.add(referenceKey);
     let cancelled = false;
-    loadReferenceImages(activePanel)
+    loadReferenceImages(referenceKey)
       .then((images) => {
         if (cancelled) return;
-        setReferenceImagesByPanel((prev) => ({
+        setReferenceImagesByKey((prev) => ({
           ...prev,
-          [activePanel]: images,
+          [referenceKey]: images,
         }));
       })
       .catch(() => {
-        referenceImagesLoadedRef.current.delete(activePanel);
+        referenceImagesLoadedRef.current.delete(referenceKey);
       });
     return () => {
       cancelled = true;
     };
-  }, [activePanel]);
+  }, [referenceKey]);
   const deleteReferenceImage = useCallback(async (id: string) => {
-    const pid = activePanelRef.current;
-    if (!pid) return;
-    const next = await deleteStoredReferenceImage(pid, id);
-    setReferenceImagesByPanel((prev) => ({ ...prev, [pid]: next }));
+    const key = referenceKeyRef.current;
+    if (!key) return;
+    const next = await deleteStoredReferenceImage(key, id);
+    setReferenceImagesByKey((prev) => ({ ...prev, [key]: next }));
     if (referenceOverlayImageIdRef.current === id) {
       setReferenceOverlayImageId(null);
       setReferenceOverlayOn(false);
@@ -3595,6 +3615,12 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
       showToast("Vui lòng mở một khung truyện để sinh ảnh mẫu.");
       return;
     }
+    // Không có khóa lưu (chưa mở dự án) thì dừng trước khi gọi AI,
+    // tránh sinh xong không có chỗ gắn ảnh.
+    if (!referenceKeyRef.current) {
+      showToast("Vui lòng mở một dự án để sinh ảnh mẫu.");
+      return;
+    }
     if (referenceGenerating) return;
     const promptText = userDrawingPrompt.trim();
     const needsSketch = referenceSource !== "prompt";
@@ -3691,8 +3717,10 @@ export function useDrawStudio(options: UseDrawStudioOptions = {}) {
           note: finalJob.note || undefined,
           createdAt: Date.now(),
         };
-        const next = await addStoredReferenceImage(panelId, item);
-        setReferenceImagesByPanel((prev) => ({ ...prev, [panelId]: next }));
+        const key = referenceKeyRef.current;
+        if (!key) return;
+        const next = await addStoredReferenceImage(key, item);
+        setReferenceImagesByKey((prev) => ({ ...prev, [key]: next }));
         showToast("Đã sinh ảnh mẫu tham khảo");
         void refreshAiQuota();
         return;

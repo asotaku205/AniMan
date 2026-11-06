@@ -2,12 +2,17 @@
  * Kho lưu ảnh mẫu tham khảo, tách biệt hoàn toàn khỏi kho vẽ của Manga Studio.
  *
  * - Database riêng `animan-reference-images`, store `reference-images`,
- *   khóa theo id khung (`panelId`). Không chung store với lớp vẽ, không nằm
- *   trong `pixels` của `PanelLayerStack`, không vào lịch sử hoàn tác.
+ *   khóa là khóa đã gắn đủ dự án + trang + khung
+ *   (`${projectId}:${pageNumber}:${panelId}`, xem `buildReferenceImageKey`).
+ *   Không chung store với lớp vẽ, không nằm trong `pixels` của
+ *   `PanelLayerStack`, không vào lịch sử hoàn tác.
  * - Mỗi khung giữ tối đa `MAX_REFERENCE_IMAGES` ảnh; ảnh cũ nhất bị loại
  *   khi thêm ảnh thứ tư (xem `addReferenceImageToHistory`).
  * - Ảnh mẫu không bao giờ được đưa vào xuất PNG/PDF: đường xuất chỉ đọc
  *   lớp của người dùng từ kho vẽ, không đọc kho này.
+ * - Bản ghi cũ trước bản sửa (khóa trần "p1".."p6", không ghi dự án/trang)
+ *   vẫn nằm trong database nhưng không còn khóa nào trỏ tới, vì không
+ *   xác định được ảnh đó thuộc dự án/trang nào nên không tự gán lại.
  */
 
 import {
