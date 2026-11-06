@@ -79,35 +79,46 @@ describe("parseNovelAiResponse", () => {
   });
 
   it("run() ném HttpException kèm nguyên nhân khi mọi model đều lỗi", async () => {
-    const service = new NovelAiService("dummy-key");
-    const client = (
-      service as unknown as {
-        client: { models: { generateContent: unknown } };
-      }
-    ).client;
-    client.models.generateContent = vi
-      .fn()
-      .mockRejectedValue(
-        new Error("API key not valid. Please pass a valid API key."),
-      );
+    const backend = {
+      name: "stub",
+      modelsFor: () => ["model-a"],
+      generateText: vi
+        .fn()
+        .mockRejectedValue(
+          new Error("API key not valid. Please pass a valid API key."),
+        ),
+    };
+    const service = new NovelAiService(backend);
     const run = service.run({ task: "summarize", text: "Aoi rời ga." });
     await expect(run).rejects.toBeInstanceOf(HttpException);
     await expect(run).rejects.toThrow("API key not valid");
   });
 
-  it("run() hết timeout khi cuộc gọi Gemini treo không trả về", async () => {
-    const service = new NovelAiService("dummy-key", undefined, 50);
-    const client = (
-      service as unknown as {
-        client: { models: { generateContent: unknown } };
-      }
-    ).client;
-    client.models.generateContent = vi
-      .fn()
-      .mockImplementation(() => new Promise(() => {}));
+  it("run() hết timeout khi cuộc gọi model treo không trả về", async () => {
+    const backend = {
+      name: "stub",
+      modelsFor: () => ["model-a"],
+      generateText: vi.fn().mockImplementation(() => new Promise(() => {})),
+    };
+    const service = new NovelAiService(backend, 50);
     await expect(
       service.run({ task: "summarize", text: "Aoi rời ga." }),
     ).rejects.toThrow("timed out");
+  });
+
+  it("run() thử model tiếp theo khi model đầu trả JSON không đạt", async () => {
+    const backend = {
+      name: "stub",
+      modelsFor: () => ["model-a", "model-b"],
+      generateText: vi
+        .fn()
+        .mockResolvedValueOnce("khong phai JSON")
+        .mockResolvedValueOnce(JSON.stringify({ summary: "Aoi rời ga." })),
+    };
+    const service = new NovelAiService(backend);
+    await expect(
+      service.run({ task: "summarize", text: "Aoi rời ga." }),
+    ).resolves.toEqual({ summary: "Aoi rời ga.", model: "model-b" });
   });
 
   it("từ chối breakdown thiếu prompt, sai loại cảnh, ít hơn 3 khung", () => {

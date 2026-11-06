@@ -1,5 +1,5 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
-import { GoogleGenAI } from "@google/genai";
+import type { NovelAiTextBackend } from "./cloudflare-novel-ai.provider.js";
 
 /**
  * AI cho Novel Studio (N3): tóm tắt cảnh + kiểm tra nhất quán với sổ tay
@@ -76,12 +76,6 @@ export interface NovelAiResult {
   breakdown?: NovelBreakdown;
   model: string;
 }
-
-const FALLBACK_MODELS = [
-  "gemini-flash-latest",
-  "gemini-3.5-flash",
-  "gemini-3.1-flash-lite",
-];
 
 /** Dựng prompt — hàm thuần để kiểm thử được cấu trúc. */
 export function buildNovelAiPrompt(input: NovelAiInput): {
@@ -204,32 +198,22 @@ function parseBreakdown(
 }
 
 export class NovelAiService {
-  private readonly client: GoogleGenAI;
-  private readonly preferredModel?: string;
-
   constructor(
-    apiKey: string,
-    preferredModel?: string,
+    private readonly backend: NovelAiTextBackend,
     private readonly timeoutMs = 60_000,
-  ) {
-    if (!apiKey || apiKey.trim().length === 0) {
-      throw new Error("GEMINI_API_KEY is required for NovelAiService");
-    }
-    this.client = new GoogleGenAI({ apiKey });
-    this.preferredModel = preferredModel;
-  }
+  ) {}
 
   async run(input: NovelAiInput): Promise<NovelAiResult> {
-    // Cuộc gọi Gemini không có timeout mặc định của SDK: nếu mạng tới
-    // Google treo, request treo theo và proxy Next cắt kết nối (socket
-    // hang up) trước khi server kịp trả lỗi. Đặt trần 60s cho toàn bộ
-    // lượt thử model để lỗi hiện rõ thay vì treo rồi 500 chung chung.
+    // Cuộc gọi model không có timeout mặc định: nếu mạng tới provider
+    // treo, request treo theo và proxy Next cắt kết nối (socket hang
+    // up) trước khi server kịp trả lỗi. Đặt trần 60s cho toàn bộ lượt
+    // thử model để lỗi hiện rõ thay vì treo rồi 500 chung chung.
     let timeoutId: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
         reject(
           new HttpException(
-            `Gemini request timed out after ${this.timeoutMs / 1000}s; check the server network to Google.`,
+            `Novel AI request timed out after ${this.timeoutMs / 1000}s; check the server network to the AI provider.`,
             HttpStatus.GATEWAY_TIMEOUT,
           ),
         );
@@ -244,27 +228,17 @@ export class NovelAiService {
 
   private async execute(input: NovelAiInput): Promise<NovelAiResult> {
     const { systemInstruction, userPrompt } = buildNovelAiPrompt(input);
-    const models = Array.from(
-      new Set(
-        [this.preferredModel, ...FALLBACK_MODELS].filter(
-          (m): m is string => typeof m === "string" && m.length > 0,
-        ),
-      ),
-    );
+    const models = this.backend.modelsFor(input.task);
     let lastError: unknown;
     for (const model of models) {
       try {
-        const response = await this.client.models.generateContent({
-          model,
-          contents: userPrompt,
-          config: {
-            systemInstruction,
-            responseMimeType: "application/json",
-            // Tách cảnh trả về nhiều trang/khung nên cần trần cao hơn.
-            maxOutputTokens: input.task === "breakdown" ? 4096 : 2048,
-          },
+        const text = await this.backend.generateText(model, {
+          systemInstruction,
+          userPrompt,
+          // Tách cảnh trả về nhiều trang/khung nên cần trần cao hơn.
+          maxOutputTokens: input.task === "breakdown" ? 4096 : 2048,
+          task: input.task,
         });
-        const text = response.text ?? "";
         let parsed: unknown;
         try {
           parsed = JSON.parse(text);
@@ -283,14 +257,14 @@ export class NovelAiService {
     // Mọi model đều lỗi: ném HttpException kèm nguyên nhân thật để client
     // hiện đúng lý do (key sai, model không có, hết quota...) thay vì
     // 500 chung chung của Nest, và ghi log ra terminal của server để
-    // chẩn đoán. Thông báo lỗi của Google không chứa API key.
+    // chẩn đoán. Thông báo lỗi của provider không chứa API key/token.
     const detail =
       lastError instanceof Error ? lastError.message : "Unknown error";
     console.error(
       `[NovelAi] task=${input.task} failed on all models: ${detail.slice(0, 300)}`,
     );
     throw new HttpException(
-      `Gemini request failed: ${detail.slice(0, 200)}`,
+      `Novel AI request failed: ${detail.slice(0, 200)}`,
       HttpStatus.INTERNAL_SERVER_ERROR,
     );
   }

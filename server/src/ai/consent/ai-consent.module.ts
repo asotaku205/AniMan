@@ -20,6 +20,10 @@ import { TranslationController } from "../translation/translation.controller.js"
 import { TranslationService } from "../translation/translation.service.js";
 import { NovelAiController } from "../novel/novel-ai.controller.js";
 import { NovelAiService } from "../novel/novel-ai.service.js";
+import {
+  createCloudflareNovelAiBackend,
+  createGeminiNovelAiBackend,
+} from "../novel/cloudflare-novel-ai.provider.js";
 
 @Module({
   imports: [
@@ -75,11 +79,30 @@ import { NovelAiService } from "../novel/novel-ai.service.js";
     {
       provide: NovelAiService,
       inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        new NovelAiService(
-          config.getOrThrow<string>("GEMINI_API_KEY"),
-          config.get<string>("GEMINI_MODEL_ID"),
-        ),
+      useFactory: (config: ConfigService) => {
+        // Mặc định Cloudflare (06/11/2026): Gemini treo từ máy Sơn.
+        // Đặt NOVEL_AI_PROVIDER=gemini để quay lại Gemini.
+        const provider = config.get("NOVEL_AI_PROVIDER") ?? "cloudflare";
+        if (provider === "gemini") {
+          return new NovelAiService(
+            createGeminiNovelAiBackend({
+              apiKey: config.getOrThrow<string>("GEMINI_API_KEY"),
+              preferredModel: config.get<string>("GEMINI_MODEL_ID"),
+            }),
+          );
+        }
+        if (provider !== "cloudflare") {
+          throw new Error(
+            `NOVEL_AI_PROVIDER must be "cloudflare" or "gemini", got "${provider}"`,
+          );
+        }
+        return new NovelAiService(
+          createCloudflareNovelAiBackend({
+            accountId: config.getOrThrow<string>("CLOUDFLARE_ACCOUNT_ID"),
+            token: config.getOrThrow<string>("CLOUDFLARE_API_TOKEN"),
+          }),
+        );
+      },
     },
   ],
   exports: [AiDrawingConsentService],

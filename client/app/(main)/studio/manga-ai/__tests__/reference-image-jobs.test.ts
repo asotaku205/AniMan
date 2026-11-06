@@ -198,9 +198,11 @@ describe("thong diep loi va dong y", () => {
     expect(REFERENCE_IMAGE_LINE_STYLE.startsWith(
       "Black-and-white manga illustration",
     )).toBe(true);
-    expect(REFERENCE_IMAGE_CONSENT_VERSION).toBe("ai-providers-v4");
+    expect(REFERENCE_IMAGE_CONSENT_VERSION).toBe("ai-providers-v5");
     expect(REFERENCE_IMAGE_CONSENT_NOTICE).toContain("Cloudflare");
     expect(REFERENCE_IMAGE_CONSENT_NOTICE).toContain("FLUX.2 klein 4B");
+    expect(REFERENCE_IMAGE_CONSENT_NOTICE).toContain("model Llama");
+    expect(REFERENCE_IMAGE_CONSENT_NOTICE).toContain("tách cảnh Novel");
     expect(REFERENCE_IMAGE_CONSENT_NOTICE).not.toContain("schnell");
   });
 
